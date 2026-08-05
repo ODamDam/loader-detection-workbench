@@ -1,0 +1,45 @@
+{
+  "official_project_title": "Windows 악성코드 로더의 초기 실행 행위 분석 및 탐지 룰 검증 프레임워크 구축",
+  "working_product_name": "Local Detection-as-Code Workbench",
+  "mvp": {
+    "host": "Windows 11",
+    "hypervisor": "VMware",
+    "guest": "User-provided Windows 10 or 11 x64 VM",
+    "sample_format": [
+      ".exe"
+    ],
+    "required_evidence": [
+      "static_pe",
+      "sysmon"
+    ],
+    "optional_evidence": [
+      "procmon",
+      "pcap"
+    ],
+    "network_modes": [
+      "disabled",
+      "simulated"
+    ],
+    "ui": [
+      "cli"
+    ],
+    "storage": [
+      "sqlite",
+      "filesystem"
+    ],
+    "reports": [
+      "markdown",
+      "standalone_html",
+      "static_site"
+    ],
+    "ai_required": false
+  },
+  "quantitative_targets": {
+    "cases": 6,
+    "yara_rules": 6,
+    "sigma_rules": 6,
+    "case_reports": 6,
+    "final_report": 1,
+    "paper_draft": 1
+  }
+}
