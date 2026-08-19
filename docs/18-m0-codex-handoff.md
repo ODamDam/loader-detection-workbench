@@ -13,7 +13,7 @@
 - M0-local: `approved`
 - M0-remote: `in_progress`
 - GitHub repository: Private, `main` 기준선 push 완료
-- GitHub Issues: 아직 생성되지 않음
+- GitHub Issue #1: `M0-local: bootstrap Python development environment` 생성 완료
 - Python package/bootstrap 구현: 아직 시작 전
 - `pyproject.toml`, `uv.lock`, `src/` package: 아직 없음
 
