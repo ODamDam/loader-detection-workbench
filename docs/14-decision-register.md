@@ -18,13 +18,13 @@
 | ADR-014 | 실행 전 승인과 케이스별 시간 제한 | 승인 |
 | ADR-015 | PowerShell 일회성 Guest Orchestrator | 승인 |
 | ADR-016 | MVP 자동 실행 형식은 Windows PE `.exe` | 승인 |
+| ADR-017 | M0 Python 도구 체인 | 승인 |
 
 ## 남은 주요 결정
 
 다음 항목은 구현 착수 또는 해당 마일스톤 직전에 확정한다.
 
 - 프로젝트 및 제품 최종 명칭
-- 구체적인 Python 패키지와 버전
 - 정적 PE 분석 도구 조합
 - Sigma 오프라인 평가 구현 방식
 - 모의 DNS·HTTP 서비스 구성

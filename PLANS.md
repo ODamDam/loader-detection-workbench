@@ -1,0 +1,214 @@
+# 구현 계획
+
+## 목적
+
+이 문서는 현재 활성 마일스톤의 목표, 상태, 범위, 승인된 결정, 산출물과
+검증 상태를 관리한다. 전체 로드맵은 `docs/12-roadmap-and-milestones.md`를
+따르며 여기에서 상세 내용을 반복하지 않는다.
+
+## 계획 규칙
+
+- 한 번에 하나의 구현 마일스톤만 활성화한다.
+- 작업을 관련 요구사항, 승인된 ADR, 산출물과 검증 방법에 연결한다.
+- 진행률은 코드량이 아니라 완료되고 검증된 사용자 흐름으로 판단한다.
+- 실제 샘플 단계 전에는 sanitized fixture와 benign simulator만 사용한다.
+- 관련 없는 리팩터링과 후속 마일스톤 기능을 포함하지 않는다.
+- 완료 조건을 검증하지 못한 마일스톤은 `completed`로 표시하지 않는다.
+
+## 상태값
+
+- `planned`: 범위와 계획을 작성했으나 구현 승인을 받지 않은 상태
+- `approved`: 사용자가 계획과 구현 범위를 승인한 상태
+- `in_progress`: 승인된 구현 또는 검증이 진행 중인 상태
+- `verification_blocked`: 구현은 존재하지만 필수 검증을 완료하지 못한 상태
+- `completed`: 모든 적용 가능한 완료 조건과 검증을 충족한 상태
+
+## 활성 마일스톤
+
+### M0 — Repository and development bootstrap
+
+Status: `in_progress`
+
+M0는 `M0-local`과 `M0-remote`로 나눈다. 두 하위 단계가 모두 완료되어야
+전체 M0를 `completed`로 표시한다.
+
+### 목표
+
+제품 기능을 구현하기 전에 저장소 운영 규칙, 로컬 Python 개발 기반과
+Private GitHub 작업 관리 기반을 마련한다.
+
+### 관련 기준선
+
+- `README.md`
+- `docs/02-requirements.md`
+- `docs/03-mvp-scope.md`
+- `docs/04-architecture.md`
+- `docs/10-test-plan.md`
+- `docs/11-security-and-safety.md`
+- `docs/12-roadmap-and-milestones.md`
+- `docs/13-definition-of-done.md`
+- ADR-002, ADR-004, ADR-017
+
+## Approved decisions
+
+- 최소 지원 Python: `>=3.12`
+- 로컬 개발 기준: CPython 3.12
+- distribution: `loader-detection-workbench`
+- import package: `loader_detection_workbench`
+- CLI command: `workbench`
+- initial version: `0.1.0`
+- version source: `pyproject.toml`
+- project/dependency manager: uv
+- build backend: `uv_build`
+- lockfile: `uv.lock`
+- M0 runtime dependency: 없음
+- CLI parser: 표준 라이브러리 `argparse`
+- configuration: 표준 라이브러리 `tomllib`
+- logging: 표준 라이브러리 `logging`
+- tests: pytest
+- lint and format: Ruff
+- type check: strict mode mypy
+- coverage threshold와 pytest-cov: M1 이후 검토
+- 라이선스: 공개 전 별도 결정
+- GitHub repository visibility: Private
+
+## M0-local
+
+Status: `in_progress`
+
+### 포함 범위
+
+- `AGENTS.md`, `PLANS.md`, `docs/17-development-workflow.md`
+- M0 Python 도구 체인 ADR과 결정 등록부
+- Python 프로젝트 메타데이터와 `uv.lock`
+- 기본 디렉터리 구조와 최소 CLI 진입점
+- 선택적 TOML 설정 파일과 기본값을 지원하는 설정 로딩 구조
+- 잘못된 설정 파일과 값의 명확한 오류 처리
+- CLI 전역 `--config` 옵션
+- 표준 `logging` 기반 콘솔 로깅
+- 기본 로그 레벨 `INFO`와 CLI 전역 `--log-level` 옵션
+- pytest, Ruff 및 strict mypy 구성
+- `.gitignore`와 줄바꿈 정책
+- 로컬 개발·검증 문서
+
+### 제외 범위
+
+- 실제 제품별 설정 항목
+- 파일 로깅
+- Project·Case 영속성과 SQLite 스키마
+- Case Bundle
+- PE, Sysmon, YARA, Sigma 및 보고서 기능
+- simulator, VMware 및 Guest Orchestrator 구현·실행
+- AI Provider와 로컬 웹 UI
+- 실제 샘플과 원본 분석 로그
+- coverage threshold와 pytest-cov
+- 라이선스 확정
+- GitHub 작업
+
+### 설정 로딩 제약
+
+- 설정 파일은 선택 사항이다.
+- 설정 파일 미지정 시 안전한 기본값을 사용한다.
+- M0에서는 공통 CLI 설정 외의 제품별 설정을 정의하지 않는다.
+- 파일 부재, 읽기 실패, TOML 구문 오류와 지원하지 않는 값은 구분 가능한
+  오류로 처리한다.
+- 오류 메시지와 로그에 민감정보 또는 로컬 절대 경로를 노출하지 않는다.
+
+### 로깅 제약
+
+- 표준 라이브러리 `logging`만 사용한다.
+- 콘솔 출력만 지원한다.
+- 기본 로그 레벨은 `INFO`이다.
+- 지원하지 않는 `--log-level` 값은 명확한 CLI 오류로 처리한다.
+- 파일 로깅, 원격 전송과 민감정보 기록은 포함하지 않는다.
+
+### 예정 산출물
+
+- 운영 문서와 ADR
+- `pyproject.toml`과 `uv.lock`
+- `.gitignore`와 줄바꿈 정책 파일
+- `src/loader_detection_workbench/` 최소 package
+- CLI, 설정 및 로깅 골격
+- smoke test와 설정·오류 처리 테스트
+- unit, integration 및 public fixture 디렉터리 정책
+- 로컬 개발 안내
+
+### 구현 순서
+
+1. 운영 문서, ADR, 문서 지도와 결정 등록부를 확정한다.
+2. Python 프로젝트 메타데이터와 lockfile을 구성한다.
+3. 기본 디렉터리와 최소 package를 생성한다.
+4. CLI 도움말·버전·전역 옵션 골격을 구현한다.
+5. 선택적 TOML 설정 로딩과 오류 처리를 구현한다.
+6. 콘솔 로깅과 로그 레벨 처리를 구현한다.
+7. 테스트와 품질 검사 구성을 추가한다.
+8. ignore, 줄바꿈 및 로컬 개발 문서를 추가한다.
+9. 승인된 검증을 실행한다.
+10. 최종 diff, 범위 이탈과 금지 자료를 자체 검토한다.
+11. 결과, 미실행 검증과 잔여 위험을 보고한다.
+
+### 완료 조건
+
+- 운영 문서의 책임이 명확히 구분되어 있다.
+- 승인된 Python 프로젝트와 lockfile이 존재한다.
+- `workbench --help`와 `workbench --version`이 성공한다.
+- `--config` 미지정 시 기본값으로 시작한다.
+- 유효한 선택적 TOML 설정을 읽을 수 있다.
+- 잘못된 파일과 값이 명확하고 안전한 오류를 생성한다.
+- `--log-level`과 기본 `INFO` 콘솔 로깅이 동작한다.
+- pytest, Ruff lint, Ruff format check와 strict mypy가 통과한다.
+- runtime workspace, secret, 생성물과 restricted artifact 제외 규칙이 있다.
+- 저장소와 분석 프로젝트 작업공간의 분리가 문서화되어 있다.
+- 실제 제품 기능, 실제 샘플 또는 원본 로그가 포함되지 않는다.
+- 필수 검증을 실행하지 못한 경우 상태가 `verification_blocked`이다.
+
+### 검증 명령
+
+```powershell
+uv sync
+uv lock --check
+uv run workbench --help
+uv run workbench --version
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src
+```
+
+## M0-remote
+
+Status: `planned`
+
+### 포함 범위
+
+- Private GitHub repository
+- 초기 GitHub Issues
+- Milestones
+- Project Board
+
+### 제약
+
+- 원격 저장소와 작업 관리 구조는 사용자의 별도 실행 승인을 받은 뒤 만든다.
+- 실제 샘플, 원본 분석 로그, secret 또는 런타임 작업공간을 업로드하지 않는다.
+- 원격 작업 전에 로컬 변경 범위와 공개 가능성을 검토한다.
+
+### 완료 조건
+
+- GitHub repository가 Private으로 생성되어 있다.
+- 승인된 로컬 기준선이 원격 저장소에 존재한다.
+- 초기 작업을 추적할 Issues와 Milestones가 생성되어 있다.
+- Project Board가 초기 마일스톤과 작업 상태를 표시한다.
+- 원격 저장소에 금지 자료나 민감정보가 없다.
+
+## M0 전체 완료 조건
+
+- `M0-local`과 `M0-remote`가 모두 `completed`이다.
+- 두 하위 단계의 완료 기록과 검증 결과가 이 문서에 반영되어 있다.
+- 적용 가능한 `docs/13-definition-of-done.md` 항목을 충족한다.
+- 미실행 필수 검증이나 해결되지 않은 안전 차단이 없다.
+
+## 후속 마일스톤
+
+M1 이후의 범위와 순서는 `docs/12-roadmap-and-milestones.md`를 따른다.
+후속 마일스톤을 활성화할 때 별도 상세 계획과 사용자 승인을 추가한다.
+
