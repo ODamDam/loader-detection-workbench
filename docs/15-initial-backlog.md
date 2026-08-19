@@ -13,11 +13,11 @@
 - [ ] M0-009 pytest, Ruff, strict mypy 구성과 smoke/error-path 테스트
 - [ ] M0-010 `.gitignore`, 줄바꿈 정책과 로컬 개발 안내 정리
 - [ ] M0-011 M0-local 필수 검증 및 자체 리뷰 완료
-- [ ] M0-012 초기 GitHub Issues 생성
+- [x] M0-012 초기 GitHub Issue 생성
 - [ ] M0-013 Milestones 및 Project Board 또는 동등한 추적 구조 구성
 
 M0-local의 상세 범위와 Codex 인수인계는 `PLANS.md`와
-`docs/18-m0-codex-handoff.md`를 따른다.
+`docs/18-m0-codex-handoff.md`를 따른다. 현재 구현 작업은 GitHub Issue #1에서 추적한다.
 
 ## Epic A. 프로젝트·케이스 코어 — M1
 
