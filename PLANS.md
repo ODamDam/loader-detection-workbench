@@ -37,8 +37,8 @@ M0는 `M0-local`과 `M0-remote`로 나눈다. 두 하위 단계가 모두 완료
 - Private GitHub repository `ODamDam/loader-detection-workbench`가 생성되어 있다.
 - 승인된 문서 기준선이 `main`에 push되어 있다.
 - 저장소는 ChatGPT GitHub 연결에서도 읽을 수 있다.
-- GitHub Issues는 아직 생성되지 않았다.
-- Milestones와 Project Board는 아직 완료 여부가 확인되지 않았다.
+- M0-local 구현을 추적하는 GitHub Issue #1이 생성되어 있다.
+- Milestones와 Project Board는 아직 완료되지 않았다.
 - M0 Python package/bootstrap 구현은 아직 시작 전이다.
 - `pyproject.toml`, `uv.lock`, `src/loader_detection_workbench/`는 아직 없다.
 - M0-local의 기술 결정과 구현 범위는 승인되어 Codex 착수가 가능하다.
@@ -202,10 +202,10 @@ Status: `in_progress`
 - Private GitHub repository 생성
 - 승인된 초기 문서 기준선 `main` push
 - ChatGPT GitHub 연결에서 Private repository 접근 확인
+- M0-local 구현 추적 Issue #1 생성
 
 ### 남은 작업
 
-- 초기 GitHub Issues
 - Milestones
 - Project Board 또는 동등한 원격 작업 추적 구조
 
