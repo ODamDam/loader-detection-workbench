@@ -18,8 +18,8 @@
 ## 상태값
 
 - `planned`: 범위와 계획을 작성했으나 구현 승인을 받지 않은 상태
-- `approved`: 사용자가 계획과 구현 범위를 승인한 상태
-- `in_progress`: 승인된 구현 또는 검증이 진행 중인 상태
+- `approved`: 사용자가 계획과 구현 범위를 승인해 착수 가능한 상태
+- `in_progress`: 승인된 구현 또는 검증이 실제로 진행 중인 상태
 - `verification_blocked`: 구현은 존재하지만 필수 검증을 완료하지 못한 상태
 - `completed`: 모든 적용 가능한 완료 조건과 검증을 충족한 상태
 
@@ -31,6 +31,17 @@ Status: `in_progress`
 
 M0는 `M0-local`과 `M0-remote`로 나눈다. 두 하위 단계가 모두 완료되어야
 전체 M0를 `completed`로 표시한다.
+
+### 현재 기준선 — 2026-08-19
+
+- Private GitHub repository `ODamDam/loader-detection-workbench`가 생성되어 있다.
+- 승인된 문서 기준선이 `main`에 push되어 있다.
+- 저장소는 ChatGPT GitHub 연결에서도 읽을 수 있다.
+- M0-local 구현을 추적하는 GitHub Issue #1이 생성되어 있다.
+- Milestones와 Project Board는 아직 완료되지 않았다.
+- M0 Python package/bootstrap 구현은 아직 시작 전이다.
+- `pyproject.toml`, `uv.lock`, `src/loader_detection_workbench/`는 아직 없다.
+- M0-local의 기술 결정과 구현 범위는 승인되어 Codex 착수가 가능하다.
 
 ### 목표
 
@@ -47,6 +58,8 @@ Private GitHub 작업 관리 기반을 마련한다.
 - `docs/11-security-and-safety.md`
 - `docs/12-roadmap-and-milestones.md`
 - `docs/13-definition-of-done.md`
+- `docs/17-development-workflow.md`
+- `docs/18-m0-codex-handoff.md`
 - ADR-002, ADR-004, ADR-017
 
 ## Approved decisions
@@ -74,7 +87,11 @@ Private GitHub 작업 관리 기반을 마련한다.
 
 ## M0-local
 
-Status: `in_progress`
+Status: `approved`
+
+Codex 착수 기준과 작업 경계는 `docs/18-m0-codex-handoff.md`를 함께 따른다.
+코드 변경 전에는 `AGENTS.md`와 `docs/17-development-workflow.md`에 따라
+구현 계획을 제출하고 승인받는다.
 
 ### 포함 범위
 
@@ -103,7 +120,7 @@ Status: `in_progress`
 - 실제 샘플과 원본 분석 로그
 - coverage threshold와 pytest-cov
 - 라이선스 확정
-- GitHub 작업
+- GitHub Issues, Milestones와 Project Board 작업
 
 ### 설정 로딩 제약
 
@@ -135,17 +152,18 @@ Status: `in_progress`
 
 ### 구현 순서
 
-1. 운영 문서, ADR, 문서 지도와 결정 등록부를 확정한다.
-2. Python 프로젝트 메타데이터와 lockfile을 구성한다.
-3. 기본 디렉터리와 최소 package를 생성한다.
-4. CLI 도움말·버전·전역 옵션 골격을 구현한다.
-5. 선택적 TOML 설정 로딩과 오류 처리를 구현한다.
-6. 콘솔 로깅과 로그 레벨 처리를 구현한다.
-7. 테스트와 품질 검사 구성을 추가한다.
-8. ignore, 줄바꿈 및 로컬 개발 문서를 추가한다.
-9. 승인된 검증을 실행한다.
-10. 최종 diff, 범위 이탈과 금지 자료를 자체 검토한다.
-11. 결과, 미실행 검증과 잔여 위험을 보고한다.
+1. 관련 운영 문서와 ADR을 다시 읽고 문서 충돌이나 미결 결정을 확인한다.
+2. 사용자에게 구현 계획, 변경 예정 파일과 테스트 전략을 제출한다.
+3. 승인 후 Python 프로젝트 메타데이터와 lockfile을 구성한다.
+4. 기본 디렉터리와 최소 package를 생성한다.
+5. CLI 도움말·버전·전역 옵션 골격을 구현한다.
+6. 선택적 TOML 설정 로딩과 오류 처리를 구현한다.
+7. 콘솔 로깅과 로그 레벨 처리를 구현한다.
+8. 테스트와 품질 검사 구성을 추가한다.
+9. ignore, 줄바꿈 및 로컬 개발 문서를 추가한다.
+10. 승인된 검증을 실행한다.
+11. 최종 diff, 범위 이탈과 금지 자료를 자체 검토한다.
+12. 결과, 미실행 검증과 잔여 위험을 보고한다.
 
 ### 완료 조건
 
@@ -177,27 +195,32 @@ uv run mypy src
 
 ## M0-remote
 
-Status: `planned`
+Status: `in_progress`
 
-### 포함 범위
+### 현재 완료
 
-- Private GitHub repository
-- 초기 GitHub Issues
+- Private GitHub repository 생성
+- 승인된 초기 문서 기준선 `main` push
+- ChatGPT GitHub 연결에서 Private repository 접근 확인
+- M0-local 구현 추적 Issue #1 생성
+
+### 남은 작업
+
 - Milestones
-- Project Board
+- Project Board 또는 동등한 원격 작업 추적 구조
 
 ### 제약
 
-- 원격 저장소와 작업 관리 구조는 사용자의 별도 실행 승인을 받은 뒤 만든다.
+- 원격 작업 관리 구조를 변경하는 작업은 사용자의 별도 승인 범위에서 수행한다.
 - 실제 샘플, 원본 분석 로그, secret 또는 런타임 작업공간을 업로드하지 않는다.
-- 원격 작업 전에 로컬 변경 범위와 공개 가능성을 검토한다.
+- 원격 작업 전에 변경 범위와 공개 가능성을 검토한다.
 
 ### 완료 조건
 
 - GitHub repository가 Private으로 생성되어 있다.
 - 승인된 로컬 기준선이 원격 저장소에 존재한다.
 - 초기 작업을 추적할 Issues와 Milestones가 생성되어 있다.
-- Project Board가 초기 마일스톤과 작업 상태를 표시한다.
+- Project Board 또는 승인된 동등한 추적 구조가 초기 마일스톤과 작업 상태를 표시한다.
 - 원격 저장소에 금지 자료나 민감정보가 없다.
 
 ## M0 전체 완료 조건
@@ -210,5 +233,6 @@ Status: `planned`
 ## 후속 마일스톤
 
 M1 이후의 범위와 순서는 `docs/12-roadmap-and-milestones.md`를 따른다.
+M1 구현 전에는 Project/Case/Artifact, ID/status 규칙, SQLite v1,
+`project.json`, Case Bundle 및 CLI contract에 필요한 결정을 확정한다.
 후속 마일스톤을 활성화할 때 별도 상세 계획과 사용자 승인을 추가한다.
-

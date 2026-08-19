@@ -1,15 +1,35 @@
 # 초기 개발 백로그
 
-## Epic A. 저장소와 프로젝트 코어
+## M0. 저장소 및 개발 부트스트랩
 
-- [ ] A-001 저장소 기본 구조 생성
-- [ ] A-002 설정 로딩 구조 구현
-- [ ] A-003 프로젝트 생성 CLI
-- [ ] A-004 SQLite 초기 스키마
-- [ ] A-005 상대 경로·SHA-256 유틸리티
-- [ ] A-006 Case 생성·조회·상태 변경
-- [ ] A-007 Artifact 등록과 중복 검사
-- [ ] A-008 Case Bundle 가져오기·내보내기
+- [x] M0-001 Private GitHub repository 생성
+- [x] M0-002 초기 문서 기준선 `main` push
+- [x] M0-003 `AGENTS.md`, `PLANS.md`, 개발 워크플로와 ADR 기준선 작성
+- [x] M0-004 M0 Python 도구 체인 결정 승인
+- [ ] M0-005 Python 프로젝트 메타데이터와 `uv.lock` 구성
+- [ ] M0-006 최소 package와 `workbench` CLI 진입점 구현
+- [ ] M0-007 선택적 TOML 설정 로딩과 안전한 오류 처리 구현
+- [ ] M0-008 기본 `INFO` 콘솔 로깅과 `--log-level` 구현
+- [ ] M0-009 pytest, Ruff, strict mypy 구성과 smoke/error-path 테스트
+- [ ] M0-010 `.gitignore`, 줄바꿈 정책과 로컬 개발 안내 정리
+- [ ] M0-011 M0-local 필수 검증 및 자체 리뷰 완료
+- [x] M0-012 초기 GitHub Issue 생성
+- [ ] M0-013 Milestones 및 Project Board 또는 동등한 추적 구조 구성
+
+M0-local의 상세 범위와 Codex 인수인계는 `PLANS.md`와
+`docs/18-m0-codex-handoff.md`를 따른다. 현재 구현 작업은 GitHub Issue #1에서 추적한다.
+
+## Epic A. 프로젝트·케이스 코어 — M1
+
+- [ ] A-001 프로젝트 생성 CLI
+- [ ] A-002 SQLite 초기 스키마
+- [ ] A-003 상대 경로·SHA-256 유틸리티
+- [ ] A-004 Case 생성·조회·상태 변경
+- [ ] A-005 Artifact 등록과 중복 검사
+- [ ] A-006 Case Bundle 가져오기·내보내기
+
+M1 구현 전에는 Project/Case/Artifact, ID/status 규칙, SQLite v1,
+`project.json`, Case Bundle 및 CLI contract를 확정한다.
 
 ## Epic B. 분석 데이터
 
