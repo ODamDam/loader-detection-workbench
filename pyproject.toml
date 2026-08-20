@@ -1,0 +1,39 @@
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[project]
+name = "loader-detection-workbench"
+version = "0.1.0"
+description = "Local Detection-as-Code Workbench"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+workbench = "loader_detection_workbench.cli:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1,<2",
+    "pytest>=9.0.2,<10",
+    "ruff>=0.15.0,<0.16",
+]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+pretty = true
+show_error_codes = true
+

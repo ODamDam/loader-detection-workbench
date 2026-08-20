@@ -39,9 +39,9 @@ M0는 `M0-local`과 `M0-remote`로 나눈다. 두 하위 단계가 모두 완료
 - 저장소는 ChatGPT GitHub 연결에서도 읽을 수 있다.
 - M0-local 구현을 추적하는 GitHub Issue #1이 생성되어 있다.
 - Milestones와 Project Board는 아직 완료되지 않았다.
-- M0 Python package/bootstrap 구현은 아직 시작 전이다.
-- `pyproject.toml`, `uv.lock`, `src/loader_detection_workbench/`는 아직 없다.
-- M0-local의 기술 결정과 구현 범위는 승인되어 Codex 착수가 가능하다.
+- M0 Python package/bootstrap 구현과 필수 로컬 검증이 완료되었다.
+- `pyproject.toml`, `uv.lock`, `src/loader_detection_workbench/`가 존재한다.
+- M0-local은 승인된 기술 결정과 범위에 따라 구현·검증되었다.
 
 ### 목표
 
@@ -87,7 +87,7 @@ Private GitHub 작업 관리 기반을 마련한다.
 
 ## M0-local
 
-Status: `approved`
+Status: `completed`
 
 Codex 착수 기준과 작업 경계는 `docs/18-m0-codex-handoff.md`를 함께 따른다.
 코드 변경 전에는 `AGENTS.md`와 `docs/17-development-workflow.md`에 따라
@@ -192,6 +192,16 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
 ```
+
+### 완료 기록 — 2026-08-20
+
+- CPython 3.12.10과 uv 0.12.5로 개발 환경을 구성했다.
+- `workbench --help`, `workbench --version`, 선택적 TOML 설정과 기본 `INFO`
+  콘솔 로깅을 구현했다.
+- pytest 19개 테스트와 Ruff lint/format check, strict mypy가 통과했다.
+- M0 runtime dependency는 없으며 M1 이후 제품 기능을 포함하지 않았다.
+- 실제 샘플, 원본 분석 로그, VMware, Guest Orchestrator와 분석 네트워크를
+  사용하지 않았다.
 
 ## M0-remote
 
