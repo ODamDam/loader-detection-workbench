@@ -23,25 +23,28 @@
 - `verification_blocked`: 구현은 존재하지만 필수 검증을 완료하지 못한 상태
 - `completed`: 모든 적용 가능한 완료 조건과 검증을 충족한 상태
 
-## 활성 마일스톤
+## 마일스톤 상태
 
 ### M0 — Repository and development bootstrap
 
-Status: `in_progress`
+Status: `completed`
 
 M0는 `M0-local`과 `M0-remote`로 나눈다. 두 하위 단계가 모두 완료되어야
 전체 M0를 `completed`로 표시한다.
 
-### 현재 기준선 — 2026-08-19
+### 현재 기준선 — 2026-08-20
 
 - Private GitHub repository `ODamDam/loader-detection-workbench`가 생성되어 있다.
-- 승인된 문서 기준선이 `main`에 push되어 있다.
+- 승인된 문서 기준선과 M0-local 구현이 `main`에 병합되어 있다.
 - 저장소는 ChatGPT GitHub 연결에서도 읽을 수 있다.
-- M0-local 구현을 추적하는 GitHub Issue #1이 생성되어 있다.
-- Milestones와 Project Board는 아직 완료되지 않았다.
+- M0-local 구현을 추적한 GitHub Issue #1은 완료되어 닫혀 있다.
+- M0-remote 작업 관리 기준선을 추적한 GitHub Issue #4가 생성되어 있다.
+- M0–M4 GitHub Milestones가 생성되어 있다.
+- Issue #1과 Issue #4는 `M0 — Repository and development bootstrap` Milestone에 연결되어 있다.
+- Issue #4 + Issues + Milestones + `PLANS.md` + backlog 조합을 Project Board와 동등한 원격 추적 구조로 사용한다.
 - M0 Python package/bootstrap 구현과 필수 로컬 검증이 완료되었다.
 - `pyproject.toml`, `uv.lock`, `src/loader_detection_workbench/`가 존재한다.
-- M0-local은 승인된 기술 결정과 범위에 따라 구현·검증되었다.
+- M0-local과 M0-remote가 모두 완료되어 M0 전체가 `completed`이다.
 
 ### 목표
 
@@ -205,19 +208,27 @@ uv run mypy src
 
 ## M0-remote
 
-Status: `in_progress`
+Status: `completed`
 
 ### 현재 완료
 
 - Private GitHub repository 생성
 - 승인된 초기 문서 기준선 `main` push
 - ChatGPT GitHub 연결에서 Private repository 접근 확인
-- M0-local 구현 추적 Issue #1 생성
+- M0-local 구현 추적 Issue #1 생성 및 완료
+- M0-remote 추적 Issue #4 생성
+- M0–M4 GitHub Milestones 생성
+- Issue #1과 Issue #4를 M0 Milestone에 연결
+- Issue #4 + Issues + Milestones + `PLANS.md` + backlog 기반의 동등한 원격 작업 추적 구조 확정
 
-### 남은 작업
+### 완료 기록 — 2026-08-20
 
-- Milestones
-- Project Board 또는 동등한 원격 작업 추적 구조
+- GitHub의 M0–M4 근접 로드맵 Milestones를 구성했다.
+- M0-local Issue #1과 M0-remote Issue #4를 M0 Milestone에 연결했다.
+- 별도 GitHub Projects 보드 대신 Issue #4, repository Issues, Milestones,
+  `PLANS.md`, `docs/15-initial-backlog.md` 조합을 승인된 동등 추적 구조로 사용한다.
+- 원격 작업 관리 과정에서 실제 샘플, 원본 분석 로그, secret 또는 런타임
+  작업공간을 업로드하지 않았다.
 
 ### 제약
 
@@ -239,6 +250,14 @@ Status: `in_progress`
 - 두 하위 단계의 완료 기록과 검증 결과가 이 문서에 반영되어 있다.
 - 적용 가능한 `docs/13-definition-of-done.md` 항목을 충족한다.
 - 미실행 필수 검증이나 해결되지 않은 안전 차단이 없다.
+
+### M0 완료 기록 — 2026-08-20
+
+- M0-local 개발 부트스트랩 구현과 필수 검증을 완료했다.
+- M0-remote GitHub 작업 관리 기준선을 구성했다.
+- 두 하위 단계의 완료 조건을 충족하여 M0를 `completed`로 종료한다.
+- 다음 단계는 M1 제품 구현 전에 Project/Case/Artifact, ID/status 규칙,
+  SQLite v1, `project.json`, Case Bundle 및 CLI contract를 확정하는 것이다.
 
 ## 후속 마일스톤
 
