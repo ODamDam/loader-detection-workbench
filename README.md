@@ -75,3 +75,36 @@ Workbench의 자동 생성 범위는 **개별 분석 보고서의 Markdown·HTML
 ## 6. 문서 상태
 
 본 문서 세트는 현재까지의 요구사항 인터뷰에서 합의한 내용을 기준으로 작성한 초기 기준선이다. 실제 구현 과정에서 변경이 필요한 경우 ADR과 변경 이력을 함께 갱신한다.
+
+## 7. 로컬 개발 환경
+
+M0-local 개발 기준은 CPython 3.12와 uv이다. 저장소 루트에서 다음 명령으로
+개발 환경을 구성하고 최소 CLI를 실행한다.
+
+```powershell
+uv sync
+uv run workbench --help
+uv run workbench --version
+```
+
+설정 파일은 선택 사항이다. 지정하지 않으면 콘솔 로그 레벨 `INFO`를 사용한다.
+현재 지원하는 최소 설정은 다음과 같다.
+
+```toml
+[workbench]
+log_level = "INFO"
+```
+
+CLI의 `--log-level`은 설정 파일 값을 덮어쓴다. 전체 로컬 검증은 다음 명령으로
+실행한다.
+
+```powershell
+uv lock --check
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src
+```
+
+저장소는 소스 코드용이며 분석 프로젝트 작업공간, 실제 샘플 및 원본 분석
+로그를 저장하는 위치로 사용하지 않는다.

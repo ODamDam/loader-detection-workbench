@@ -6,13 +6,13 @@
 - [x] M0-002 초기 문서 기준선 `main` push
 - [x] M0-003 `AGENTS.md`, `PLANS.md`, 개발 워크플로와 ADR 기준선 작성
 - [x] M0-004 M0 Python 도구 체인 결정 승인
-- [ ] M0-005 Python 프로젝트 메타데이터와 `uv.lock` 구성
-- [ ] M0-006 최소 package와 `workbench` CLI 진입점 구현
-- [ ] M0-007 선택적 TOML 설정 로딩과 안전한 오류 처리 구현
-- [ ] M0-008 기본 `INFO` 콘솔 로깅과 `--log-level` 구현
-- [ ] M0-009 pytest, Ruff, strict mypy 구성과 smoke/error-path 테스트
-- [ ] M0-010 `.gitignore`, 줄바꿈 정책과 로컬 개발 안내 정리
-- [ ] M0-011 M0-local 필수 검증 및 자체 리뷰 완료
+- [x] M0-005 Python 프로젝트 메타데이터와 `uv.lock` 구성
+- [x] M0-006 최소 package와 `workbench` CLI 진입점 구현
+- [x] M0-007 선택적 TOML 설정 로딩과 안전한 오류 처리 구현
+- [x] M0-008 기본 `INFO` 콘솔 로깅과 `--log-level` 구현
+- [x] M0-009 pytest, Ruff, strict mypy 구성과 smoke/error-path 테스트
+- [x] M0-010 `.gitignore`, 줄바꿈 정책과 로컬 개발 안내 정리
+- [x] M0-011 M0-local 필수 검증 및 자체 리뷰 완료
 - [x] M0-012 초기 GitHub Issue 생성
 - [ ] M0-013 Milestones 및 Project Board 또는 동등한 추적 구조 구성
 
