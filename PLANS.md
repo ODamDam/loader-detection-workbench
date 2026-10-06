@@ -1,5 +1,20 @@
 # 구현 계획
 
+## 2026-10-06 Sysmon Event ID 1 작업 인계
+
+Status: `verification_blocked`
+
+- 사용자 승인 범위: Event ID 1 최소 수직 슬라이스 및 안전한 feature branch
+  commit/push. main merge, 이력 재작성, VM/분석 대상 실행은 제외한다.
+- 기존 미커밋 M1 구현을 `feat/sysmon-normalization-20261006`의 checkpoint
+  `9280606a2c807c51c88bf9d19fca25e758ebf832`로 보존하고 origin에 push했다.
+- M1 재검증: pytest 317개, lock, Ruff lint/format, 공식 `mypy src` 통과.
+  추가 `mypy src tests`는 기존 Artifact 테스트 오류 6건으로 실패했다.
+- 기존 normalized event 타입과 record reference contract가 없어 최소 신규
+  모델 제안을 사용자에게 확인 중이다. Sysmon 구현과 필수 테스트는 미완료다.
+- 조사 결과, 제안 필드/파일, 검증 및 다음 기기 명령은
+  `docs/19-sysmon-event1-handoff.md`에 기록한다.
+
 ## 목적
 
 이 문서는 현재 활성 마일스톤의 목표, 상태, 범위, 승인된 결정, 산출물과
