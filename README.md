@@ -41,7 +41,7 @@ Workbench의 자동 생성 범위는 **개별 분석 보고서의 Markdown·HTML
 - `docs/04-architecture.md`: 시스템 구조와 데이터 흐름
 - `docs/05-data-model.md`: 주요 엔터티와 작업공간 구조
 - `docs/06-cli-and-ui-design.md`: CLI 우선 및 로컬 웹 UI 구조
-- `docs/07-vm-orchestration.md`: VMware 기반 분석 VM 자동화
+- `docs/07-vm-orchestration.md`: VirtualBox 기반 분석 VM 설계 (ADR-018)
 - `docs/08-detection-validation.md`: YARA·Sigma 검증 기준
 - `docs/09-reporting-and-publication.md`: 보고서와 공개 정책
 - `docs/10-test-plan.md`: 테스트 전략
@@ -67,7 +67,7 @@ Workbench의 자동 생성 범위는 **개별 분석 보고서의 Markdown·HTML
 → 악성·정상 데이터 검증
 → Markdown·HTML 보고서 생성
 → 시뮬레이터 자동 실행
-→ VMware 자동화
+→ VirtualBox 자동화 (향후)
 → AI Provider
 → 로컬 웹 UI
 ```
@@ -139,6 +139,23 @@ timeline, 원본 참조와 한계를 포함하는 시연용 subset이다. 전체
 판정이 아니다. 정상화 이벤트·report metadata의 DB 저장은 추가하지 않는다.
 새 PC에서 합성 fixture로 재현하는 명령과 검증은
 `docs/21-case-timeline-report-handoff.md`를 참조한다.
+
+Windows PowerShell 5.1에서 보고서는 `Get-Content .\demo.md -Encoding UTF8`로
+읽거나 UTF-8 editor를 사용한다. 기본 `Get-Content`의 표시 문제 때문에 파일의
+UTF-8 encoding을 변경하지 않는다.
+
+### VirtualBox guest Sysmon demo helper
+
+현재 VM 기준은 VirtualBox + Windows 11 x64 + Guest Additions이며 clean snapshot은
+`SYSMON-DEMO-CLEAN`이다 (ADR-018). 사용자가 실제 manual E2E 성공을 확인했다.
+준비된 **guest 내부**에서 `scripts/vm/Invoke-SysmonDemoCollection.ps1`을 실행하면
+고유 marker의 benign child PowerShell/text file과 동일 ProcessGuid/PID의 Event
+1/11 쌍을 수집한다. 출력 디렉터리는 새 경로여야 하며 raw XML/metadata는 Git 밖에
+둔다. Shared Folder는 선택 사항이다.
+
+새 helper의 host syntax/모의 검증과 실제 guest 검증은 구분한다. 현재 guest 실행은
+`verification_blocked`이며 사용법, 인계 및 검증 결과는
+[`docs/23-virtualbox-sysmon-export-helper-handoff.md`](docs/23-virtualbox-sysmon-export-helper-handoff.md)를 참조한다.
 
 본 문서 세트는 현재까지의 요구사항 인터뷰에서 합의한 내용을 기준으로 작성한 초기 기준선이다. 실제 구현 과정에서 변경이 필요한 경우 ADR과 변경 이력을 함께 갱신한다.
 

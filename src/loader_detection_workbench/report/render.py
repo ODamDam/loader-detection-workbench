@@ -70,7 +70,8 @@ def render_markdown(timeline: CaseTimeline, generated_at: datetime) -> str:
             "- Supported events are Event ID 1 and Event ID 11.",
             "- Results are normalized in memory; timestamps use second-precision UTC.",
             "- No maliciousness verdict is produced.",
-            "- No VM/collector result is implied.",
+            "- The report does not independently attest how the source telemetry "
+            "was collected.",
             "- This demo report is a subset of the full analysis report template.",
             "",
         ]

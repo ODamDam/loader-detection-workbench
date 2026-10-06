@@ -29,7 +29,7 @@
 - Publication Bundle 생성
 
 ### 시스템 테스트
-- VMware 스냅숏 복원
+- VirtualBox 스냅숏 복원 (향후, ADR-018)
 - 샘플 전달·해시 재검증
 - PowerShell 오케스트레이터
 - 타임아웃

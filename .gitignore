@@ -7,3 +7,9 @@ dist/
 build/
 *.egg-info/
 .venv-ai/
+sysmon-demo-output/
+.sysmon-demo-*.tmp/
+*.vdi
+*.vmdk
+*.ova
+*.sav

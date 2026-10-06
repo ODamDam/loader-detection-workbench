@@ -46,6 +46,11 @@ def test_markdown_and_terminal_untrusted_values_are_inert() -> None:
     file = replace(file, image=payload, target_filename=payload)
     timeline = CaseTimeline(case, (process, file), 2)
     markdown = render_markdown(timeline, NOW)
+    assert (
+        "The report does not independently attest how the source telemetry "
+        "was collected." in markdown
+    )
+    assert "No VM/collector result is implied." not in markdown
     assert "<script>" not in markdown
     assert "&lt;script&gt;" in markdown and "&amp;lt\\;" in markdown
     assert "[click](javascript:bad)" not in markdown

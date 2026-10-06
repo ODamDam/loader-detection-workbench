@@ -58,7 +58,7 @@
 - DB 스키마나 지속 파일 형식을 변경한다.
 - CLI, Case Bundle 또는 공개 인터페이스를 변경한다.
 - production 또는 build dependency를 추가한다.
-- VMware, Guest Orchestrator, AI Provider 또는 네트워크를 다룬다.
+- VirtualBox 등 Hypervisor, Guest Orchestrator, AI Provider 또는 네트워크를 다룬다.
 - 보안 경계나 공개 범위를 변경한다.
 - 완료 조건 또는 구현 방식이 모호하다.
 
@@ -67,7 +67,7 @@
 다음 동작은 일반 개발 명령과 구분하며, 계획 승인과 별도로 실행 직전에
 명시적 승인을 받는다.
 
-- 실제 VMware 명령과 VM 시작·종료·스냅숏 복원
+- 실제 Hypervisor 명령과 VM 시작·종료·스냅숏 복원
 - Guest Orchestrator 실행
 - 실제 샘플, simulator 또는 분석 대상 프로세스 실행
 - 분석 VM 외부 네트워크 활성화
@@ -183,7 +183,7 @@ Development dependency도 목적과 범위를 계획에 기록하며 관련 없�
 - 최종 변경 범위
 
 테스트는 정상 경로뿐 아니라 오류와 부분 실패 경로를 검증한다. 실제 악성
-샘플 대신 sanitized, harmless fixture를 사용하고 실제 VMware 호출보다
+샘플 대신 sanitized, harmless fixture를 사용하고 실제 Hypervisor 호출보다
 mock, dry-run, fixture와 command builder 검증을 우선한다. 외부 네트워크에
 의존하지 않으며 시간, UUID와 임시 경로 같은 비결정적 요소를 분리한다.
 Windows의 Unicode, 공백과 긴 경로도 고려한다.

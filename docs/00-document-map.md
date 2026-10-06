@@ -31,6 +31,7 @@
 - 루트 `PLANS.md`: 현재 활성 마일스톤의 실제 상태, 범위와 검증 현황
 - `17-development-workflow.md`: 작업 접수, 승인, 구현, 검증과 보고의 상세 절차
 - `18-m0-codex-handoff.md`: 현재 M0-local을 Codex에 넘길 때 사용하는 착수 기준과 작업 경계
+- `23-virtualbox-sysmon-export-helper-handoff.md`: 현재 VirtualBox demo 수집 helper와 guest 검증 인계
 
 ## 4. 현재 활성 작업을 읽는 순서
 

@@ -1,5 +1,9 @@
 # Demo freeze and VM Sysmon collection handoff — 2026-10-06
 
+Historical checkpoint. The subsequent user-confirmed VirtualBox manual E2E and
+current helper status are recorded in `23-virtualbox-sysmon-export-helper-handoff.md`
+and ADR-018. The results below describe the earlier VMware investigation only.
+
 Status: `verification_blocked`. Offline demo frozen; real-VM collection not run.
 
 ## Repository and baseline

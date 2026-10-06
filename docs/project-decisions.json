@@ -3,8 +3,11 @@
   "working_product_name": "Local Detection-as-Code Workbench",
   "mvp": {
     "host": "Windows 11",
-    "hypervisor": "VMware",
-    "guest": "User-provided Windows 10 or 11 x64 VM",
+    "hypervisor": "Oracle VirtualBox",
+    "guest": "Windows 11 x64 VM",
+    "guest_integration": "VirtualBox Guest Additions",
+    "clean_snapshot": "SYSMON-DEMO-CLEAN",
+    "hypervisor_decision": "ADR-018",
     "sample_format": [
       ".exe"
     ],

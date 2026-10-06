@@ -94,13 +94,13 @@ YARA·Sigma를 악성·정상 데이터에서 검증한다.
 ### 종료 조건
 시뮬레이터 케이스 1개가 전체 파이프라인을 완주한다.
 
-## M6. VMware 자동화
+## M6. VirtualBox 자동화 (향후, ADR-018)
 
 ### 목표
 등록된 분석 VM 한 대에서 안전하게 자동 실행한다.
 
 ### 주요 작업
-- VMware Adapter
+- VirtualBox Adapter (VMware는 향후 대안)
 - VM 준비 상태 검사
 - 스냅숏 복원
 - 샘플 전달

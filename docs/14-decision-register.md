@@ -4,7 +4,7 @@
 |---|---|---|
 | ADR-001 | SQLite와 파일 시스템 혼합 저장 | 승인 |
 | ADR-002 | CLI 우선, 로컬 웹 UI 후속 | 승인 |
-| ADR-003 | VMware 기반 단일 Windows 분석 VM | 승인 |
+| ADR-003 | VMware 기반 단일 Windows 분석 VM (과거) | ADR-018로 대체 |
 | ADR-004 | AI 없이 핵심 파이프라인 동작 | 승인 |
 | ADR-005 | Sigma 오프라인 이벤트 재현 검증 | 승인 |
 | ADR-006 | 시뮬레이터는 내장 프로필에서 JSON 엔진으로 확장 | 승인 |
@@ -16,9 +16,10 @@
 | ADR-012 | 공개 범위는 보고서·룰·정제 이벤트·IOC·검증 결과 | 승인 |
 | ADR-013 | MVP 네트워크 모드는 disabled·simulated | 승인 |
 | ADR-014 | 실행 전 승인과 케이스별 시간 제한 | 승인 |
-| ADR-015 | PowerShell 일회성 Guest Orchestrator | 승인 |
+| ADR-015 | PowerShell 일회성 Guest Orchestrator | 승인; integration은 ADR-018로 갱신 |
 | ADR-016 | MVP 자동 실행 형식은 Windows PE `.exe` | 승인 |
 | ADR-017 | M0 Python 도구 체인 | 승인 |
+| ADR-018 | VirtualBox Windows 11 / Guest Additions를 현재 MVP/demo 기준으로 확정 | 승인 |
 
 ## 남은 주요 결정
 

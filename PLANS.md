@@ -1,5 +1,25 @@
 # 구현 계획
 
+## 2026-10-06 VirtualBox Sysmon collection/export helper
+
+Status: `verification_blocked`
+
+- 사용자 확인: VirtualBox Windows 11 + Guest Additions에서 실제 benign Event ID
+  1/11의 same ProcessGuid/PID 관계, 단일 XML export, Shared Folder 전달,
+  Workbench Artifact/timeline/Markdown manual E2E가 성공했다. Parser 수정은 불필요하다.
+- ADR-018로 active hypervisor를 VirtualBox로 갱신한다. 과거 VMware 조사 기록은
+  보존하며 adapter 추상화도 유지한다. VM/guestcontrol 자동화는 제외한다.
+- 승인 범위: guest PowerShell helper, 고유 run/child, baseline 이후 정확한 pair
+  선택, atomic no-overwrite export와 metadata, report source-neutral 문구.
+- syntax/static 및 합성 모의 검증은 Host에서 수행한다. 새 helper의 실제 guest
+  실행은 직접 제어 경로가 없어 미확인이다. Credential을 요구하거나 우회하지 않는다.
+- 인계: `docs/23-virtualbox-sysmon-export-helper-handoff.md`.
+- 구현과 host 검증 완료: PowerShell parser 및 모의 검사 53건, targeted Python
+  67건 (Sysmon 54건 포함), 전체 pytest 392건. 실제 helper guest 실행과 그 출력의
+  Workbench 연결은 미실행이며 사용자 수동 검증이 남아 있다.
+- lock, Ruff lint/format, 공식 mypy src 및 변경 테스트 mypy, diff check 통과.
+  전체 mypy는 기존 Artifact 테스트 오류 6건만 재현했고 신규 오류는 없다.
+
 ## 2026-10-06 Demo Freeze / VM Sysmon readiness
 
 Status: `verification_blocked`
