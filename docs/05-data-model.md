@@ -113,3 +113,40 @@ collection_coverage:
 - 모든 등록 파일은 SHA-256을 가진다.
 - 결과 회수 전후 해시를 비교한다.
 - 공개 번들에는 원본 자료 대신 정제 사본의 해시를 기록한다.
+
+## 6. Process Create 최소 모델 — 2026-10-06 승인
+
+기존 정규화 이벤트 contract가 없는 것을 확인한 뒤 사용자가 승인한 신규
+최소 모델이다. `domain/events.py`의 immutable `ProcessCreateEvent`는 메모리
+결과이며 SQLite v1, Case Bundle v1 또는 기존 ID contract를 변경하지 않는다.
+
+| 필드 | 입력과 의미 |
+| --- | --- |
+| `timestamp` | EventData/UtcTime, 기존 UTC helper와 같은 초 단위 UTC datetime |
+| `event_id` | System/EventID, 정수 1만 허용 |
+| `process_guid` | EventData/ProcessGuid, 유효한 UUID 문자열을 원문 보존 |
+| `process_id` | EventData/ProcessId, 음수가 아닌 정수 |
+| `image` | EventData/Image, 비어 있지 않은 문자열 |
+| `command_line` | EventData/CommandLine, 비어 있지 않은 문자열 |
+| `source_artifact_id` | 기존 ArtifactId(ULID와 display ID) |
+| `source_record_id` | System/EventRecordID 숫자 문자열, 해당 Artifact 안에서 식별 |
+
+`SysmonService.normalize(case_display_id, artifact_display_id)`는 요청 Case에
+연결된 `sysmon` Artifact만 읽는다. 기존 content store의 상대 경로 해석을
+사용하고, 실제 파싱할 bytes의 SHA-256과 크기를 등록 metadata와 비교한다.
+읽기 전용이라 closed Case에서도 사용할 수 있다. 반환 시점의 source metadata를
+기준으로 하며 이후 detach 등 동시 변경을 막는 장기 잠금은 제공하지 않는다.
+
+지원 입력은 최대 1 MiB의 Windows Event namespace를 가진 단일 `Event`이며
+Provider는 `Microsoft-Windows-Sysmon`이어야 한다. `UtcTime`은
+`YYYY-MM-DD HH:MM:SS`에 선택적인 소수초(1~6자리)를 붙이는 형식이다.
+소수초는 기존 `require_utc` 규칙에 따라 결과에서 절삭되지만 원본 Artifact에는
+보존된다. Image/CommandLine은 데이터로만 처리하며 실행하거나 경로로 열지 않는다.
+부모 프로세스와 User 등 추가 EventData는 이번 결과에 매핑하지 않는다.
+
+오류는 기존 `DomainError` convention을 따른다. 손상 XML/DTD/크기 제한은
+`INVALID_SYSMON_XML`, 누락·중복·잘못된 필드는 `INVALID_PROCESS_CREATE`,
+다른 Event ID는 `UNSUPPORTED_SYSMON_EVENT`이다. 서비스의 Case 연결 실패는
+`ARTIFACT_NOT_ATTACHED`, kind 오류는 `INVALID_ARTIFACT_KIND`, content 누락·변조·
+읽기 제한 초과는 `ARTIFACT_INTEGRITY_MISMATCH`이다. 실패 시 성공 결과나 부분
+이벤트를 반환하지 않으며 DB를 수정하지 않는다.

@@ -2,7 +2,7 @@
 
 ## 2026-10-06 Sysmon Event ID 1 작업 인계
 
-Status: `verification_blocked`
+Status: `completed`
 
 - 사용자 승인 범위: Event ID 1 최소 수직 슬라이스 및 안전한 feature branch
   commit/push. main merge, 이력 재작성, VM/분석 대상 실행은 제외한다.
@@ -10,8 +10,12 @@ Status: `verification_blocked`
   `9280606a2c807c51c88bf9d19fca25e758ebf832`로 보존하고 origin에 push했다.
 - M1 재검증: pytest 317개, lock, Ruff lint/format, 공식 `mypy src` 통과.
   추가 `mypy src tests`는 기존 Artifact 테스트 오류 6건으로 실패했다.
-- 기존 normalized event 타입과 record reference contract가 없어 최소 신규
-  모델 제안을 사용자에게 확인 중이다. Sysmon 구현과 필수 테스트는 미완료다.
+- 기존 normalized event 타입이 없어 제안한 최소 모델을 사용자가 승인했다.
+  신규 ProcessCreateEvent, 단일 XML normalizer, 기존 Case/Artifact를 사용하는
+  읽기 전용 서비스 및 합성 fixture 기반 테스트를 구현했다.
+- Sysmon targeted 30개 및 전체 347개 테스트, lock, Ruff lint/format, 공식
+  `mypy src`와 신규 테스트 타입 검사, diff 검사를 통과했다. 추가 전체 테스트
+  mypy에는 기존 오류 6건이 남아 있다. 자체 리뷰 완료, Event ID 11은 미구현이다.
 - 조사 결과, 제안 필드/파일, 검증 및 다음 기기 명령은
   `docs/19-sysmon-event1-handoff.md`에 기록한다.
 

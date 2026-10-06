@@ -104,6 +104,32 @@ class ArtifactStore:
                 "canonical content hash or size does not match",
             )
 
+    def read_verified(
+        self,
+        relative_path: ProjectRelativePath,
+        expected: tuple[str, int],
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        """Read bounded regular content and verify exactly the returned bytes."""
+        try:
+            with _open_regular(self.resolve(relative_path)) as stream:
+                data = stream.read(max_bytes + 1)
+        except OSError as exc:
+            raise DomainError(
+                DomainErrorCode.ARTIFACT_INTEGRITY_MISMATCH,
+                "canonical content is not readable regular content",
+            ) from exc
+        if (
+            len(data) > max_bytes
+            or (hashlib.sha256(data).hexdigest(), len(data)) != expected
+        ):
+            raise DomainError(
+                DomainErrorCode.ARTIFACT_INTEGRITY_MISMATCH,
+                "canonical content exceeds the read limit or fails integrity checks",
+            )
+        return data
+
     def publish(self, source: Path) -> PublishedContent:
         self.published = None
         # Read the same open source twice; detect changes before publication.
