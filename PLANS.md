@@ -1,5 +1,23 @@
 # 구현 계획
 
+## 2026-10-06 Demo Freeze / VM Sysmon readiness
+
+Status: `verification_blocked`
+
+- 기준선 `731026b5e6e21c3c8ed5d823f47a900c8b4df4a0`에서
+  `feat/vm-sysmon-collection-20261006` branch로 분리했다.
+- 새 임시 Project에서 설치된 CLI로 synthetic Artifact 2개 등록, timeline,
+  Markdown section/provenance 확인, overwrite 거부와 원본 byte 보존을 검증했다.
+  **OFFLINE DEMO FROZEN**. 제품 코드와 parser는 변경하지 않았다.
+- VMware 실행 파일을 PATH/기본 설치 위치에서 찾지 못했고, 설치 등록·서비스·
+  프로세스·VM inventory도 확인되지 않았다. 별도 설치 위치 또는 다른 PC의
+  Windows VM 환경 확인이 필요하다. VM 자체가 어디에도 없다고 단정하지 않는다.
+- VM boot, guest Sysmon 설치/서비스/config/log, export/transfer 및 real-VM
+  Workbench E2E는 미실행이다. Level 1의 VM 항목과 Level 2는 미완료다.
+- automation은 만들지 않았다. 설치·네트워크 변경·credential 사용·실제 로그
+  업로드도 없다. 상세 증거와 다음 기기 시작점은
+  `docs/22-vm-sysmon-collection-handoff.md`에 기록한다.
+
 ## 2026-10-06 Case Timeline / Markdown Report
 
 Status: `completed`
