@@ -6,11 +6,11 @@ from loader_detection_workbench.artifact.service import ArtifactService
 from loader_detection_workbench.artifact.store import ArtifactStore
 from loader_detection_workbench.domain.artifact import ArtifactKind
 from loader_detection_workbench.domain.errors import DomainError, DomainErrorCode
-from loader_detection_workbench.domain.events import ProcessCreateEvent
+from loader_detection_workbench.domain.events import NormalizedSysmonEvent
 from loader_detection_workbench.domain.ids import ArtifactId
 from loader_detection_workbench.sysmon.normalizer import (
     MAX_XML_BYTES,
-    normalize_process_create,
+    normalize_sysmon_event,
 )
 
 
@@ -20,7 +20,7 @@ class SysmonService:
 
     def normalize(
         self, case_display_id: str, artifact_display_id: str
-    ) -> list[ProcessCreateEvent]:
+    ) -> list[NormalizedSysmonEvent]:
         ArtifactId("00000000000000000000000000", artifact_display_id)
         artifacts = ArtifactService(self._root).list_artifacts(case_display_id)
         artifact = next(
@@ -41,4 +41,4 @@ class SysmonService:
             (artifact.sha256, artifact.size_bytes),
             max_bytes=MAX_XML_BYTES,
         )
-        return normalize_process_create(data, artifact.artifact_id)
+        return normalize_sysmon_event(data, artifact.artifact_id)

@@ -1,5 +1,8 @@
 # Sysmon Event ID 1 handoff — 2026-10-06
 
+Historical Event ID 1 checkpoint. Current Event ID 1 + 11 support and next
+Case-query/Markdown work are documented in `20-sysmon-event11-handoff.md`.
+
 ## Result and approved contract
 
 The approved minimal Event ID 1 slice is implemented and verified:

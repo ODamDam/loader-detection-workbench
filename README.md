@@ -82,9 +82,9 @@ workbench bundle import BUNDLE.zip
 
 ## 6. 문서 상태
 
-### Sysmon Event ID 1 최소 정규화
+### Sysmon Event ID 1·11 최소 정규화
 
-Case에 `sysmon` kind로 등록한 단일 XML Event ID 1을 Application Service로
+Case에 `sysmon` kind로 등록한 단일 XML Event ID 1 또는 11을 Application Service로
 정규화할 수 있다. 다음 예시는 저장소의 합성 fixture만 읽으며 실행하지 않는다.
 `workspace_root`는 소스 저장소 밖에 생성한 기존 Project 경로이다.
 
@@ -102,12 +102,21 @@ events = SysmonService(workspace_root).normalize(
 assert len(events) == 1
 assert events[0].source_artifact_id == artifact.artifact_id
 assert events[0].source_record_id == "42"
+
+file_source = source.with_name("file-create.xml")
+file_artifact = ArtifactService(workspace_root).add("CASE-0001", file_source, "sysmon")
+file_events = SysmonService(workspace_root).normalize(
+    "CASE-0001", file_artifact.artifact_id.display_id
+)
+assert len(file_events) == 1
+assert file_events[0].event_id == 11
+assert file_events[0].source_record_id == "43"
 ```
 
 결과는 메모리로 반환하며 DB나 산출물 파일에 저장하지 않는다. ArtifactId와
 XML EventRecordID로 원본 record를 추적한다. Case/Artifact 조회는 기존 API를
 사용한다. 지원 입력, 필드와 오류는 `docs/05-data-model.md`, 작업 인계와 검증은
-`docs/19-sysmon-event1-handoff.md`를 참조한다. Event ID 11, 복수 이벤트 XML,
+`docs/20-sysmon-event11-handoff.md`를 참조한다. 복수 이벤트 XML,
 EVTX, 정규화 CLI 및 보고서 연결은 아직 지원하지 않는다.
 
 본 문서 세트는 현재까지의 요구사항 인터뷰에서 합의한 내용을 기준으로 작성한 초기 기준선이다. 실제 구현 과정에서 변경이 필요한 경우 ADR과 변경 이력을 함께 갱신한다.

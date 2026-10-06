@@ -15,6 +15,7 @@ class DomainErrorCategory(StrEnum):
 class DomainErrorCode(StrEnum):
     INVALID_SYSMON_XML = "INVALID_SYSMON_XML"
     INVALID_PROCESS_CREATE = "INVALID_PROCESS_CREATE"
+    INVALID_FILE_CREATE = "INVALID_FILE_CREATE"
     UNSUPPORTED_SYSMON_EVENT = "UNSUPPORTED_SYSMON_EVENT"
     INVALID_ARTIFACT_KIND = "INVALID_ARTIFACT_KIND"
     INVALID_ARTIFACT_RECORD = "INVALID_ARTIFACT_RECORD"
@@ -60,6 +61,7 @@ class DomainErrorCode(StrEnum):
 _ERROR_CATEGORIES: dict[DomainErrorCode, DomainErrorCategory] = {
     DomainErrorCode.INVALID_SYSMON_XML: DomainErrorCategory.VALIDATION,
     DomainErrorCode.INVALID_PROCESS_CREATE: DomainErrorCategory.VALIDATION,
+    DomainErrorCode.INVALID_FILE_CREATE: DomainErrorCategory.VALIDATION,
     DomainErrorCode.UNSUPPORTED_SYSMON_EVENT: DomainErrorCategory.VALIDATION,
     DomainErrorCode.INVALID_ARTIFACT_KIND: DomainErrorCategory.VALIDATION,
     DomainErrorCode.INVALID_ARTIFACT_RECORD: DomainErrorCategory.VALIDATION,

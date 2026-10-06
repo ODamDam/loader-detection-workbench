@@ -146,7 +146,42 @@ Provider는 `Microsoft-Windows-Sysmon`이어야 한다. `UtcTime`은
 
 오류는 기존 `DomainError` convention을 따른다. 손상 XML/DTD/크기 제한은
 `INVALID_SYSMON_XML`, 누락·중복·잘못된 필드는 `INVALID_PROCESS_CREATE`,
-다른 Event ID는 `UNSUPPORTED_SYSMON_EVENT`이다. 서비스의 Case 연결 실패는
+지원하지 않는 Event ID는 `UNSUPPORTED_SYSMON_EVENT`이다. 서비스의 Case 연결 실패는
 `ARTIFACT_NOT_ATTACHED`, kind 오류는 `INVALID_ARTIFACT_KIND`, content 누락·변조·
 읽기 제한 초과는 `ARTIFACT_INTEGRITY_MISMATCH`이다. 실패 시 성공 결과나 부분
 이벤트를 반환하지 않으며 DB를 수정하지 않는다.
+
+## 7. File Create와 공통 Sysmon 경계 — 2026-10-06 승인
+
+`FileCreateEvent`는 `ProcessCreateEvent`와 같은 frozen dataclass/slots를 사용한다.
+다음 필드만 가지며 별도 DB persistence나 generic Evidence 모델은 도입하지 않는다.
+
+| 필드 | 입력과 의미 |
+| --- | --- |
+| `timestamp` | EventData/UtcTime, 기존 초 단위 UTC datetime |
+| `event_id` | 정수 11 |
+| `process_guid` | ProcessGuid, 유효한 UUID 문자열 원문 |
+| `process_id` | ProcessId, 음수가 아닌 정수 |
+| `image` | Image, 비어 있지 않은 문자열 |
+| `target_filename` | TargetFilename, 비어 있지 않은 문자열, 파일로 열지 않음 |
+| `creation_utc_time` | CreationUtcTime, 기존 초 단위 UTC datetime |
+| `source_artifact_id` | 기존 ArtifactId |
+| `source_record_id` | System/EventRecordID 숫자 문자열 |
+
+`NormalizedSysmonEvent = ProcessCreateEvent | FileCreateEvent`는 단순 union이다.
+`normalize_sysmon_event(xml, source_artifact_id)`는 동일 XML 검사 뒤 Event ID로
+분기하여 정확히 한 결과의 list를 반환한다. 기존 `normalize_process_create()`는
+기존 반환 타입과 Event ID 1 전용 지원을 유지하며 Event ID 11도 거부한다.
+`SysmonService.normalize()`의 인자는 동일하고 반환 타입은
+`list[NormalizedSysmonEvent]`로 확장한다. 호출자는 event별 필드 접근 전에
+`isinstance`로 타입을 구분할 수 있다.
+
+Event ID 11의 필수 필드 누락·중복·잘못된 값은 `INVALID_FILE_CREATE`로 실패한다.
+Event ID 분기 이전 envelope/provider 오류는 기존 `INVALID_PROCESS_CREATE`
+identity를 유지하며, 손상 XML/DTD는 `INVALID_SYSMON_XML`, 지원하지 않는 ID는
+`UNSUPPORTED_SYSMON_EVENT`이다. 두 timestamp는 같은 입력 형식 및 소수초 절삭
+정책을 사용한다. XML size cap, Artifact 연결·kind·무결성 검사와 읽기 전용 보장은
+그대로 유지한다. Image와 TargetFilename은 단순 문자열 데이터이다.
+
+공통 timestamp/event_id/ArtifactId/EventRecordID로 향후 Case observation을
+정렬·추적할 수 있다. 이번에는 aggregation, Case 조회 CLI와 report를 추가하지 않는다.

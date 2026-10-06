@@ -1,5 +1,21 @@
 # 구현 계획
 
+## 2026-10-06 Sysmon Event ID 11 후속 구현
+
+Status: `completed`
+
+- 승인 기준선: `15469c1a168460ac2ffa2b59a6c9a4ba68e59e16`.
+- 범위: immutable FileCreateEvent, 단일 XML의 ID 1/11 공통 dispatch,
+  기존 service 연결, 합성 fixture와 회귀·오류 테스트, 문서 및 commit/push.
+- 기존 Event ID 1 전용 함수 호환성, ArtifactId/EventRecordID provenance,
+  UTC 규칙, content 무결성, 읽기 전용 Case 보장을 유지한다.
+- DB/dependency 변경, 복수 이벤트 XML, 다른 event, CLI/report 구현은 제외한다.
+- 다음 구현 시작점은 parser 확장이 아닌 Case aggregation/query → Markdown이다.
+- 상세 인계: `docs/20-sysmon-event11-handoff.md`.
+- 검증: targeted 54개, 전체 371개 테스트, lock, Ruff lint/format, `mypy src`,
+  변경 테스트 mypy 및 diff check 통과. 전체 mypy는 기존 Artifact 테스트 6건만
+  실패하며 신규 오류는 없다. 자체 리뷰 완료, feature branch commit/push 인계.
+
 ## 2026-10-06 Sysmon Event ID 1 작업 인계
 
 Status: `completed`

@@ -6,6 +6,11 @@ import pytest
 from loader_detection_workbench.artifact.service import ArtifactService
 from loader_detection_workbench.case.service import CaseService
 from loader_detection_workbench.domain.errors import DomainError, DomainErrorCode
+from loader_detection_workbench.domain.events import (
+    FileCreateEvent,
+    NormalizedSysmonEvent,
+    ProcessCreateEvent,
+)
 from loader_detection_workbench.project.service import ProjectService
 from loader_detection_workbench.sysmon.service import SysmonService
 
@@ -98,3 +103,49 @@ def test_closed_case_can_be_read(root: Path) -> None:
         len(SysmonService(root).normalize("CASE-0001", artifact.artifact_id.display_id))
         == 1
     )
+
+
+def test_same_case_dispatch_provenance_and_time_order_after_move(root: Path) -> None:
+    sources = [FIXTURE, FIXTURE.with_name("file-create.xml")]
+    artifacts = [ArtifactService(root).add("CASE-0001", p, "sysmon") for p in sources]
+    CaseService(root).close("CASE-0001")
+    moved = root.with_name("moved-events")
+    shutil.move(root, moved)
+    before = (moved / "project.db").read_bytes()
+    service = SysmonService(moved)
+    process = service.normalize("CASE-0001", artifacts[0].artifact_id.display_id)
+    file = service.normalize("CASE-0001", artifacts[1].artifact_id.display_id)
+    assert len(process) == len(file) == 1
+    assert isinstance(process[0], ProcessCreateEvent)
+    assert isinstance(file[0], FileCreateEvent)
+    assert file[0].target_filename == "synthetic-demo/output.txt"
+    assert file[0].process_guid == process[0].process_guid
+    events: list[NormalizedSysmonEvent] = [file[0], process[0]]
+    events.sort(key=lambda event: event.timestamp)
+    assert [event.event_id for event in events] == [1, 11]
+    assert [event.source_record_id for event in events] == ["42", "43"]
+    attached = ArtifactService(moved).list_artifacts("CASE-0001")
+    for event, artifact, source in zip(events, artifacts, sources, strict=True):
+        assert event.source_artifact_id == artifact.artifact_id
+        assert artifact in attached
+        assert (
+            artifact.relative_path.resolve_under(moved).read_bytes()
+            == source.read_bytes()
+        )
+    assert (moved / "project.db").read_bytes() == before
+    assert not (moved / file[0].target_filename).exists()
+
+
+def test_invalid_file_create_artifact_has_no_result_or_db_mutation(root: Path) -> None:
+    invalid = root.parent / "invalid-file.xml"
+    invalid.write_bytes(
+        FIXTURE.with_name("file-create.xml")
+        .read_bytes()
+        .replace(b"synthetic-demo/output.txt", b"")
+    )
+    artifact = ArtifactService(root).add("CASE-0001", invalid, "sysmon")
+    before = (root / "project.db").read_bytes()
+    with pytest.raises(DomainError) as caught:
+        SysmonService(root).normalize("CASE-0001", artifact.artifact_id.display_id)
+    assert caught.value.code is DomainErrorCode.INVALID_FILE_CREATE
+    assert (root / "project.db").read_bytes() == before
