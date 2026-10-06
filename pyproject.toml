@@ -16,6 +16,7 @@ workbench = "loader_detection_workbench.cli:main"
 [dependency-groups]
 dev = [
     "mypy>=1.19.1,<2",
+    "pandas>=2.2,<3",
     "pytest>=9.0.2,<10",
     "ruff>=0.15.0,<0.16",
 ]

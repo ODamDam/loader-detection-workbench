@@ -72,6 +72,14 @@ Workbench의 자동 생성 범위는 **개별 분석 보고서의 Markdown·HTML
 → 로컬 웹 UI
 ```
 
+M1 Case Bundle v1 CLI:
+
+```text
+workbench bundle export CASE-NNNN OUTPUT.zip
+workbench bundle validate BUNDLE.zip
+workbench bundle import BUNDLE.zip
+```
+
 ## 6. 문서 상태
 
 본 문서 세트는 현재까지의 요구사항 인터뷰에서 합의한 내용을 기준으로 작성한 초기 기준선이다. 실제 구현 과정에서 변경이 필요한 경우 ADR과 변경 이력을 함께 갱신한다.
@@ -86,6 +94,64 @@ uv sync
 uv run workbench --help
 uv run workbench --version
 ```
+
+M1 Project workspace는 비어 있거나 존재하지 않는 디렉터리에 생성한다. `show`와
+`validate`의 경로를 생략하면 현재 디렉터리를 사용하며 상위 디렉터리는 검색하지
+않는다.
+
+```powershell
+uv run workbench project create .\workspace --name "Analysis Project"
+uv run workbench project show .\workspace
+uv run workbench project validate .\workspace
+```
+
+일반 `workbench sample` 명령은 현재 Project workspace의 `project.db`를 사용한다.
+기존 `.workbench/sample-intake.db`는 자동으로 가져오거나 삭제하지 않는다.
+
+Project workspace 디렉터리에서 Case를 생성하고 관리한다. Case는 Artifact 없이
+생성 가능한 분석 컨테이너이며, `closed`는 읽기 전용 상태를 뜻한다. 분석 완료나
+Definition of Done 충족 여부를 나타내지 않는다.
+
+```powershell
+workbench case create --name "Example" --kind benign
+workbench case list
+workbench case show CASE-0001
+workbench case rename CASE-0001 --name "Renamed"
+workbench case close CASE-0001
+workbench case reopen CASE-0001
+```
+
+이름은 필수이며 공백만 있는 값은 거부한다. `--kind`는 `malware`, `simulator`,
+`benign` 중 하나이며 `--description`은 선택 사항이다. 입력 문자열은 자동으로
+trim하지 않는다. 자세한 동작과 오류는 `docs/06-cli-and-ui-design.md`를 참조한다.
+
+Case에 로컬 파일을 Artifact로 등록할 수 있다. 개발과 검증에는 benign 임시
+파일만 사용한다.
+
+```powershell
+workbench case artifact add CASE-0001 .\benign.txt --kind evidence
+workbench case artifact list CASE-0001
+workbench case artifact detach CASE-0001 ART-000001
+```
+
+내용은 SHA-256 기반 `artifacts/sha256/<앞 2자리>/<해시>`에 보존한다. 같은 bytes는
+파일 하나를 공유하며, 매 add마다 별도 provenance 행과 Artifact ID를 발급한다.
+detach는 Case 연결만 제거하고 행과 bytes를 유지한다. 닫힌 Case에서는 list만
+허용한다. kind, 오류, 동시성 및 실패 복구 제한은
+`docs/06-cli-and-ui-design.md`의 Issue #10 설명을 참조한다.
+
+Project 검증은 기본적으로 구조와 관계를 검사하며, `--full`을 지정하면 Artifact
+파일의 존재·크기·SHA-256과 orphan/staging 경고까지 확인한다. 검증은 읽기 전용이며
+자동 복구·migration·cleanup을 수행하지 않는다.
+
+```powershell
+workbench project validate .\workspace
+workbench project validate .\workspace --full
+```
+
+finding이 없으면 기존 `valid` 출력과 exit code 0을 유지한다. warning만 있어도
+exit code 0이며 finding을 출력하고, error finding은 exit code 1, workspace를
+안전하게 열 수 없는 실행 오류는 exit code 2이다.
 
 설정 파일은 선택 사항이다. 지정하지 않으면 콘솔 로그 레벨 `INFO`를 사용한다.
 현재 지원하는 최소 설정은 다음과 같다.

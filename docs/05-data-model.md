@@ -61,6 +61,13 @@ YARA 또는 Sigma 룰의 버전별 본문, 상태, 작성자, 생성 방식을 �
 ### AIInteraction
 선택 기능이다. Provider, 입력 증거 범위, 출력, 승인 여부를 기록한다.
 
+### Case Bundle v1
+Case Bundle은 `project.json`과 SQLite를 포함하지 않는 단일 Case 교환 패키지다.
+`manifest.json`은 Case snapshot, attached Artifact metadata, unique content 목록과
+`public < internal < restricted` classification을 기록한다. 물리 바이트는
+`artifacts/sha256/<두 자리>/<sha256>`에 한 번만 저장하며, import 시 Case와
+Artifact ID·timestamp·lifecycle은 보존하고 target Project ID로 rebinding한다.
+
 ## 3. 관계
 
 ```mermaid

@@ -261,6 +261,70 @@ Status: `completed`
 
 ## 후속 마일스톤
 
+### Issue #10 — M1-impl-4: Artifact store and deduplication
+
+Status: `completed`
+
+- 기준: Notion `Issue #10 Implementation Brief v1 — FINAL / Codex handoff-ready`
+  (2026-09-17) 및 현재 사용자의 구현 승인. 로컬 #7–#9를 기준으로 한다.
+- 범위: Artifact domain, 기존 SQLite v1 행/counter, streaming SHA-256/size,
+  canonical content store, add/list/detach, rollback/cleanup 및 동시성 검증.
+- 기존 #7의 Artifact ID 최소 6자리(`ART-000001`)를 그대로 재사용한다.
+- schema/dependency 변경, #11 validator, #12 Bundle, 분석 실행 및 Git/원격 변경은
+  포함하지 않는다. Issue #10과 M1 완료 판정은 별도 승인 범위로 유지한다.
+- 2026-09-17: 구현, 299개 테스트, 필수 품질 검사와 최종 소스/diff 리뷰를
+  완료했다. 초기 `verification_blocked`는 Windows Device Guard/Application
+  Control이 `.venv` launcher를 일시 차단한 사건이며, 이후 정확한 `uv run pytest`
+  및 `uv run mypy src`가 변경 없이 통과했다. 사용자 승인에 따라 Issue #10을
+  approved/completed로 동기화한다.
+
+### Issue #11 — M1-impl-5: Cross-contract validator
+
+Status: `completed`
+
+- Issue #10 완료 후 다음 구현 항목이다.
+- 범위와 현재 로컬 계약의 reconciliation은 FINAL brief에서 확정했다.
+- Tier 1 구조 검증, Tier 2 관계 검증, Tier 3 materialized Artifact 전체 검증,
+  report-only CLI와 fail-closed findings를 포함한다.
+- 2026-09-17: FINAL brief 승인 후 read-only Tier 1/2/3 validator, deterministic
+  findings, `project validate --full`, benign corruption fixtures 및 no-mutation
+  회귀 검증을 구현했다. 311개 테스트, 필수 quality gate와 최종 source review를
+  통과했고 blocking findings는 0개였다. 사용자 승인에 따라 Issue #11을
+  approved/completed로 동기화한다.
+
+### Issue #12 — M1-impl-6: Case Bundle v1
+
+Status: `completed`
+
+- Issue #11 완료 후 진행한 구현 항목이다.
+- 2026-09-17: FINAL brief 승인 후 root-level Bundle CLI, strict manifest,
+  canonical ZIP validation, cross-project ID-preserving import와 M1 E2E 검증을
+  구현했다. 최종 회귀 기준선은 317개 테스트이며 모든 required quality gate와
+  source review를 통과했고 blocking findings는 0개였다. 사용자 승인에 따라
+  Issue #12를 completed로 동기화한다.
+
+### M1 — Project and Case Core
+
+Status: `completed`
+
+- Issue #7–#12의 승인된 Project/Case/Artifact foundation, validator와 Case Bundle
+  구현을 완료했다. 최종 회귀 기준선은 317개 테스트이며 모든 required quality
+  gate와 source review를 통과했고 blocking findings는 0개였다.
+
+### Issue #9 — M1-impl-3: Case persistence and lifecycle
+
+Status: `completed`
+
+- 기준: Issue #9 Implementation Brief v1 — FINAL 및 승인된 구현 계획/clarification.
+- 범위: Case create/list/show/rename/close/reopen, SQLite v1 영속성 및 원자적 변경.
+- 기존 Issue #7/#8, Sample Intake, AI Experimental Track 로컬 변경을 보존한다.
+- 검증: 오프라인 pytest, lock check, Ruff lint/format, strict mypy (`src tests`),
+  diff 및 미추적 소스 자체 리뷰를 완료했다.
+- Artifact 저장, Bundle, 전체 validator, 분석 실행 및 Git/원격 변경은 포함하지 않는다.
+- 2026-09-08: 구현 전 기준선 132개 테스트 및 품질 검사 통과. 구현 후 227개
+  테스트(추가 95개), 필수 품질 검사 및 최종 소스/diff 리뷰 통과. Issue #9
+  implementation 승인·완료 기록과 동기화했으며 M1 전체 완료 상태는 변경하지 않는다.
+
 M1 이후의 범위와 순서는 `docs/12-roadmap-and-milestones.md`를 따른다.
 M1 구현 전에는 Project/Case/Artifact, ID/status 규칙, SQLite v1,
 `project.json`, Case Bundle 및 CLI contract에 필요한 결정을 확정한다.
