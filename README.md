@@ -116,8 +116,29 @@ assert file_events[0].source_record_id == "43"
 결과는 메모리로 반환하며 DB나 산출물 파일에 저장하지 않는다. ArtifactId와
 XML EventRecordID로 원본 record를 추적한다. Case/Artifact 조회는 기존 API를
 사용한다. 지원 입력, 필드와 오류는 `docs/05-data-model.md`, 작업 인계와 검증은
-`docs/20-sysmon-event11-handoff.md`를 참조한다. 복수 이벤트 XML,
-EVTX, 정규화 CLI 및 보고서 연결은 아직 지원하지 않는다.
+`docs/20-sysmon-event11-handoff.md`를 참조한다. 복수 이벤트 XML과 EVTX는
+지원하지 않는다.
+
+### Case Timeline 및 데모 Markdown 보고서
+
+현재 Project 디렉터리에서 실행한다. 두 명령은 같은 read-only Case timeline
+query 결과를 사용한다. 기존 `case show`의 metadata 출력은 유지한다.
+
+```text
+workbench case timeline CASE-0001
+workbench report build CASE-0001 reports/demo.md
+```
+
+attached Sysmon Artifact를 모두 정규화하고 timestamp, event_id, Artifact display
+ID, EventRecordID 순으로 정렬한다. 문자열 tie-breaker는 사전순이다. 하나라도
+손상되면 전체 query가 실패하며 부분 timeline/report를 내보내지 않는다.
+Sysmon이 없으면 0건으로 성공하며 closed Case도 읽을 수 있다.
+
+보고서는 UTF-8 Markdown이며 기존 파일은 덮어쓰지 않는다. Case 개요, evidence 수,
+timeline, 원본 참조와 한계를 포함하는 시연용 subset이다. 전체 분석 보고서나 악성
+판정이 아니다. 정상화 이벤트·report metadata의 DB 저장은 추가하지 않는다.
+새 PC에서 합성 fixture로 재현하는 명령과 검증은
+`docs/21-case-timeline-report-handoff.md`를 참조한다.
 
 본 문서 세트는 현재까지의 요구사항 인터뷰에서 합의한 내용을 기준으로 작성한 초기 기준선이다. 실제 구현 과정에서 변경이 필요한 경우 ADR과 변경 이력을 함께 갱신한다.
 

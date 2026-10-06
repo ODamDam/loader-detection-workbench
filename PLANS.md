@@ -1,5 +1,20 @@
 # 구현 계획
 
+## 2026-10-06 Case Timeline / Markdown Report
+
+Status: `completed`
+
+- 승인 기준선 `b23644c1f8a1b61224e50f0fea959e5ec4d93844`에서
+  `feat/case-timeline-report-20261006` branch로 분리했다.
+- CaseTimelineQuery가 attached Sysmon을 기존 서비스로 정규화·정렬하며,
+  CLI timeline과 Markdown renderer는 같은 immutable query result를 소비한다.
+- `case timeline`, `report build`, fail-closed 오류, empty 성공, 안전한 text escaping,
+  no-overwrite 파일 게시와 시연 E2E를 구현했다. DB/schema/dependency 변경은 없다.
+- 신규 targeted 21개, Sysmon 회귀 54개, 전체 392개 테스트 통과. lock, Ruff lint/format,
+  공식 mypy src, 신규 테스트 mypy와 diff check 통과. 전체 mypy의 기존 Artifact
+  테스트 오류 6건은 그대로이며 신규 오류는 없다.
+- 인계 및 합성 fixture 데모 절차: `docs/21-case-timeline-report-handoff.md`.
+
 ## 2026-10-06 Sysmon Event ID 11 후속 구현
 
 Status: `completed`

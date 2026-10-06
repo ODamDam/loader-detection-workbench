@@ -6,6 +6,43 @@ CLI가 핵심 제품 인터페이스이다. 로컬 웹 UI는 별도 비즈니스
 
 ## 2. CLI 기능 그룹
 
+### 구현된 Case timeline / Markdown report
+
+```text
+workbench case timeline CASE-NNNN
+workbench report build CASE-NNNN OUTPUT.md
+```
+
+- 현재 디렉터리를 Project root로 사용한다. 상위 탐색이나 `--database` override는
+  사용하지 않는다. 기존 `case show`와 다른 Case/Artifact 명령은 그대로 유지한다.
+- 두 명령은 `CaseTimelineQuery.query()`의 동일 contract를 사용한다. 결과는 frozen
+  `CaseTimeline(case, observations, sysmon_artifact_count)`이며 observations는 기존
+  ProcessCreateEvent/FileCreateEvent 객체의 tuple이다. 별도 DTO나 DB 저장은 없다.
+- attached `sysmon` Artifact만 기존 `SysmonService.normalize()`로 처리한다.
+  timestamp ASC → event_id ASC → Artifact display ID 사전순 → EventRecordID
+  사전순으로 정렬한다. 따라서 같은 마지막 key에서 `"10"`은 `"2"`보다 앞선다.
+- timeline summary는 `case`, `sysmon_artifacts`, `observations`를 표시한다.
+  각 event는 UTC 시각, EventID, process_create/file_create, image, PID,
+  command_line 또는 target, `ART-NNNNNN#record`를 표시한다. ULID는 표시하지 않는다.
+- 0건은 성공이며 `No normalized Sysmon observations.`를 표시한다. closed Case도
+  조회·보고서 생성이 가능하다. Case metadata와 DB는 변경하지 않는다.
+- 한 Artifact 오류도 silent skip하지 않는다. 미존재 Case는 CASE_NOT_FOUND,
+  변조는 ARTIFACT_INTEGRITY_MISMATCH 등 기존 오류를 surface한다. stdout의 부분
+  timeline이나 report 파일을 생성하지 않는다. 성공 exit 0, 오류 exit 2와
+  `error: CODE: safe message` 형식을 사용한다.
+- report 성공 stdout은 `report: created`이다. 상대 OUTPUT은 현재 Project 기준이며
+  명시적인 절대 OUTPUT도 허용한다. 부모 디렉터리는 필요한 만큼 생성한다.
+  기존 파일/디렉터리/링크는 REPORT_OUTPUT_EXISTS로 거부한다. 쓰기·게시·cleanup
+  실패는 REPORT_WRITE_FAILED이며 원본 OS 예외나 로컬 경로를 출력하지 않는다.
+- Report는 전체 query와 rendering 성공 후 같은 디렉터리의 임시 파일에 UTF-8/LF로
+  작성하고 flush/fsync한다. Windows no-replace rename, POSIX no-replace link로
+  완성된 파일만 게시한다. 경쟁 writer의 파일도 덮어쓰지 않는다.
+- 통상 실패에서 staging은 정리한다. 빈 부모 디렉터리는 남을 수 있다. 강제 종료,
+  cleanup 자체 실패나 hostile filesystem race까지 복구·sandbox를 보장하지 않는다.
+  cleanup 실패 시 성공을 출력하지 않으며 이미 게시된 완성 report는 남을 수 있다.
+- query 전체의 DB snapshot/장기 잠금은 없다. 조회 중 detach는 기존 service 오류로
+  실패할 수 있고, 이후 추가된 Artifact는 다음 query에서 반영된다.
+
 ```text
 workbench project ...
 workbench vm ...

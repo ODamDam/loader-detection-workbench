@@ -16,7 +16,9 @@ from typing import Any
 
 from loader_detection_workbench.artifact.service import ArtifactService
 from loader_detection_workbench.bundle.service import BundleService
+from loader_detection_workbench.case.render import render_timeline
 from loader_detection_workbench.case.service import CaseService
+from loader_detection_workbench.case.timeline import CaseTimelineQuery
 from loader_detection_workbench.config import (
     ConfigError,
     ConfigValueError,
@@ -28,6 +30,7 @@ from loader_detection_workbench.domain.errors import DomainError, DomainErrorCod
 from loader_detection_workbench.domain.time import format_utc
 from loader_detection_workbench.logging_config import configure_console_logging
 from loader_detection_workbench.project.service import ProjectService, ProjectWorkspace
+from loader_detection_workbench.report.service import ReportService
 from loader_detection_workbench.sample.domain import (
     SCREENING_FIELDS,
     AssignmentReason,
@@ -102,7 +105,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     case_create.add_argument("--description")
     case_commands.add_parser("list", help="list Cases in numeric display-ID order")
-    for command in ("show", "rename", "close", "reopen"):
+    for command in ("show", "rename", "close", "reopen", "timeline"):
         case_command = case_commands.add_parser(command)
         case_command.add_argument("display_id", metavar="CASE-NNNN")
         if command == "rename":
@@ -215,6 +218,11 @@ def build_parser() -> argparse.ArgumentParser:
     bundle_validate.add_argument("bundle", type=Path, metavar="BUNDLE.zip")
     bundle_import = bundle_commands.add_parser("import")
     bundle_import.add_argument("bundle", type=Path, metavar="BUNDLE.zip")
+    report = groups.add_parser("report", help="build a minimal Case Markdown report")
+    report_commands = report.add_subparsers(dest="report_command", required=True)
+    report_build = report_commands.add_parser("build")
+    report_build.add_argument("case_display_id", metavar="CASE-NNNN")
+    report_build.add_argument("output", type=Path, metavar="OUTPUT.md")
     return parser
 
 
@@ -423,9 +431,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     configure_console_logging(arguments.log_level or config.log_level)
     if arguments.group == "case":
         try:
+            if arguments.case_command == "timeline":
+                timeline = CaseTimelineQuery(Path.cwd()).query(arguments.display_id)
+                print(render_timeline(timeline), end="")
+                return 0
             if arguments.case_command == "artifact":
                 return _run_artifact(arguments, ArtifactService(Path.cwd()))
             return _run_case(arguments, CaseService(Path.cwd()))
+        except DomainError as exc:
+            print(f"error: {exc.code.value}: {exc}", file=sys.stderr)
+            return 2
+    if arguments.group == "report":
+        try:
+            ReportService(Path.cwd()).build(arguments.case_display_id, arguments.output)
+            print("report: created")
+            return 0
         except DomainError as exc:
             print(f"error: {exc.code.value}: {exc}", file=sys.stderr)
             return 2

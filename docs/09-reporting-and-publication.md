@@ -2,6 +2,27 @@
 
 ## 1. 자동 생성 범위
 
+### 현재 구현: 시연용 Case Markdown subset
+
+`workbench report build CASE-NNNN OUTPUT.md`는 CLI timeline과 같은
+`CaseTimelineQuery` 결과로 Markdown을 렌더링한다. Case Overview, Evidence Summary,
+Timeline, Collection / Analysis Limits만 포함하며 아래 장기 full-report 항목 및
+`templates/case-report-template.md`를 삭제하거나 대체하지 않는다.
+
+Case 정보, Event ID 1/11의 시간순 observation, Artifact display ID/EventRecordID를
+포함한다. File Create에는 Creation UTC Time도 표시한다. Generated At은 기존 UTC
+helper를 사용하며 renderer 인자로 전달해 테스트할 수 있다. 빈 Case는 evidence
+0건과 `No normalized Sysmon observations.`를 표시한다.
+
+신뢰하지 않는 Case/XML 문자열의 줄바꿈·제어문자는 공백으로 표시하고 HTML
+metacharacter 및 Markdown punctuation을 escape한다. 원본 normalized 값은 변경하지
+않는다. 이 escaping은 공개용 개인정보 비식별화를 대신하지 않는다.
+
+결과는 memory-only projection이며 report metadata를 DB에 저장하지 않는다.
+보고서는 VM 수집 성공, 탐지 결과 또는 악성 판정을 암시하지 않는다. HTML,
+Publication Bundle, 자동 공개는 지원 범위가 아니다. 파일 게시 정책과 오류는
+`06-cli-and-ui-design.md`, 재현 명령은 `21-case-timeline-report-handoff.md`를 따른다.
+
 ### 포함
 - 케이스별 Markdown 보고서
 - 케이스별 독립형 HTML 보고서

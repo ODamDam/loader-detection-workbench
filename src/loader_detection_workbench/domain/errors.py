@@ -13,6 +13,8 @@ class DomainErrorCategory(StrEnum):
 
 
 class DomainErrorCode(StrEnum):
+    REPORT_OUTPUT_EXISTS = "REPORT_OUTPUT_EXISTS"
+    REPORT_WRITE_FAILED = "REPORT_WRITE_FAILED"
     INVALID_SYSMON_XML = "INVALID_SYSMON_XML"
     INVALID_PROCESS_CREATE = "INVALID_PROCESS_CREATE"
     INVALID_FILE_CREATE = "INVALID_FILE_CREATE"
@@ -59,6 +61,8 @@ class DomainErrorCode(StrEnum):
 
 
 _ERROR_CATEGORIES: dict[DomainErrorCode, DomainErrorCategory] = {
+    DomainErrorCode.REPORT_OUTPUT_EXISTS: DomainErrorCategory.STATE,
+    DomainErrorCode.REPORT_WRITE_FAILED: DomainErrorCategory.WORKSPACE,
     DomainErrorCode.INVALID_SYSMON_XML: DomainErrorCategory.VALIDATION,
     DomainErrorCode.INVALID_PROCESS_CREATE: DomainErrorCategory.VALIDATION,
     DomainErrorCode.INVALID_FILE_CREATE: DomainErrorCategory.VALIDATION,
