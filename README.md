@@ -171,6 +171,28 @@ collection으로 Host 자동화 E2E 1회 성공(`success / complete / OK`, exit 
 Collection/Project, 안전한 진단, timeline과 필수 섹션 4개를 포함한 Markdown 보고서가
 생성됐다. 반복 Host 자동화 E2E는 미검증이며 실제 산출물은 Git 밖에 둔다.
 
+동일한 명시적 collection의 반복 Host 검증은 다음처럼 실행한다. 반복기는 기존 Host
+스크립트를 독립 Windows PowerShell process로 최소 2회 실행하고, 각 Project의 full
+validation, 원본/복사본/Artifact SHA-256 연결, timeline 재조회, provenance와 보고서의
+의미적 일관성을 검사한다. Project/Case/Artifact ID, run 경로와 보고서 생성 시각만
+비결정적 값으로 정규화한다. 실패 시 후속 회차를 중단하고 모든 run을 보존한다.
+
+```powershell
+powershell.exe -NoProfile -NonInteractive `
+  -File .\scripts\Invoke-SysmonHostDemoRepeat.ps1 `
+  -CollectionDirectory '<명시한 기존 benign collection>' `
+  -OutputParent '<저장소 밖의 기존 로컬 디렉터리>' `
+  -Iterations 2
+```
+
+공개 합성 Sysmon fixture와 실제 설치된 Workbench CLI를 사용한 독립 Host 반복 2회는
+통과했다. 첫 private VM collection 반복 시도는 분석 실행 전 진입점의 빈 script-root
+처리 오류로 실패했고, 필수 경로 선검증과 단일 JSON 실패 응답을 추가한 뒤 합성 반복을
+다시 통과했다. 이후 사용자가 기존 benign VM collection을 재사용한 독립 Host 처리 2회를
+실행했고 `success / complete / OK`와 모든 무결성·일관성 검사를 확인했다. 이는 새로운
+Guest 수집이나 서로 다른 collection 2개에 대한 검증이 아니다. 상세 계약과 안전한 증빙
+절차는 `docs/23-virtualbox-sysmon-export-helper-handoff.md`를 참조한다.
+
 본 문서 세트는 현재까지의 요구사항 인터뷰에서 합의한 내용을 기준으로 작성한 초기 기준선이다. 실제 구현 과정에서 변경이 필요한 경우 ADR과 변경 이력을 함께 갱신한다.
 
 ## 7. 로컬 개발 환경

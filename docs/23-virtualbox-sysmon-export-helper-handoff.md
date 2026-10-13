@@ -408,8 +408,8 @@ snapshot of a hostile filesystem and cannot detect every change-and-restore race
 Use a quiescent, trusted collection directory and local output parent. CLI calls are
 synchronous with no forced timeout; terminating PowerShell can leave partial output
 without final diagnostics. Future CLI presentation changes may require updating the
-required-field extraction. One corrected real-collection host E2E has passed; repeated
-host runs and VM lifecycle automation are not verified.
+required-field extraction. One corrected real-collection host E2E has passed; private
+collection repeat runs and VM lifecycle automation are not verified.
 
 ### Host automation verification
 
@@ -490,3 +490,162 @@ lifecycle operation were not tested. The failed first host attempt and earlier m
 VM-to-Workbench E2E evidence remain separate.
 `migration-note.txt` was preserved and checked for an unchanged hash. No commit or
 push is authorized for this implementation.
+
+### Host repeat validator — implementation and synthetic verification
+
+`scripts/Invoke-SysmonHostDemoRepeat.ps1` accepts one explicit existing collection,
+an existing local output parent, the installed Workbench executable and an iteration
+count from 2 through 10. It never searches for telemetry. It validates the source,
+records its initial snapshot and launches the existing `Invoke-SysmonHostDemo.ps1`
+through a separate Windows PowerShell process for every iteration.
+
+```powershell
+# Host, repository root. Replace both placeholders locally.
+$powershell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+$global:LASTEXITCODE = $null
+$output = & $powershell -NoProfile -NonInteractive `
+    -File .\scripts\Invoke-SysmonHostDemoRepeat.ps1 `
+    -CollectionDirectory '<existing validated benign collection>' `
+    -OutputParent '<existing local directory outside the repository>' `
+    -Iterations 2
+$invoked = $?
+$code = $global:LASTEXITCODE
+if (-not $invoked -or $null -eq $code -or $code -ne 0) {
+    throw 'Host repeat validation failed; preserve all local output and inspect safe diagnostics.'
+}
+$result = ($output -join "`n") | ConvertFrom-Json -ErrorAction Stop
+if ($result.status -cne 'success' -or $result.stage -cne 'complete' -or
+    $result.code -cne 'OK' -or $result.iterations_completed -ne 2 -or
+    @($result.runs).Count -ne 2 -or $result.diagnostic -cne 'written' -or
+    -not $result.source_unchanged -or -not $result.copies_match -or
+    -not $result.artifacts_valid -or -not $result.projects_valid -or
+    -not $result.timelines_consistent -or -not $result.reports_consistent) {
+    throw 'Host repeat success was not confirmed.'
+}
+$result
+```
+
+The batch diagnostic directory and Host run directories are siblings under the chosen
+output parent. This keeps each Host run at the same path depth as a direct invocation
+and avoids adding a long batch-directory component to Windows Artifact Store paths.
+
+```text
+<output-parent>/
+  workbench-host-repeat-<random-token>/
+    repeat-diagnostic.json
+  workbench-host-demo-<random-token>/
+    collection/
+    project/
+    timeline.txt
+    diagnostic.json
+  workbench-host-demo-<different-random-token>/
+    ...
+```
+
+For every successful iteration the repeat validator verifies:
+
+- a unique run directory and independent Project;
+- exact source/copy filename, size and SHA-256 equality;
+- Event IDs 1/11, ProcessGuid/PID correlation and increasing EventRecordID;
+- Artifact list SHA-256/size mapped back to the two copied XML files;
+- `workbench project validate <project> --full` returning exactly `valid`, which
+  independently hashes canonical Artifact Store content;
+- byte-equivalent stored and newly queried Timeline output after CRLF/LF normalization;
+- Timeline event order, PID and ArtifactId/EventRecordID provenance;
+- one Markdown report, all four required sections, counts and matching provenance.
+
+Cross-run comparison replaces only Case and Artifact display IDs in Timeline/report,
+and the report's single `Generated At` value. Run and Project paths do not enter the
+canonical content. All other normalized text participates in an in-memory SHA-256
+digest comparison. The digest, raw XML, command line, image, target filename, private
+identifiers and absolute paths are never written to the batch diagnostic.
+
+`repeat-diagnostic.json` contains safe status, stage/code, requested/completed counts,
+failed iteration, generated run names, source/copy/Artifact/Project/Timeline/report
+booleans, the inner safe Host stage/code and diagnostic state. A failed iteration stops
+later launches. Existing complete and partial outputs are retained without cleanup,
+resume or overwrite. The source snapshot is checked after each completed iteration and again before the final
+result; an observed change fails the batch.
+
+#### First private repeat attempt and entry-point correction
+
+The first user-run private-collection repeat attempt exited 1 before analysis and emitted
+seven PowerShell error records instead of one JSON result. The first error was
+`Split-Path` rejecting an empty `Path`. The repeat script's only direct `Split-Path`
+expression was the `WorkbenchExecutable` parameter default, which evaluated
+`$PSScriptRoot` before the structured failure boundary. The output parent and child-result
+paths never call `Split-Path`, so they were not the source of this error. The previous
+`$result` value in the interactive shell was stale and is not evidence from that attempt.
+
+Review also reproduced a second entry-point defect: dot-sourcing the existing Host script
+in script scope replaced the repeat script's `CollectionDirectory`, `WorkbenchExecutable`
+and `OutputParent` variables with the imported script's parameter values. The earlier
+synthetic test called the repeat function directly and therefore did not exercise this
+`powershell.exe -File` entry path.
+
+The repeat script now has no computed path parameter default. It validates its script
+context before deriving repository paths, imports the unchanged Host helper with explicit
+arguments, and restores all caller inputs immediately after import. Required runtime path
+values are rejected with `PATH_ARGUMENT_INVALID` before filesystem commands. Initialization
+failures map to `SCRIPT_CONTEXT_INVALID` or `SCRIPT_INITIALIZATION_FAILED`; exception text
+and paths are not returned. The entry point emits exactly one JSON object on both tested
+success and failure paths. The regression test invokes the actual script entry point,
+checks exit 0 plus one JSON result for success, and checks exit 1 plus one safe JSON result
+for an empty required path.
+
+#### Phase A read-only evidence inspection
+
+A bounded inspection considered only direct `workbench-host-demo-*` children of the
+system temporary directory. It found two preserved Host runs: one `success / complete /
+OK` run and the earlier `failed / project / CLI_FAILED` run. Both contained valid
+three-file collection copies, but the copies had one shared content fingerprint, so
+they prove one distinct collection rather than two independent guest collections.
+
+Both preserved Projects passed read-only `project validate --full`. For the successful
+run, the stored Timeline matched a new read-only Timeline query, Artifact SHA-256 linked
+the copied XML to both provenance references, and the report contained all four sections
+with matching Artifact/EventRecordID provenance. The failed run retained its collection
+and partial Project and had no Timeline/report, as expected for its failure stage. No
+private path, hash, GUID, XML, Timeline or report content was recorded in this document.
+These read-only queries do not count as new E2E executions.
+
+#### Repeat verification status
+
+`tests/powershell/Test-SysmonHostDemoRepeat.ps1` generated a collection from the public
+harmless Event ID 1/11 fixtures, invoked the repeat script through its real
+`powershell.exe -File` entry point and ran the installed Workbench through two independent
+Host child processes. Both iterations completed, and all copy, Artifact, full-Project,
+Timeline, provenance, report and source-invariance checks passed. The same test covers
+second-iteration failure, invalid child output, copy failure, duplicate run identity,
+Timeline/report semantic differences, source modification, missing/corrupt input and
+an existing batch-directory collision. It verifies immediate stop, safe diagnostics,
+partial-output preservation and no write into a colliding directory.
+
+| Check | Result |
+| --- | --- |
+| New Host repeat PowerShell test | 70 assertions PASS |
+| Actual installed CLI over public synthetic collection | 2 independent Host iterations PASS |
+| Existing Host PowerShell regression | 415 assertions PASS |
+| Existing Artifact Store targeted pytest | 42 PASS |
+| Full Workbench pytest | 392 PASS |
+| Ruff lint and format check | PASS; 83 files already formatted |
+| `mypy src` | PASS; 47 source files |
+| Offline frozen lock check | PASS |
+| PowerShell parser, `git diff --check` and scoped security scan | PASS |
+| First private VM collection repeat attempt | FAIL before analysis; entry-point initialization corrected |
+| Private VM collection repeat after correction | PASS: 1 batch, 2/2 independent Host iterations |
+
+The synthetic iterations validate repeat orchestration and the real local CLI boundary;
+they are not additional real-VM collection results. After the entry-point correction, the
+user reused one existing benign VM collection for one repeat batch. Its result was
+`success / complete / OK`, with two requested and two completed independent Host runs,
+no failed iteration, and a written safe diagnostic. `source_unchanged`, `copies_match`,
+`artifacts_valid`, `projects_valid`, `timelines_consistent` and `reports_consistent` were
+all true.
+
+This result verifies repeated Host processing of the same completed collection. It does
+not represent two new Guest collections, a new Guest execution or malware execution. The
+record therefore remains separated into the earlier single successful Host E2E, the first
+failed repeat attempt before analysis, and this corrected repeat batch with two successful
+Host iterations. No private path, XML, metadata, hash value, Project, Timeline or report
+content is recorded here.

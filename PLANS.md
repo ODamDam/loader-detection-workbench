@@ -65,6 +65,44 @@ Status: `completed` — 수정 후 단일 실제 Host 자동화 E2E PASS
   입력의 변경 후 원복 경쟁까지 증명하는 원자적 snapshot이나 CLI 강제 timeout은
   제공하지 않는다. 조용한 입력 디렉터리와 신뢰할 수 있는 로컬 출력 위치를 전제로 한다.
 
+## 2026-10-13 Host-side Sysmon repeat validation
+
+Status: `completed` — 합성 및 기존 benign VM collection Host 반복 검증 PASS
+
+- 기존 Host 스크립트의 새 결함은 확인되지 않아 변경하지 않았다. 반복기는 기존
+  스크립트를 독립 `powershell.exe` process로 호출하며 회차별 고유 run/Project를 만든다.
+- 변경 범위는 `scripts/Invoke-SysmonHostDemoRepeat.ps1`,
+  `tests/powershell/Test-SysmonHostDemoRepeat.ps1`, `PLANS.md`, `README.md`,
+  `docs/23-virtualbox-sysmon-export-helper-handoff.md`의 5개 파일로 제한한다.
+- 반복 전후 원본 snapshot, 실행별 copy, CLI Artifact SHA-256, `project validate --full`,
+  저장 timeline 재조회, Artifact/EventRecordID provenance와 보고서 4개 섹션을 검증한다.
+- Project/Case/Artifact ID, run 경로와 보고서 `Generated At`만 정규화하고, 나머지
+  timeline/report 내용은 메모리 내 canonical digest로 비교한다. digest와 원문은 안전한
+  batch diagnostic에 기록하지 않는다.
+- 공개 합성 Event ID 1/11 collection으로 설치된 Workbench CLI Host E2E를 독립
+  process에서 2회 실행했다. 신규 반복 테스트 70건과 기존 Host 테스트 415건,
+  전체 pytest 392건, Ruff, `mypy src`, offline frozen lock 검사가 PASS했다.
+- 첫 private collection 반복 시도는 분석 실행 전에 `Split-Path` 빈 문자열 오류로
+  종료됐다. 반복 스크립트의 계산식 기본값이 안전한 오류 경계 밖에서 `$PSScriptRoot`를
+  사용했고, script-scope Host helper import가 반복 스크립트의 입력 매개변수를 덮어쓰는
+  진입점 결함도 확인했다. 계산식 기본값을 제거하고 script root/경로를 선검증하며,
+  import 전후 입력을 보존·복원하고 정상·실패 stdout을 단일 JSON으로 고정했다.
+- Phase A의 제한된 read-only 확인에서는 보존된 Host run 2개와 유효 collection copy
+  2개를 확인했지만 collection fingerprint는 하나였다. 성공 run의 Project full validation,
+  timeline 재조회, provenance와 보고서 섹션을 확인했고, 기존 실패 run의 collection과
+  Project도 보존돼 있었다. 이는 새 반복 E2E 실행 횟수로 계산하지 않는다.
+- 수정 후 사용자가 기존 benign VM collection을 재사용해 반복 Host E2E batch 1개를
+  실행했고, 독립 Host 처리 2회가 모두 `success / complete / OK`로 완료됐다. 요청/완료
+  횟수는 2/2이고 실패 회차는 없으며, 원본 불변, 복사본·Artifact hash, Project full
+  validation, Timeline·provenance 의미적 일관성, 보고서 일관성과 안전한 diagnostic 기록이
+  모두 확인됐다. 이는 같은 기존 collection의 Host 재처리이며 새 Guest 수집 2회를 뜻하지
+  않는다. 새 Guest/VM 또는 악성 샘플 실행은 없었다.
+- 실패한 최초 private 반복 시도는 성공 횟수로 계산하지 않는다. 실제 기록은 기존 단일
+  Host E2E 성공 1회와, 수정 후 같은 기존 collection을 사용한 반복 batch 1개/Host 처리
+  2회 성공으로 구분한다.
+- Core/CLI/DB/parser/dependency와 AI-E2/AI-E3 파일은 변경하지 않고 runtime evidence는
+  Git 밖에 둔다. 실패하면 후속 회차를 중단하며 완료·부분 run을 삭제하지 않는다.
+
 ## 2026-10-06 VirtualBox Sysmon collection/export helper
 
 Status: `completed` — 단일 helper 수집의 수동 E2E 범위 (2026-10-13)
