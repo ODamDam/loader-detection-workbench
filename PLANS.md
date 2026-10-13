@@ -1,5 +1,37 @@
 # 구현 계획
 
+## 2026-10-13 AI-E2 Behavioral Feature Logistic Regression Baseline
+
+Status: `completed` — 단일 고정 Logistic Regression 합성 baseline 구현·실행 완료
+
+- 범위는 `experiments/ai/`의 합성 Case Summary v0.1 실험과 development
+  dependency·계획 문서에 한정한다. Workbench core, CLI, parser, DB, VM 및 외부
+  AI Provider는 변경하거나 실행하지 않는다.
+- 원본 13행에서 완전히 동일한 `C010` 중복 1행만 제거해 12개 고유 Case를 사용한다.
+  exact-row 제거 후 Case ID가 중복되면 conflicting record로 fail-closed 처리한다.
+- 승인된 8개 behavioral feature만 고정 순서로 사용한다. `case_id`, `pool`,
+  `telemetry_quality`는 audit metadata로 분리하고 `label`은 target으로만 사용한다.
+- `random_state=42`, `test_size=1/3`, label stratification으로 Case-disjoint split을
+  만들고, training 8건에만 median imputer, scaler, 단일 Logistic Regression을 fit한다.
+  test 4건은 한 번의 최종 평가에만 사용하며 모델 선택이나 tuning을 수행하지 않는다.
+- 실제 합성 fixture 결과: train label 0/1은 5/3, test는 3/1이다. test confusion
+  matrix(label 순서 `[0, 1]`)는 `[[2, 1], [1, 0]]`, precision/recall/F1은 모두
+  `0.0`이다. 이 실행에서 undefined metric은 없다.
+- 결측 `dns_query_count`는 training median으로 대체하되 관찰된 행위 부재나 0으로
+  해석하지 않는다. partial telemetry인 `C011`도 유지하며 별도 품질 한계로 기록한다.
+- 저장 결과와 동일 환경 재실행 2회의 JSON이 byte-identical이었다. 결과에는 실행
+  시각, UUID, 절대 경로가 없으며 원본 fixture SHA-256도 실행 전후 동일했다.
+- 이 결과는 12개 합성 Case와 4개 test Case에만 해당한다. 실제 악성코드 탐지 성능,
+  일반화 성능 또는 최종 unseen 평가 결과로 해석하지 않는다.
+- 별도 미완료 연구 항목: 실제 악성코드 탐지 성능과 최종 unseen dataset 평가는 이번
+  최소 구현의 완료 범위에 포함하지 않으며, 별도 연구 결정·데이터·승인 후 검증한다.
+- scikit-learn은 기존 선언이 없어 development dependency에만 추가했다. production
+  dependency와 Workbench core는 그대로 유지한다.
+- AI-E2 전용 pytest 11건과 기존 회귀 392건, lock, Ruff lint/format, 공식 mypy
+  `src` 및 AI 파일 strict mypy가 통과했다. 추가 mypy `src tests`에서는 기존
+  Artifact 테스트 오류 6건만 재현했다.
+- `migration-note.txt`와 원본 CSV를 보존하고 commit/push는 별도 승인 전 수행하지 않는다.
+
 ## 2026-10-13 Host-side Sysmon E2E automation
 
 Status: `completed` — 수정 후 단일 실제 Host 자동화 E2E PASS
