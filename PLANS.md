@@ -2,7 +2,7 @@
 
 ## 2026-10-06 VirtualBox Sysmon collection/export helper
 
-Status: `verification_blocked`
+Status: `completed` — 단일 helper 수집의 수동 E2E 범위 (2026-10-13)
 
 - 사용자 확인: VirtualBox Windows 11 + Guest Additions에서 실제 benign Event ID
   1/11의 same ProcessGuid/PID 관계, 단일 XML export, Shared Folder 전달,
@@ -11,18 +11,30 @@ Status: `verification_blocked`
   보존하며 adapter 추상화도 유지한다. VM/guestcontrol 자동화는 제외한다.
 - 승인 범위: guest PowerShell helper, 고유 run/child, baseline 이후 정확한 pair
   선택, atomic no-overwrite export와 metadata, report source-neutral 문구.
-- syntax/static 및 합성 모의 검증은 Host에서 수행한다. 새 helper의 실제 guest
-  실행은 직접 제어 경로가 없어 미확인이다. Credential을 요구하거나 우회하지 않는다.
+- syntax/static 및 합성 모의 검증은 Host에서 수행했다. 2026-10-06의 직접 guest
+  접근 부재로 인한 차단은 2026-10-13 사용자 수동 검증으로 단일 E2E 범위에서 해소됐다.
 - 인계: `docs/23-virtualbox-sysmon-export-helper-handoff.md`.
 - 구현과 host 검증 완료: PowerShell parser 및 모의 검사 53건, targeted Python
-  67건 (Sysmon 54건 포함), 전체 pytest 392건. 실제 helper guest 실행과 그 출력의
-  Workbench 연결은 미실행이며 사용자 수동 검증이 남아 있다.
+  67건 (Sysmon 54건 포함), 전체 pytest 392건 (당시 host 검증 기록).
+- 2026-10-13 사용자 확인: 첫 helper 실행 exit 0, 정확히 3개 출력, Event 1/11의
+  ProcessGuid/PID 및 record 순서, metadata/XML 해시, 기존 Shared Folder 전달과
+  host 복사본 해시 PASS. 임시 Project/benign Case, XML Artifact 2개, provenance가
+  있는 timeline 2건, 보고서 섹션/한계, 재생성 거부와 원본 해시 보존, timeline 반복
+  결과 동일성을 확인했다. 두 번째 독립 실행은 exit 0/guest 출력 3개까지만 PASS다.
+- 첫 guest 수집 당시 사용자는 Process 범위의 임시 ExecutionPolicy Bypass를
+  사용했다. 영구 정책 변경은 아니며, 향후 승인되지 않은 정책 우회를 권장하지 않는다.
+  정확한 실행 명령과 향후 정책 준수 지침은 위 인계 문서에 구분해 기록한다.
+- 두 번째 수집의 전달/Workbench E2E, 반복 전체 E2E와 VM lifecycle 자동화는
+  완료로 주장하지 않는다. 자동화는 미구현이며 이번 변경은 문서/데모 명령에 한정한다.
 - lock, Ruff lint/format, 공식 mypy src 및 변경 테스트 mypy, diff check 통과.
   전체 mypy는 기존 Artifact 테스트 오류 6건만 재현했고 신규 오류는 없다.
 
 ## 2026-10-06 Demo Freeze / VM Sysmon readiness
 
 Status: `verification_blocked`
+
+과거 VMware 조사 시점의 상태다. 이후 VirtualBox 단일 helper E2E 차단 해소는
+위 2026-10-13 갱신 및 `docs/23-virtualbox-sysmon-export-helper-handoff.md`를 따른다.
 
 - 기준선 `731026b5e6e21c3c8ed5d823f47a900c8b4df4a0`에서
   `feat/vm-sysmon-collection-20261006` branch로 분리했다.

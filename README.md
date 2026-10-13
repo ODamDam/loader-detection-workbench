@@ -153,8 +153,10 @@ UTF-8 encoding을 변경하지 않는다.
 1/11 쌍을 수집한다. 출력 디렉터리는 새 경로여야 하며 raw XML/metadata는 Git 밖에
 둔다. Shared Folder는 선택 사항이다.
 
-새 helper의 host syntax/모의 검증과 실제 guest 검증은 구분한다. 현재 guest 실행은
-`verification_blocked`이며 사용법, 인계 및 검증 결과는
+2026-10-13 사용자 수동 검증으로 첫 helper 수집의 VM → Workbench E2E가 PASS했다.
+두 번째 독립 수집은 guest 출력 단계만 PASS했으며 두 번째 E2E는 미검증이다.
+단일 실행 E2E의 기존 차단은 해소됐고 VM lifecycle 자동화는 미구현이다.
+Host 모의 검증과 실제 guest 검증을 구분하며, 환경별 명령과 검증 결과는
 [`docs/23-virtualbox-sysmon-export-helper-handoff.md`](docs/23-virtualbox-sysmon-export-helper-handoff.md)를 참조한다.
 
 본 문서 세트는 현재까지의 요구사항 인터뷰에서 합의한 내용을 기준으로 작성한 초기 기준선이다. 실제 구현 과정에서 변경이 필요한 경우 ADR과 변경 이력을 함께 갱신한다.
