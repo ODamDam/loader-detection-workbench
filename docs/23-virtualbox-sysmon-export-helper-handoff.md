@@ -300,12 +300,193 @@ collision; explicitly loading the existing utility module before defining mocks
 resolved it. This was a validation-harness issue, not a collector defect. The
 checks above used in-memory mocks and did not change execution policy.
 
-Commit/push approval is limited to `PLANS.md`, `README.md` and this handoff on
-`feat/vm-sysmon-collection-20261006`. Preserve untracked `migration-note.txt`; do not
-stage runtime evidence. No main merge, reset, rebase or history rewrite is authorized.
+The earlier three-document update was committed/pushed as `d902576`; that approval
+does not cover the host automation below. Preserve untracked `migration-note.txt`;
+do not stage runtime evidence. No main merge, reset, rebase or history rewrite is authorized.
 For a future approved rehearsal, use a fresh output directory, follow the guest
 then host steps, and distinguish guest-only success from complete E2E success.
 The revised command blocks still need a real-guest rehearsal; prior E2E evidence
 does not claim that these revised instructions have already run in the guest.
 Use the frozen synthetic path in `21-case-timeline-report-handoff.md` as fallback.
 VBoxManage lifecycle/snapshot automation is a separate future scope.
+
+## Host automation — 2026-10-13
+
+`scripts/Invoke-SysmonHostDemo.ps1` automates the host steps for an explicitly
+selected, completed benign helper collection. It does not discover telemetry,
+run the guest collector, execute captured command lines, or control a VM.
+Use Windows PowerShell 5.1 on the host, with the existing Workbench installation.
+Execution policy must already permit the script; it does not change policy or
+recommend a bypass. The earlier Process-scoped guest Bypass is historical evidence,
+not a prerequisite for this host workflow.
+
+```powershell
+# Host, repository root. Replace the placeholder locally.
+& {
+    $ErrorActionPreference = 'Stop'
+    $powershell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+    $LASTEXITCODE = $null
+    $output = & $powershell -NoProfile -NonInteractive -File .\scripts\Invoke-SysmonHostDemo.ps1 -CollectionDirectory '<existing benign collection directory>'
+    $invoked = $?
+    $code = $LASTEXITCODE
+    if (-not $invoked -or $null -eq $code -or $code -ne 0) {
+        throw 'Host demo failed; inspect local safe diagnostics and preserve partial output.'
+    }
+    $result = ($output -join "`n") | ConvertFrom-Json -ErrorAction Stop
+    if ($result.status -cne 'success' -or $result.stage -cne 'complete' -or $result.code -cne 'OK') {
+        throw 'Host demo success was not confirmed.'
+    }
+    $result
+}
+```
+
+Parameters:
+
+| Parameter | Contract |
+| --- | --- |
+| `-CollectionDirectory` | Required existing directory; exactly the three helper files, no recursion or private telemetry search |
+| `-WorkbenchExecutable` | Optional explicit installed `.exe`; default is the repository's `.venv/Scripts/workbench.exe`; no install/sync performed |
+| `-OutputParent` | Optional existing local directory; defaults to the system temporary directory; must be outside the repository and collection |
+
+Runtime data paths reject reparse points, including junctions, symlinks and
+cloud-backed placeholders. Use an ordinary local directory for host input/output
+if a shared/cloud path is rejected; retain the established manual transfer/hash
+checks. An explicitly selected installed executable may reside in the cloud-backed
+source repository. Each input file must be nonempty and at most 4 MiB; this is a
+bounded single-event demo, not a general log importer.
+
+The script inventories and hashes the original without changing it, creates an
+independent `workbench-host-demo-<random-token>` directory, and copies files with
+no-replace writes. It compares original membership, sizes, hashes and modification
+times before/after copying and compares the copy's sizes/hashes. Copy readers deny
+concurrent writes while open. All copied files remain read-locked from validation
+through the CLI workflow. Any observed change or file-layout mismatch stops the run
+before a Project is created. Metadata must match the helper's version 1 shape,
+including unique keys, run ID, UTC start/completion times and two event entries.
+XML validation disables DTD/external resolution and checks the Sysmon provider,
+single-event identities, required fields, metadata record IDs, Event IDs 1/11,
+equal ProcessGuid/PID and increasing EventRecordID.
+
+Only the copied XML files are registered. CLI checks focus on returned IDs, benign
+Case kind, Artifact hashes/sizes, two observations and matching per-event provenance.
+The report must exist, contain the expected sections/counts and identify the same
+Case, Artifacts and records. Additional harmless CLI fields are tolerated; missing,
+duplicate or inconsistent required fields fail closed. Existing parser/core CLI
+behavior is unchanged and still performs normalization when generating the timeline.
+
+Successful runtime layout (all outside Git):
+
+```text
+workbench-host-demo-<random-token>/
+  collection/                  # independent three-file copy
+  project/                     # CLI-managed Project and stored Artifacts
+    vm-demo.md
+  timeline.txt
+  diagnostic.json
+```
+
+The console returns only JSON containing `status`, `stage`, allowlisted `code`,
+optional numeric `cli_exit`, generated host `run` directory name, and `diagnostic`
+write status. The token is newly generated for the host directory, not the guest's
+run ID or ProcessGuid. Locate it under the selected output parent; diagnostics use
+no absolute paths, raw CLI output, XML or private identifiers. Timeline/report and
+the collection/Project are private runtime evidence, not diagnostic logs; never
+commit them or print them into repository/agent logs.
+
+Exit 0 requires every stage and diagnostic write to succeed. Any failure stops
+later CLI calls, returns exit 1 and preserves existing output. There is no automatic
+cleanup, resume or overwrite. A colliding run directory is rejected without writing
+into it. Report existence is checked before build, with the core CLI's no-overwrite
+guarantee handling a race. Before run-directory creation only safe console status
+is available. If diagnostic writing fails, console status reports that failure;
+an earlier workflow failure retains its original stage/code. Review partial runs
+locally and start a fresh run after resolving the cause.
+
+Limitations: this is not proof that supplied telemetry is benign/authentic. Hashes
+and correlation check consistency only. Pre/post comparisons are not an atomic
+snapshot of a hostile filesystem and cannot detect every change-and-restore race.
+Use a quiescent, trusted collection directory and local output parent. CLI calls are
+synchronous with no forced timeout; terminating PowerShell can leave partial output
+without final diagnostics. Future CLI presentation changes may require updating the
+required-field extraction. One corrected real-collection host E2E has passed; repeated
+host runs and VM lifecycle automation are not verified.
+
+### Host automation verification
+
+#### First real host attempt and Native exit-code correction
+
+The first real host automation attempt validated and copied the collection, then
+reported `failed / project / CLI_FAILED` with a null `cli_exit`. Its outer PowerShell
+invocation reported failure and exit 1. Safe inspection read only the allowlisted
+diagnostic fields and checked file existence: the preserved partial run contains a
+Project directory, `project.json` and `project.db`. This proves the existing
+`project create` completed before the wrapper misclassified the result. No XML,
+metadata, raw CLI output, private identifiers or absolute paths were inspected or
+reported, and the failed run was not modified or deleted.
+
+Root cause: under Windows PowerShell 5.1, assigning `$LASTEXITCODE = $null` inside
+`Invoke-HostDemoCli` created a local variable, while the native executable updated
+`$global:LASTEXITCODE`. The wrapper therefore read its unchanged local null even
+when Workbench exited 0. It also read `$?` after the surrounding array assignment,
+which can replace the native command's status. The wrapper now resets the global
+sentinel, captures `$?` immediately after the native call inside the output capture,
+and then reads the global native exit code. Required exit-0 and output checks remain
+fail-closed. Captured stdout/stderr stays internal and is never serialized into the
+safe diagnostic record.
+
+Regression coverage now uses real `cmd.exe` processes for exit 0 and exit 7,
+including stale-code replacement and stdout capture. It also verifies a missing
+executable is rejected with no stale exit code and runs a read-only native
+`workbench.exe --version` smoke test. The existing mocked full workflow remains.
+
+#### First corrected real host E2E — PASS
+
+Source: the user's manual execution and output review after the Native exit-code
+correction. The host automation returned `success / complete / OK` and its enclosing
+PowerShell process exited 0. The run created the independent collection and Project
+directories, `diagnostic.json`, `timeline.txt`, and exactly one Markdown report.
+The user confirmed all four required report sections. This resolves the corrected
+host workflow's real-E2E verification blocker for one run.
+
+The successful run is distinct from the preserved first failure above. Neither run's
+collection, XML, metadata, Project, timeline, report, identifiers, hashes or local
+paths are stored in Git or reproduced here. The agent did not independently inspect
+the private runtime evidence. A single successful run does not establish repeated-run
+reliability; no second corrected host E2E has been performed.
+
+Only the five approved files changed: the host script, its PowerShell test script,
+README, PLANS and this handoff. Existing core CLI, parsers, schema, dependencies,
+guest helper and public fixtures are unchanged.
+
+| Check | Result |
+| --- | --- |
+| `powershell.exe -NoProfile -NonInteractive -File tests/powershell/Test-SysmonHostDemo.ps1` | 415 synthetic/mocked/native assertions PASS |
+| Existing `Test-SysmonDemoCollection.ps1` | 53 mocked assertions PASS |
+| Changed scripts and 11 documented PowerShell blocks, PowerShell 5.1 parser | PASS |
+| `uv run --offline --frozen pytest` | 392 PASS |
+| `uv lock --check --offline` | PASS |
+| `uv run --offline --frozen ruff check .` / `ruff format --check .` | PASS, 81 files already formatted |
+| `uv run --offline --frozen mypy src` | PASS, 47 files |
+| Additional `uv run --offline --frozen mypy src tests` | Same six pre-existing Artifact-test errors listed above |
+| Corrected actual collection → Host automation E2E | 1 PASS, user verified; repeat NOT RUN |
+| Diff whitespace, scope and security review | PASS |
+
+The host harness generates metadata around existing benign XML fixtures and mocks
+the full workflow's CLI calls. It covers missing/extra/empty/non-file entries, bad
+JSON and duplicate keys, incorrect metadata, modified hashes, malformed XML/DTD, wrong providers,
+duplicate event fields, wrong IDs/record order, mismatched ProcessGuid/PID, source
+and copy mutation, timestamp/layout changes, and data-path rejection. It checks
+required CLI fields while tolerating harmless extra fields, rejects invalid hashes,
+counts and provenance, and exercises invocation errors, unset/stale exit status,
+each CLI stage failure, output collisions, report races and diagnostic write errors.
+It verifies original bytes, copied-file write locks, working-directory restoration,
+stopping after failure and preservation of partial outputs. The native-call wrapper
+uses real `cmd.exe` exits and the installed Workbench launcher's read-only version
+command; no Project is created by those wrapper tests and no VM is run.
+
+One corrected full host E2E with a real private collection passed by user verification.
+Repeated corrected host E2E, guest execution during this implementation, and VM
+lifecycle operation were not tested. The failed first host attempt and earlier manual
+VM-to-Workbench E2E evidence remain separate.
+`migration-note.txt` was preserved and checked for an unchanged hash. No commit or
+push is authorized for this implementation.

@@ -159,6 +159,18 @@ UTF-8 encoding을 변경하지 않는다.
 Host 모의 검증과 실제 guest 검증을 구분하며, 환경별 명령과 검증 결과는
 [`docs/23-virtualbox-sysmon-export-helper-handoff.md`](docs/23-virtualbox-sysmon-export-helper-handoff.md)를 참조한다.
 
+완료된 benign collection의 **host 처리**는
+`scripts/Invoke-SysmonHostDemo.ps1 -CollectionDirectory '<명시한 수집 디렉터리>'`로
+자동화할 수 있다. 기본 Workbench 실행 파일은 저장소의 `.venv/Scripts/workbench.exe`다.
+원본을 변경하지 않고 저장소 밖의 새 임시 디렉터리로 복사하여 검증한 뒤,
+기존 CLI로 Project/Case/Artifact, timeline, Markdown을 생성한다.
+실패하면 후속 처리를 중단하고 부분 산출물과 안전한 진단을 보존한다.
+입력·출력 데이터 경로의 링크/reparse point는 거부하며 실행 정책을 변경하지 않는다.
+합성 fixture/mocked CLI 검증에 더해, Native 종료 코드 수정 후 사용자가 실제 completed
+collection으로 Host 자동화 E2E 1회 성공(`success / complete / OK`, exit 0)을 확인했다.
+Collection/Project, 안전한 진단, timeline과 필수 섹션 4개를 포함한 Markdown 보고서가
+생성됐다. 반복 Host 자동화 E2E는 미검증이며 실제 산출물은 Git 밖에 둔다.
+
 본 문서 세트는 현재까지의 요구사항 인터뷰에서 합의한 내용을 기준으로 작성한 초기 기준선이다. 실제 구현 과정에서 변경이 필요한 경우 ADR과 변경 이력을 함께 갱신한다.
 
 ## 7. 로컬 개발 환경

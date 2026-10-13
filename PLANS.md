@@ -1,5 +1,38 @@
 # 구현 계획
 
+## 2026-10-13 Host-side Sysmon E2E automation
+
+Status: `completed` — 수정 후 단일 실제 Host 자동화 E2E PASS
+
+- 기준선: `d902576f0649fddb0536da36e1230fdc1a5626bc`, 현재 feature branch.
+- 사용자 조건부 승인: 원본 collection 읽기 전용, 독립 임시 복사본만 검증·등록,
+  복사 전후 원본 구성/해시/크기/수정 시각 비교, CLI 필수 정보 검증, 부분 실패 보존.
+- 변경 범위는 `scripts/Invoke-SysmonHostDemo.ps1`,
+  `tests/powershell/Test-SysmonHostDemo.ps1`, `PLANS.md`, `README.md`,
+  `docs/23-virtualbox-sysmon-export-helper-handoff.md`의 5개 파일이다.
+- 새 Project/benign Case, Sysmon Artifact 2개, timeline 및 Markdown을 기존 CLI로
+  연결한다. 진단은 상태/단계/안전한 코드로 제한하고 원문 출력은 콘솔에 노출하지 않는다.
+- PowerShell 합성 fixture/mocked CLI로 정상·오류·부분 실패를 검증한다.
+  pytest, Ruff lint/format, mypy src, 기존/신규 PowerShell 검사와 diff를 확인한다.
+- 실제 VM/guest/분석 실행, 네트워크·정책·CLI·parser·DB·dependency 변경은 제외한다.
+  `migration-note.txt`를 보존하며 이번 작업의 commit/push는 승인되지 않았다.
+- 첫 실제 Host 자동화 실행은 collection 검증과 복사를 통과하고 Project를 생성했으나
+  `project` 단계에서 `CLI_FAILED`, `cli_exit: null`로 중단됐다. Project manifest와
+  DB가 존재해 CLI 자체는 성공했으며, 부분 산출물은 보존했다.
+- 원인은 Windows PowerShell 5.1에서 함수 로컬 `$LASTEXITCODE` sentinel이 native
+  process가 기록한 global 값을 가린 것이고, `$?`도 배열 할당 뒤 너무 늦게 읽었다.
+  global sentinel과 native 호출 직후 상태 캡처로 수정하고 실제 `cmd.exe` exit 0/7,
+  stale code, stdout, 실행 파일 부재와 `workbench.exe --version`을 회귀 검증했다.
+- 검증: pytest 392건, 기존 guest helper 모의 검사 53건, 신규 host 검사 415건 PASS.
+  lock, Ruff lint/format, mypy src(47 files), PowerShell 구문과 diff 검사 통과.
+  추가 mypy src tests는 기존 Artifact 테스트 오류 6건만 재현했다.
+- 수정 후 사용자 실제 E2E 확인: `success / complete / OK`, PowerShell exit 0,
+  collection/Project 디렉터리, `diagnostic.json`, `timeline.txt`, Markdown 보고서 1개와
+  필수 보고서 섹션 4개가 생성됐다. 실제 산출물과 경로는 Git에 포함하지 않는다.
+- 자체 리뷰 완료. 자동화의 실제 E2E 성공은 1회이며 반복 실행 신뢰성은 미검증이다.
+  입력의 변경 후 원복 경쟁까지 증명하는 원자적 snapshot이나 CLI 강제 timeout은
+  제공하지 않는다. 조용한 입력 디렉터리와 신뢰할 수 있는 로컬 출력 위치를 전제로 한다.
+
 ## 2026-10-06 VirtualBox Sysmon collection/export helper
 
 Status: `completed` — 단일 helper 수집의 수동 E2E 범위 (2026-10-13)
