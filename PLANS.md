@@ -1,5 +1,30 @@
 # 구현 계획
 
+## 2026-10-14 Existing Case Sysmon Collection Ingestion
+
+Status: `completed` — 로컬 구현·공개 합성 검증 완료, 실제 VM/Collection 미실행
+
+- Python `CollectionValidator`가 Host demo의 정확한 3파일 layout, metadata,
+  SHA-256, Sysmon Event ID 1/11 identity와 correlation을 검증한다. 기존 Sysmon
+  normalizer와 XML 1 MiB 제한을 유지하며 검증된 동일 bytes만 저장 단계로 넘긴다.
+- `CollectionIngestionService.import_collection(case_id, directory)`는 기존 Open
+  Case에 Process/File XML을 `sysmon`, metadata를 `other` Artifact로 등록한다.
+  v1/v2를 모두 지원하며 DB schema와 dependency는 변경하지 않았다.
+- 동일 Case·kind·SHA-256 후보는 canonical content 무결성과 XML 역할을 재검증한
+  뒤 재사용한다. 전체 재시도와 metadata-only 변경 모두 Sysmon Artifact 및 Timeline
+  observation을 중복 생성하지 않는다.
+- 세 Artifact의 누락 행과 counter 변경은 한 SQLite transaction에서 처리한다. 실패
+  시 rollback 후 작업이 새로 게시한 미참조 content만 보상 삭제하며 정리 실패는
+  `ARTIFACT_CLEANUP_FAILED`로 보고한다.
+- Manual Evidence provenance, Case Bundle v1, Timeline/Report 형식, Host/Repeat
+  PowerShell 스크립트는 변경하지 않았다. Collection/Execution Run 영속 모델은 후속
+  범위로 남겼다.
+- 검증: pytest 450건, Ruff lint/format, mypy `src` 58개, offline lock 검사,
+  PowerShell guest 53건·host 415건·repeat 70건이 통과했다. 모든 검증은 공개 합성
+  fixture/mock만 사용했고 실제 VM, private Collection, 분석 대상은 실행하지 않았다.
+- commit/push/merge와 DB migration은 수행하지 않았고 AI-E3 미추적 문서 2개와
+  `migration-note.txt`를 보존했다.
+
 ## 2026-10-14 Schema v2 + Manual Evidence Registration Service
 
 Status: `completed` — 로컬 구현·합성 검증 완료, 실제 Project migration 미실행

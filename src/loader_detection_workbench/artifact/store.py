@@ -222,6 +222,56 @@ class ArtifactStore:
                         "artifact staging cleanup failed",
                     ) from exc
 
+    def publish_bytes(self, data: bytes) -> PublishedContent:
+        """Atomically publish already-validated immutable content."""
+        self.published = None
+        sha256 = hashlib.sha256(data).hexdigest()
+        expected = (sha256, len(data))
+        relative = canonical_path(sha256)
+        staging: Path | None = None
+        owned: PublishedContent | None = None
+        try:
+            destination = self.resolve(relative)
+            if destination.exists():
+                self.verify(destination, expected)
+                return PublishedContent(relative, sha256, len(data), None)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination = self.resolve(relative)
+            fd, name = tempfile.mkstemp(
+                prefix=".artifact-", suffix=".tmp", dir=destination.parent
+            )
+            staging = Path(name)
+            with os.fdopen(fd, "wb") as target:
+                target.write(data)
+                target.flush()
+                os.fsync(target.fileno())
+            self.verify(staging, expected)
+            info = staging.stat()
+            destination = self.resolve(relative)
+            try:
+                _publish_exclusive(staging, destination)
+                owned = PublishedContent(
+                    relative, sha256, len(data), (info.st_dev, info.st_ino)
+                )
+                self.published = owned
+            except FileExistsError:
+                self.verify(self.resolve(relative), expected)
+            return owned or PublishedContent(relative, sha256, len(data), None)
+        except OSError as exc:
+            raise DomainError(
+                DomainErrorCode.ARTIFACT_STORE_FAILED,
+                "artifact staging or publication failed",
+            ) from exc
+        finally:
+            if staging is not None:
+                try:
+                    staging.unlink(missing_ok=True)
+                except OSError as exc:
+                    raise DomainError(
+                        DomainErrorCode.ARTIFACT_CLEANUP_FAILED,
+                        "artifact staging cleanup failed",
+                    ) from exc
+
     def cleanup(self, content: PublishedContent) -> None:
         """Caller must hold the DB write lock and have checked committed references."""
         if content.owned_identity is None:

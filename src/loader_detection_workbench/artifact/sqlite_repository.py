@@ -142,6 +142,21 @@ class SQLiteArtifactRepository:
             key=lambda a: (int(a.artifact_id.display_id[4:]), a.artifact_id.display_id),
         )
 
+    def find_by_content(
+        self, case_id: str, kind: ArtifactKind, sha256: str
+    ) -> Artifact | None:
+        rows = self._connection.execute(
+            f"SELECT {_COLUMNS} FROM artifacts "
+            "WHERE case_id = ? AND kind = ? AND sha256 = ? "
+            "ORDER BY CAST(substr(display_id, 5) AS INTEGER), display_id LIMIT 1",
+            (case_id, kind.value, sha256),
+        ).fetchall()
+        if not rows:
+            return None
+        if len(rows) != 1:
+            raise _invalid()
+        return self._deserialize(rows[0])
+
     def detach(self, case_id: str, display_id: str) -> Artifact:
         self._require_write()
         self._require_open(case_id)

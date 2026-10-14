@@ -1,0 +1,21 @@
+{
+  "collector": "sysmon-demo",
+  "version": 1,
+  "run_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "collection_started_at": "2026-10-06T01:02:00Z",
+  "collection_completed_at": "2026-10-06T01:02:10Z",
+  "events": [
+    {
+      "event_id": 1,
+      "record_id": 42,
+      "file": "process-create.xml",
+      "sha256": "127ea6ff7771b7e4daac280fdb7e42438f642d75bed2240fc18234dce97907f7"
+    },
+    {
+      "event_id": 11,
+      "record_id": 43,
+      "file": "file-create.xml",
+      "sha256": "79330795d71125e4eac9d7519a01c333c79316d23bc824ba69f21d09a0220239"
+    }
+  ]
+}

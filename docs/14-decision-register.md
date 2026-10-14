@@ -21,6 +21,7 @@
 | ADR-017 | M0 Python 도구 체인 | 승인 |
 | ADR-018 | VirtualBox Windows 11 / Guest Additions를 현재 MVP/demo 기준으로 확정 | 승인 |
 | ADR-019 | SQLite v2와 수동 증거 provenance, 명시적 v1→v2 migration | 승인 |
+| ADR-020 | 기존 Open Case Sysmon Collection 등록과 멱등 재사용 | 승인 |
 
 ## 남은 주요 결정
 

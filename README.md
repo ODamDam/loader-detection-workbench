@@ -303,3 +303,18 @@ workbench case evidence show CASE-0001 ART-000001
 자동 생성하지 않는다. Case Bundle v1은 Artifact와 bytes는 포함하지만 원래 파일명,
 출처, 설명, evidence type provenance는 보존하지 않는다. 상세 계약은
 `docs/manual-evidence-contract-v2.md`를 참고한다.
+
+## 9. Existing Case Sysmon Collection ingestion
+
+기존 Project 작업공간에서 완료된 무해한 3파일 Collection을 기존 Open Case에
+등록한다.
+
+```powershell
+workbench case collection import CASE-0001 '<collection-directory>'
+```
+
+명령은 세 파일을 모두 검증한 뒤 XML 두 개를 `sysmon`, metadata를 `other`로
+저장한다. 재시도에서는 일치하는 Artifact를 재사용하므로 Timeline observation이
+중복되지 않는다. SQLite v1/v2를 migration 없이 지원하며 Manual Evidence
+provenance를 만들지 않는다. 검증, 오류, 안전 및 rollback 계약은
+`docs/sysmon-collection-ingestion-contract.md`를 참고한다.

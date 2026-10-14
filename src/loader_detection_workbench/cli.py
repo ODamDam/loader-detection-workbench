@@ -19,6 +19,8 @@ from loader_detection_workbench.bundle.service import BundleService
 from loader_detection_workbench.case.render import render_timeline
 from loader_detection_workbench.case.service import CaseService
 from loader_detection_workbench.case.timeline import CaseTimelineQuery
+from loader_detection_workbench.collection.domain import CollectionIngestionResult
+from loader_detection_workbench.collection.service import CollectionIngestionService
 from loader_detection_workbench.config import (
     ConfigError,
     ConfigValueError,
@@ -145,6 +147,15 @@ def build_parser() -> argparse.ArgumentParser:
     evidence_show = evidence_commands.add_parser("show")
     evidence_show.add_argument("case_display_id", metavar="CASE-NNNN")
     evidence_show.add_argument("artifact_display_id", metavar="ART-NNNNNN")
+    collection = case_commands.add_parser(
+        "collection", help="import a validated Sysmon Collection"
+    )
+    collection_commands = collection.add_subparsers(
+        dest="collection_command", required=True
+    )
+    collection_import = collection_commands.add_parser("import")
+    collection_import.add_argument("case_display_id", metavar="CASE-NNNN")
+    collection_import.add_argument("directory", type=Path, metavar="DIRECTORY")
     sample = groups.add_parser("sample", help="manage pre-Case candidate samples")
     commands = sample.add_subparsers(dest="sample_command", required=True)
     add = commands.add_parser("add")
@@ -495,6 +506,24 @@ def _run_evidence(arguments: argparse.Namespace, service: ManualEvidenceService)
     return 0
 
 
+def _print_collection(result: CollectionIngestionResult) -> None:
+    print(f"status: {result.status}")
+    print(f"case_id: {result.case_display_id}")
+    print(f"process_artifact: {result.process_artifact.artifact_id.display_id}")
+    print(f"file_artifact: {result.file_artifact.artifact_id.display_id}")
+    print(f"metadata_artifact: {result.metadata_artifact.artifact_id.display_id}")
+    print(f"created: {result.created_count}")
+    print(f"reused: {result.reused_count}")
+
+
+def _run_collection(
+    arguments: argparse.Namespace, service: CollectionIngestionService
+) -> int:
+    result = service.import_collection(arguments.case_display_id, arguments.directory)
+    _print_collection(result)
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     arguments = parser.parse_args(argv)
@@ -513,6 +542,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return _run_artifact(arguments, ArtifactService(Path.cwd()))
             if arguments.case_command == "evidence":
                 return _run_evidence(arguments, ManualEvidenceService(Path.cwd()))
+            if arguments.case_command == "collection":
+                return _run_collection(
+                    arguments, CollectionIngestionService(Path.cwd())
+                )
             return _run_case(arguments, CaseService(Path.cwd()))
         except DomainError as exc:
             print(f"error: {exc.code.value}: {exc}", file=sys.stderr)
