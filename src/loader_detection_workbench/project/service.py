@@ -22,6 +22,7 @@ from loader_detection_workbench.domain.validation import (
 )
 from loader_detection_workbench.project.database import (
     bootstrap_database,
+    read_database_version,
     validate_database,
 )
 from loader_detection_workbench.project.manifest import (
@@ -97,7 +98,10 @@ class ProjectService:
         manifest = load_manifest(root / _MANIFEST_NAME)
         database_path = manifest.database_path.resolve_under(root)
         return ProjectWorkspace(
-            root.absolute(), manifest, database_path, SQLITE_SCHEMA_VERSION
+            root.absolute(),
+            manifest,
+            database_path,
+            read_database_version(database_path),
         )
 
     def show(self, root: Path) -> ProjectWorkspace:

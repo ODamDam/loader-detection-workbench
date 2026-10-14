@@ -1,5 +1,29 @@
 # 구현 계획
 
+## 2026-10-14 Schema v2 + Manual Evidence Registration Service
+
+Status: `completed` — 로컬 구현·합성 검증 완료, 실제 Project migration 미실행
+
+- 새 Project는 SQLite v2로 생성하고 기존 v1/v2를 모두 읽는다. v1은 열기나 기존
+  M0~M2 사용 시 자동 migration하지 않으며 `project migrate --to 2`만 명시적으로
+  v2로 올린다. 실패 주입에서 DDL과 migration history rollback 및 원본 v1 검증을
+  확인했다. 실제 연구 데이터는 migration 전 별도 백업이 필요하다.
+- 기존 Artifact 모델과 Case Bundle v1 shape은 변경하지 않고 optional 1:1
+  `artifact_provenance`를 추가했다. Bundle v1은 generic Evidence Artifact와 content를
+  유지하지만 provenance는 보존하지 않는다.
+- Manual Evidence Service는 Open Case, 허용 확장자, 4 MiB, provenance metadata를
+  검증하고 `ArtifactKind.EVIDENCE`로 등록한다. Artifact/provenance는 같은 SQLite
+  transaction에서 commit하며 DB 실패 시 새 미참조 content를 보상 정리한다.
+- 동일 bytes는 canonical content를 공유하되 Artifact/provenance row는 새로 만든다.
+  수동 등록은 Sysmon Observation이나 검증된 관측 사실을 자동 생성하지 않는다.
+- `project migrate`, `case evidence add/list/show`, version-aware validator, ADR-019,
+  계약·사용자·테스트 문서를 추가했다. production/build dependency 변경은 없다.
+- 검증: pytest 426건, Ruff lint/format, mypy `src` 54개, offline lock 검사,
+  PowerShell guest 53건·host 415건·repeat 70건이 모두 통과했다. PowerShell 검사는
+  합성/mock 경로만 사용했으며 실제 VM, private collection, 분석 대상은 실행하지 않았다.
+- 기준 branch와 HEAD는 유지했고 commit/push/merge 및 실제 Project DB migration은
+  수행하지 않았다. AI-E3 미추적 문서 2개와 `migration-note.txt`는 변경하지 않았다.
+
 ## 2026-10-13 AI-E2 Behavioral Feature Logistic Regression Baseline
 
 Status: `completed` — 단일 고정 Logistic Regression 합성 baseline 구현·실행 완료

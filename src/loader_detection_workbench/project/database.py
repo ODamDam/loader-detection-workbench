@@ -1,4 +1,4 @@
-"""SQLite v1 bootstrap and structural verification for Project workspaces."""
+"""Version-aware SQLite bootstrap and structural verification."""
 
 from __future__ import annotations
 
@@ -13,15 +13,17 @@ from loader_detection_workbench.domain.time import format_utc, parse_utc
 from loader_detection_workbench.domain.validation import Finding, FindingSeverity
 from loader_detection_workbench.project.manifest import ProjectManifest
 
-CORE_TABLES = (
+V1_CORE_TABLES = (
     "schema_migrations",
     "projects",
     "counters",
     "cases",
     "artifacts",
 )
+V2_TABLES = ("artifact_provenance",)
+CORE_TABLES = V1_CORE_TABLES + V2_TABLES
 
-_SCHEMA_STATEMENTS = (
+_V1_SCHEMA_STATEMENTS = (
     """CREATE TABLE schema_migrations (
         version INTEGER PRIMARY KEY,
         applied_at TEXT NOT NULL
@@ -66,6 +68,24 @@ _SCHEMA_STATEMENTS = (
     )""",
 )
 
+ARTIFACT_PROVENANCE_SQL = """CREATE TABLE artifact_provenance (
+    artifact_id TEXT PRIMARY KEY,
+    original_filename TEXT NOT NULL
+        CHECK (length(original_filename) BETWEEN 1 AND 255),
+    source TEXT NOT NULL
+        CHECK (length(trim(source)) BETWEEN 1 AND 512),
+    description TEXT
+        CHECK (description IS NULL OR length(description) BETWEEN 1 AND 2000),
+    evidence_type TEXT NOT NULL
+        CHECK (evidence_type IN (
+            'analyst_note', 'event_export', 'configuration',
+            'tool_output', 'indicator_list', 'other'
+        )),
+    FOREIGN KEY (artifact_id) REFERENCES artifacts(internal_id) ON DELETE RESTRICT
+)"""
+
+_SCHEMA_STATEMENTS = (*_V1_SCHEMA_STATEMENTS, ARTIFACT_PROVENANCE_SQL)
+
 _EXPECTED_COLUMNS: dict[str, tuple[tuple[str, str, int, int], ...]] = {
     "schema_migrations": (("version", "INTEGER", 0, 1), ("applied_at", "TEXT", 1, 0)),
     "projects": (
@@ -98,6 +118,13 @@ _EXPECTED_COLUMNS: dict[str, tuple[tuple[str, str, int, int], ...]] = {
         ("size_bytes", "INTEGER", 1, 0),
         ("created_at", "TEXT", 1, 0),
     ),
+    "artifact_provenance": (
+        ("artifact_id", "TEXT", 0, 1),
+        ("original_filename", "TEXT", 1, 0),
+        ("source", "TEXT", 1, 0),
+        ("description", "TEXT", 0, 0),
+        ("evidence_type", "TEXT", 1, 0),
+    ),
 }
 
 
@@ -109,6 +136,36 @@ def connect_database(path: Path, *, read_only: bool = False) -> sqlite3.Connecti
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     return connection
+
+
+def database_versions(connection: sqlite3.Connection) -> list[int]:
+    return [
+        int(row[0])
+        for row in connection.execute(
+            "SELECT version FROM schema_migrations ORDER BY version"
+        ).fetchall()
+    ]
+
+
+def read_database_version(path: Path) -> int:
+    connection = connect_database(path, read_only=True)
+    try:
+        versions = database_versions(connection)
+    except (sqlite3.Error, TypeError, ValueError) as exc:
+        raise DomainError(
+            DomainErrorCode.INVALID_SQLITE_SCHEMA,
+            "SQLite migration history is malformed",
+        ) from exc
+    finally:
+        connection.close()
+    if versions not in ([1], [1, 2]):
+        code = (
+            DomainErrorCode.UNSUPPORTED_CONTRACT_VERSION
+            if any(version > SQLITE_SCHEMA_VERSION for version in versions)
+            else DomainErrorCode.INVALID_SQLITE_SCHEMA
+        )
+        raise DomainError(code, "SQLite migration history is unsupported")
+    return versions[-1]
 
 
 def bootstrap_database(
@@ -123,8 +180,13 @@ def bootstrap_database(
             timestamp = format_utc(created_at)
             connection.execute(
                 "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
-                (SQLITE_SCHEMA_VERSION, timestamp),
+                (1, timestamp),
             )
+            if SQLITE_SCHEMA_VERSION >= 2:
+                connection.execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+                    (2, timestamp),
+                )
             connection.execute(
                 "INSERT INTO projects "
                 "(internal_id, display_id, name, created_at) VALUES (?, ?, ?, ?)",
@@ -191,6 +253,27 @@ def _foreign_keys(
     }
 
 
+def validate_v2_migration_state(connection: sqlite3.Connection) -> None:
+    """Validate uncommitted v2 DDL before a migration is committed."""
+    try:
+        if database_versions(connection) != [1, 2]:
+            raise ValueError
+        if (
+            _table_columns(connection, "artifact_provenance")
+            != _EXPECTED_COLUMNS["artifact_provenance"]
+        ):
+            raise ValueError
+        findings: list[Finding] = []
+        _validate_artifact_provenance_schema(connection, findings)
+        if findings or connection.execute("PRAGMA foreign_key_check").fetchall():
+            raise ValueError
+    except (sqlite3.Error, TypeError, ValueError) as exc:
+        raise DomainError(
+            DomainErrorCode.PROJECT_MIGRATION_FAILED,
+            "migrated database failed v2 verification",
+        ) from exc
+
+
 def validate_database(path: Path, manifest: ProjectManifest) -> tuple[Finding, ...]:
     findings: list[Finding] = []
     try:
@@ -209,16 +292,9 @@ def validate_database(path: Path, manifest: ProjectManifest) -> tuple[Finding, .
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             )
         }
-        missing = [table for table in CORE_TABLES if table not in tables]
-        for table in missing:
-            findings.append(
-                _finding(
-                    DomainErrorCode.INVALID_SQLITE_SCHEMA,
-                    f"required core table is missing: {table}",
-                    table,
-                )
-            )
-        if "schema_migrations" not in missing:
+        version: int | None = None
+        migration_rows: list[sqlite3.Row] = []
+        if "schema_migrations" in tables:
             try:
                 migration_rows = connection.execute(
                     "SELECT version, applied_at FROM schema_migrations ORDER BY version"
@@ -231,24 +307,24 @@ def validate_database(path: Path, manifest: ProjectManifest) -> tuple[Finding, .
                             "unsupported SQLite core schema version",
                         )
                     )
-                elif versions != [SQLITE_SCHEMA_VERSION]:
+                elif versions not in ([1], [1, 2]):
                     findings.append(
                         _finding(
                             DomainErrorCode.INVALID_SQLITE_SCHEMA,
-                            "SQLite migration history must contain version 1",
+                            "SQLite migration history must be [1] or [1, 2]",
                         )
                     )
+                else:
+                    version = versions[-1]
                 for row in migration_rows:
-                    try:
-                        parse_utc(str(row[1]))
-                    except DomainError:
-                        findings.append(
-                            _finding(
-                                DomainErrorCode.INVALID_SQLITE_SCHEMA,
-                                "migration applied_at is not canonical UTC",
-                            )
+                    value = str(row[1])
+                    timestamp = parse_utc(value)
+                    if format_utc(timestamp) != value:
+                        raise DomainError(
+                            DomainErrorCode.INVALID_TIMESTAMP,
+                            "migration timestamp is not canonical UTC",
                         )
-            except (sqlite3.Error, TypeError, ValueError):
+            except (sqlite3.Error, DomainError, TypeError, ValueError):
                 findings.append(
                     _finding(
                         DomainErrorCode.INVALID_SQLITE_SCHEMA,
@@ -256,7 +332,26 @@ def validate_database(path: Path, manifest: ProjectManifest) -> tuple[Finding, .
                     )
                 )
 
-        for table in CORE_TABLES:
+        required = V1_CORE_TABLES + (V2_TABLES if version == 2 else ())
+        missing = [table for table in required if table not in tables]
+        for table in missing:
+            findings.append(
+                _finding(
+                    DomainErrorCode.INVALID_SQLITE_SCHEMA,
+                    f"required core table is missing: {table}",
+                    table,
+                )
+            )
+        if version == 1 and "artifact_provenance" in tables:
+            findings.append(
+                _finding(
+                    DomainErrorCode.INVALID_SQLITE_SCHEMA,
+                    "v1 database contains a partial v2 table",
+                    "artifact_provenance",
+                )
+            )
+
+        for table in required:
             if table in missing:
                 continue
             if _table_columns(connection, table) != _EXPECTED_COLUMNS[table]:
@@ -281,6 +376,8 @@ def validate_database(path: Path, manifest: ProjectManifest) -> tuple[Finding, .
             _validate_cases_schema(connection, findings)
         if "artifacts" not in missing:
             _validate_artifacts_schema(connection, findings)
+        if version == 2 and "artifact_provenance" not in missing:
+            _validate_artifact_provenance_schema(connection, findings)
         if "projects" not in missing:
             _validate_project_row(connection, manifest, findings)
     except sqlite3.Error:
@@ -391,6 +488,46 @@ def _validate_artifacts_schema(
                 DomainErrorCode.INVALID_SQLITE_SCHEMA,
                 "artifact foreign keys are incompatible",
                 "artifacts",
+            )
+        )
+
+
+def _validate_artifact_provenance_schema(
+    connection: sqlite3.Connection, findings: list[Finding]
+) -> None:
+    sql = _table_sql(connection, "artifact_provenance")
+    required_fragments = (
+        "check (length(original_filename) between 1 and 255)",
+        "check (length(trim(source)) between 1 and 512)",
+        "check (description is null or length(description) between 1 and 2000)",
+        "'analyst_note'",
+        "'event_export'",
+        "'configuration'",
+        "'tool_output'",
+        "'indicator_list'",
+        "'other'",
+    )
+    if not all(fragment in sql for fragment in required_fragments):
+        findings.append(
+            _finding(
+                DomainErrorCode.INVALID_SQLITE_SCHEMA,
+                "artifact provenance constraints are incompatible",
+                "artifact_provenance",
+            )
+        )
+    _validate_unique_constraints(
+        connection,
+        "artifact_provenance",
+        {("artifact_id",)},
+        findings,
+    )
+    expected_fk = {("artifact_id", "artifacts", "internal_id", "RESTRICT")}
+    if _foreign_keys(connection, "artifact_provenance") != expected_fk:
+        findings.append(
+            _finding(
+                DomainErrorCode.INVALID_SQLITE_SCHEMA,
+                "artifact provenance foreign key is incompatible",
+                "artifact_provenance",
             )
         )
 

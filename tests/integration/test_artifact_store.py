@@ -82,7 +82,10 @@ def test_add_metadata_and_dedup_provenance(root: Path, source: Path) -> None:
     assert query(root, "SELECT created_at FROM artifacts")[0][
         0
     ] == first.created_at.strftime("%Y-%m-%dT%H:%M:%SZ")
-    assert query(root, "SELECT version FROM schema_migrations") == [(1,)]
+    assert query(root, "SELECT version FROM schema_migrations ORDER BY version") == [
+        (1,),
+        (2,),
+    ]
 
 
 def test_same_filename_different_bytes_and_empty_file(root: Path, source: Path) -> None:

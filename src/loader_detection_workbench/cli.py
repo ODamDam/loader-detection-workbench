@@ -28,7 +28,10 @@ from loader_detection_workbench.config import (
 from loader_detection_workbench.domain.case import Case
 from loader_detection_workbench.domain.errors import DomainError, DomainErrorCode
 from loader_detection_workbench.domain.time import format_utc
+from loader_detection_workbench.evidence.domain import EvidenceType, ManualEvidence
+from loader_detection_workbench.evidence.service import ManualEvidenceService
 from loader_detection_workbench.logging_config import configure_console_logging
+from loader_detection_workbench.project.migration import ProjectMigrationService
 from loader_detection_workbench.project.service import ProjectService, ProjectWorkspace
 from loader_detection_workbench.report.service import ReportService
 from loader_detection_workbench.sample.domain import (
@@ -96,6 +99,9 @@ def build_parser() -> argparse.ArgumentParser:
     project_validate = project_commands.add_parser("validate")
     project_validate.add_argument("root", type=Path, nargs="?", default=Path("."))
     project_validate.add_argument("--full", action="store_true")
+    project_migrate = project_commands.add_parser("migrate")
+    project_migrate.add_argument("root", type=Path, nargs="?", default=Path("."))
+    project_migrate.add_argument("--to", type=int, choices=(2,), default=2)
     case = groups.add_parser("case", help="manage Cases in the current Project")
     case_commands = case.add_subparsers(dest="case_command", required=True)
     case_create = case_commands.add_parser("create", help="create an empty open Case")
@@ -122,6 +128,23 @@ def build_parser() -> argparse.ArgumentParser:
             artifact_command.add_argument("--kind", required=True)
         elif command == "detach":
             artifact_command.add_argument("artifact_display_id", metavar="ART-NNNNNN")
+    evidence = case_commands.add_parser(
+        "evidence", help="add, list or show analyst-supplied evidence"
+    )
+    evidence_commands = evidence.add_subparsers(dest="evidence_command", required=True)
+    evidence_add = evidence_commands.add_parser("add")
+    evidence_add.add_argument("case_display_id", metavar="CASE-NNNN")
+    evidence_add.add_argument("file", type=Path, metavar="FILE")
+    evidence_add.add_argument("--origin", required=True)
+    evidence_add.add_argument(
+        "--type", required=True, choices=tuple(item.value for item in EvidenceType)
+    )
+    evidence_add.add_argument("--description")
+    evidence_list = evidence_commands.add_parser("list")
+    evidence_list.add_argument("case_display_id", metavar="CASE-NNNN")
+    evidence_show = evidence_commands.add_parser("show")
+    evidence_show.add_argument("case_display_id", metavar="CASE-NNNN")
+    evidence_show.add_argument("artifact_display_id", metavar="ART-NNNNNN")
     sample = groups.add_parser("sample", help="manage pre-Case candidate samples")
     commands = sample.add_subparsers(dest="sample_command", required=True)
     add = commands.add_parser("add")
@@ -341,6 +364,14 @@ def _run_project(arguments: argparse.Namespace, service: ProjectService) -> int:
                 file=sys.stderr,
             )
         return 0 if result.is_valid else 1
+    elif command == "migrate":
+        migration = ProjectMigrationService().migrate(
+            arguments.root, target=arguments.to
+        )
+        print(
+            f"migration: {migration.status} "
+            f"{migration.previous_version} -> {migration.current_version}"
+        )
     return 0
 
 
@@ -421,6 +452,49 @@ def _run_artifact(arguments: argparse.Namespace, service: ArtifactService) -> in
     return 0
 
 
+def _print_evidence(evidence: ManualEvidence, *, detailed: bool = False) -> None:
+    artifact = evidence.artifact
+    provenance = evidence.provenance
+    if not detailed:
+        print(
+            f"{artifact.artifact_id.display_id}\t{provenance.evidence_type.value}\t"
+            f"{provenance.original_filename}\t{artifact.sha256}\t{artifact.size_bytes}"
+        )
+        return
+    print(f"artifact_id: {artifact.artifact_id.display_id}")
+    print(f"internal_id: {artifact.artifact_id.ulid}")
+    print(f"case_id: {artifact.case_id}")
+    print(f"kind: {artifact.kind.value}")
+    print(f"sha256: {artifact.sha256}")
+    print(f"size_bytes: {artifact.size_bytes}")
+    print(f"relative_path: {artifact.relative_path.as_posix()}")
+    print(f"created_at: {format_utc(artifact.created_at)}")
+    print(f"original_filename: {provenance.original_filename}")
+    print(f"origin: {provenance.source}")
+    print(f"evidence_type: {provenance.evidence_type.value}")
+    description = "NULL" if provenance.description is None else provenance.description
+    print(f"description: {description}")
+
+
+def _run_evidence(arguments: argparse.Namespace, service: ManualEvidenceService) -> int:
+    if arguments.evidence_command == "add":
+        result = service.register(
+            arguments.case_display_id,
+            arguments.file,
+            source=arguments.origin,
+            evidence_type=arguments.type,
+            description=arguments.description,
+        )
+        _print_evidence(result, detailed=True)
+    elif arguments.evidence_command == "show":
+        result = service.show(arguments.case_display_id, arguments.artifact_display_id)
+        _print_evidence(result, detailed=True)
+    else:
+        for result in service.list_evidence(arguments.case_display_id):
+            _print_evidence(result)
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     arguments = parser.parse_args(argv)
@@ -437,6 +511,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 0
             if arguments.case_command == "artifact":
                 return _run_artifact(arguments, ArtifactService(Path.cwd()))
+            if arguments.case_command == "evidence":
+                return _run_evidence(arguments, ManualEvidenceService(Path.cwd()))
             return _run_case(arguments, CaseService(Path.cwd()))
         except DomainError as exc:
             print(f"error: {exc.code.value}: {exc}", file=sys.stderr)

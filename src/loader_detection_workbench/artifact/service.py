@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from loader_detection_workbench.artifact.cleanup import compensate_publication
 from loader_detection_workbench.artifact.repository import ArtifactRepository
 from loader_detection_workbench.artifact.sqlite_repository import (
     SQLiteArtifactRepository,
@@ -86,19 +87,8 @@ class ArtifactService:
             raise
 
     def _compensate(self, store: ArtifactStore, content: PublishedContent) -> None:
-        try:
-            # The failed transaction has rolled back. Reacquire a writer lock before
-            # checking committed references: a racing add may now own a reference.
-            with self._repository(write=True) as repository:
-                if not repository.has_content_reference(
-                    content.relative_path.as_posix(), content.sha256
-                ):
-                    store.cleanup(content)
-        except (DomainError, OSError, sqlite3.Error) as exc:
-            raise DomainError(
-                DomainErrorCode.ARTIFACT_CLEANUP_FAILED,
-                "artifact operation failed; content cleanup could not complete",
-            ) from exc
+        # Recheck committed references under a new writer lock after rollback.
+        compensate_publication(self._root, store, content)
 
     def list_artifacts(self, case_display_id: str) -> list[Artifact]:
         self._validate_case_selector(case_display_id)

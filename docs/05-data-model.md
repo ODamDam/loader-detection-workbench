@@ -185,3 +185,9 @@ identity를 유지하며, 손상 XML/DTD는 `INVALID_SYSMON_XML`, 지원하지 �
 
 공통 timestamp/event_id/ArtifactId/EventRecordID로 향후 Case observation을
 정렬·추적할 수 있다. 이번에는 aggregation, Case 조회 CLI와 report를 추가하지 않는다.
+
+## 8. SQLite v2 수동 증거 provenance
+
+SQLite v2는 기존 `artifacts`를 변경하지 않고 optional 1:1
+`artifact_provenance`를 추가한다. 필드와 제약, 명시적 migration, 등록 transaction,
+Bundle v1 제외 범위는 `docs/manual-evidence-contract-v2.md`에 정의한다.

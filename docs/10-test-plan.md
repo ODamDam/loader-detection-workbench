@@ -78,3 +78,14 @@
 - 정상 Windows 활동 로그
 - 작은 정상 PE 파일 모음
 - 공개 가능한 샘플 메타데이터
+
+## 6. Schema v2와 수동 증거 회귀
+
+- 신규 v2 Project 생성과 v1/v2 version-aware validation
+- 명시적 v1→v2 migration, 반복 실행, 주입 오류 rollback과 원본 v1 검증
+- 정상·중복 등록, 잘못된 Case와 Closed Case 차단
+- 수동 전용 확장자와 4 MiB 경계, generic Artifact Store 비회귀
+- Artifact/provenance 동일 transaction과 publish 후 DB 실패 보상
+- cleanup 실패의 명시적 오류 및 잔여 orphan 보고
+- Bundle v1 provenance 제외와 generic Evidence Artifact/content 호환
+- 기존 Case·Artifact·Bundle·Sysmon·Timeline·Report의 v1/v2 회귀

@@ -92,7 +92,7 @@ def test_manifest_and_database_bootstrap_are_exact(tmp_path: Path) -> None:
             for row in connection.execute(
                 "SELECT version FROM schema_migrations"
             ).fetchall()
-        ] == [(1,)]
+        ] == [(1,), (2,)]
         project_rows = connection.execute(
             "SELECT internal_id, display_id, name, created_at FROM projects"
         ).fetchall()
@@ -230,7 +230,10 @@ def test_structural_database_failures_are_rejected(
     root = tmp_path / mutation
     create(root)
     if mutation == "future":
-        mutate_db(root, "UPDATE schema_migrations SET version = 2")
+        mutate_db(
+            root,
+            "INSERT INTO schema_migrations VALUES (3, '2026-09-03T00:00:00Z')",
+        )
     elif mutation == "drop_migrations":
         mutate_db(root, "DROP TABLE schema_migrations")
     elif mutation == "drop_artifacts":

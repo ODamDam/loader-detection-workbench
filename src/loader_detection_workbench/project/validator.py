@@ -26,6 +26,10 @@ from loader_detection_workbench.domain.validation import (
     ValidationReport,
     ValidationScope,
 )
+from loader_detection_workbench.evidence.domain import (
+    ArtifactProvenance,
+    EvidenceType,
+)
 from loader_detection_workbench.project.database import connect_database
 from loader_detection_workbench.project.service import ProjectService, ProjectWorkspace
 
@@ -156,6 +160,8 @@ def validate_workspace(root: Path, *, full: bool = False) -> ValidationReport:
         artifacts = _validate_artifacts(
             connection, workspace, cases, case_subjects, collected
         )
+        if workspace.sqlite_schema_version >= 2:
+            _validate_provenance(connection, artifacts, collected)
         _validate_counters(connection, cases, artifacts, collected)
         if full:
             _validate_content(workspace, artifacts, collected)
@@ -228,7 +234,7 @@ def _validate_artifacts(
     case_subjects: set[str],
     collected: list[_Collected],
 ) -> list[Artifact]:
-    repository = SQLiteArtifactRepository(workspace, write=False)
+    repository = SQLiteArtifactRepository(workspace, write=False, connection=connection)
     artifacts: list[Artifact] = []
     rows = connection.execute(f"SELECT {_ARTIFACT_COLUMNS} FROM artifacts").fetchall()
     for row in rows:
@@ -323,6 +329,58 @@ def _validate_artifacts(
         artifacts.append(artifact)
     repository.close()
     return artifacts
+
+
+def _validate_provenance(
+    connection: sqlite3.Connection,
+    artifacts: list[Artifact],
+    collected: list[_Collected],
+) -> None:
+    by_internal_id = {artifact.artifact_id.ulid: artifact for artifact in artifacts}
+    rows = connection.execute(
+        "SELECT artifact_id, original_filename, source, description, evidence_type "
+        "FROM artifact_provenance"
+    ).fetchall()
+    for row in rows:
+        artifact_id = row["artifact_id"]
+        artifact = (
+            by_internal_id.get(artifact_id) if isinstance(artifact_id, str) else None
+        )
+        subject = None if artifact is None else artifact.artifact_id.display_id
+        try:
+            if artifact is None:
+                raise DomainError(
+                    DomainErrorCode.INVALID_ARTIFACT_PROVENANCE,
+                    "provenance references an invalid Artifact",
+                )
+            provenance = ArtifactProvenance(
+                artifact_id,
+                row["original_filename"],
+                row["source"],
+                row["description"],
+                EvidenceType.parse(row["evidence_type"]),
+            )
+            if provenance.artifact_id != artifact.artifact_id.ulid:
+                raise DomainError(
+                    DomainErrorCode.INVALID_ARTIFACT_PROVENANCE,
+                    "provenance and Artifact identities differ",
+                )
+            if artifact.kind.value != "evidence":
+                raise DomainError(
+                    DomainErrorCode.INVALID_ARTIFACT_PROVENANCE,
+                    "provenance requires ArtifactKind.EVIDENCE",
+                )
+        except (DomainError, TypeError, ValueError):
+            collected.append(
+                _finding(
+                    2,
+                    DomainErrorCode.INVALID_ARTIFACT_PROVENANCE.value,
+                    FindingSeverity.ERROR,
+                    ValidationScope.ARTIFACT,
+                    subject,
+                    "persisted manual evidence provenance is invalid",
+                )
+            )
 
 
 def _validate_counters(

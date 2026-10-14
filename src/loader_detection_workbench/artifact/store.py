@@ -26,12 +26,22 @@ def _publish_exclusive(staging: Path, destination: Path) -> None:
         os.link(staging, destination)
 
 
-def _digest(stream: BinaryIO, target: BinaryIO | None = None) -> tuple[str, int]:
+def _digest(
+    stream: BinaryIO,
+    target: BinaryIO | None = None,
+    *,
+    max_bytes: int | None = None,
+) -> tuple[str, int]:
     digest = hashlib.sha256()
     size = 0
     while chunk := stream.read(_CHUNK_SIZE):
-        digest.update(chunk)
         size += len(chunk)
+        if max_bytes is not None and size > max_bytes:
+            raise DomainError(
+                DomainErrorCode.ARTIFACT_SIZE_LIMIT_EXCEEDED,
+                "manual evidence exceeds the configured size limit",
+            )
+        digest.update(chunk)
         if target is not None:
             target.write(chunk)
     return digest.hexdigest(), size
@@ -130,7 +140,9 @@ class ArtifactStore:
             )
         return data
 
-    def publish(self, source: Path) -> PublishedContent:
+    def publish(
+        self, source: Path, *, max_bytes: int | None = None
+    ) -> PublishedContent:
         self.published = None
         # Read the same open source twice; detect changes before publication.
         try:
@@ -145,7 +157,11 @@ class ArtifactStore:
         try:
             with stream:
                 try:
-                    expected = _digest(stream)
+                    expected = (
+                        _digest(stream)
+                        if max_bytes is None
+                        else _digest(stream, max_bytes=max_bytes)
+                    )
                     stream.seek(0)
                 except OSError as exc:
                     raise DomainError(
@@ -165,7 +181,11 @@ class ArtifactStore:
                 )
                 staging = Path(name)
                 with os.fdopen(fd, "wb") as target:
-                    copied = _digest(stream, target)
+                    copied = (
+                        _digest(stream, target)
+                        if max_bytes is None
+                        else _digest(stream, target, max_bytes=max_bytes)
+                    )
                     target.flush()
                     os.fsync(target.fileno())
                 if copied != expected:

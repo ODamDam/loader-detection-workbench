@@ -285,3 +285,21 @@ uv run mypy src
 
 저장소는 소스 코드용이며 분석 프로젝트 작업공간, 실제 샘플 및 원본 분석
 로그를 저장하는 위치로 사용하지 않는다.
+
+## 8. SQLite v2와 수동 증거 등록
+
+SQLite v1 Project의 수동 증거 기능 사용 전에는 Project 디렉터리를 별도 위치에
+백업하고 명시적으로 v2로 migration한다. 새 Project는 이미 v2이다.
+
+```powershell
+workbench project migrate ./workspace --to 2
+workbench case evidence add CASE-0001 ./notes.txt --origin "analyst" --type analyst_note --description "review notes"
+workbench case evidence list CASE-0001
+workbench case evidence show CASE-0001 ART-000001
+```
+
+수동 증거는 Open Case에만 등록하며 허용된 텍스트·구조화 확장자와 4 MiB 제한을
+적용한다. `ArtifactKind.EVIDENCE` 등록은 검증된 관측 사실이나 Sysmon Observation을
+자동 생성하지 않는다. Case Bundle v1은 Artifact와 bytes는 포함하지만 원래 파일명,
+출처, 설명, evidence type provenance는 보존하지 않는다. 상세 계약은
+`docs/manual-evidence-contract-v2.md`를 참고한다.

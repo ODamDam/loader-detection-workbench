@@ -257,3 +257,10 @@ workbench bundle import BUNDLE.zip
 4. 룰 편집·승인 화면
 5. VM 실행 승인 화면
 6. AI 제안 검토 화면
+
+## 6. Schema v2 + Manual Evidence Registration
+
+수동 증거 등록과 명시적 Project migration의 현재 CLI·서비스·오류·호환성 계약은
+`docs/manual-evidence-contract-v2.md`를 따른다. CLI는 Application Service만 호출하며,
+수동 증거를 Sysmon Observation으로 자동 변환하지 않는다. Case Bundle v1에는 generic
+Evidence Artifact와 content만 포함되고 provenance는 보존되지 않는다.

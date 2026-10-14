@@ -6,6 +6,7 @@ from loader_detection_workbench.contracts import (
     CASE_BUNDLE_SCHEMA_VERSION,
     PROJECT_JSON_SCHEMA_VERSION,
     SQLITE_SCHEMA_VERSION,
+    SUPPORTED_SQLITE_SCHEMA_VERSIONS,
 )
 from loader_detection_workbench.domain.errors import (
     DomainError,
@@ -83,7 +84,8 @@ def test_domain_error_preserves_stable_identity(
     assert str(error) == "presentation text"
 
 
-def test_contract_version_constants_match_m1_contract() -> None:
+def test_contract_version_constants_match_current_contracts() -> None:
     assert PROJECT_JSON_SCHEMA_VERSION == "1"
-    assert SQLITE_SCHEMA_VERSION == 1
+    assert SQLITE_SCHEMA_VERSION == 2
+    assert SUPPORTED_SQLITE_SCHEMA_VERSIONS == (1, 2)
     assert CASE_BUNDLE_SCHEMA_VERSION == "1"

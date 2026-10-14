@@ -1,4 +1,4 @@
-"""Artifact rows and counters in the reserved SQLite v1 schema."""
+"""Artifact rows and counters in the Project SQLite schema."""
 
 from __future__ import annotations
 
@@ -29,18 +29,28 @@ def _invalid() -> DomainError:
 
 
 class SQLiteArtifactRepository:
-    def __init__(self, workspace: ProjectWorkspace, *, write: bool = False) -> None:
+    def __init__(
+        self,
+        workspace: ProjectWorkspace,
+        *,
+        write: bool = False,
+        connection: sqlite3.Connection | None = None,
+    ) -> None:
         self._workspace = workspace
         self._write = write
-        self._connection = connect_database(
-            workspace.database_path, read_only=not write
+        self._owns_connection = connection is None
+        self._connection = (
+            connection
+            if connection is not None
+            else connect_database(workspace.database_path, read_only=not write)
         )
         self._cases = SQLiteCaseRepository(
             workspace, write=write, connection=self._connection
         )
 
     def close(self) -> None:
-        self._connection.close()
+        if self._owns_connection:
+            self._connection.close()
 
     def transaction(self) -> AbstractContextManager[None]:
         # Case status and Artifact changes share one snapshot and writer lock.

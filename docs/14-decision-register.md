@@ -20,6 +20,7 @@
 | ADR-016 | MVP 자동 실행 형식은 Windows PE `.exe` | 승인 |
 | ADR-017 | M0 Python 도구 체인 | 승인 |
 | ADR-018 | VirtualBox Windows 11 / Guest Additions를 현재 MVP/demo 기준으로 확정 | 승인 |
+| ADR-019 | SQLite v2와 수동 증거 provenance, 명시적 v1→v2 migration | 승인 |
 
 ## 남은 주요 결정
 
