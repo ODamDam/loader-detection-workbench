@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Timeline — {{ case.case_id.display_id }}{% endblock %}
+{% block content %}
+  <nav><a href="{{ url_for('web.case_detail', case_display_id=case.case_id.display_id) }}">← Case details</a></nav>
+  <h1>Sysmon timeline</h1>
+  <p>{{ case.case_id.display_id }} · {{ artifact_count }} Sysmon Artifact(s)</p>
+  {% if events %}
+    <table>
+      <thead><tr><th>Timestamp</th><th>Event</th><th>PID</th><th>Artifact</th><th>Record</th></tr></thead>
+      <tbody>
+        {% for event in events %}
+          <tr>
+            <td>{{ event.timestamp }}</td>
+            <td>{{ event.event_id }} · {{ event.event_name }}</td>
+            <td>{{ event.process_id }}</td>
+            <td>{{ event.artifact_id }}</td>
+            <td>{{ event.record_id }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty">No normalized Sysmon observations are available.</p>
+  {% endif %}
+  <p class="hint">Sensitive command lines, executable paths, target paths, and Process GUIDs are not displayed.</p>
+{% endblock %}

@@ -89,3 +89,18 @@
 - cleanup 실패의 명시적 오류 및 잔여 orphan 보고
 - Bundle v1 provenance 제외와 generic Evidence Artifact/content 호환
 - 기존 Case·Artifact·Bundle·Sysmon·Timeline·Report의 v1/v2 회귀
+
+## 7. Flask 기본 플랫폼 UI 회귀
+
+- 빈 Project, Case 목록·상세, 없는 Case와 Closed Case 표시
+- provenance가 있는 Manual Evidence와 provenance가 없는 Evidence 표시
+- 수동 업로드 결과와 기존 Service/CLI 조회 데이터 일치
+- 같은 bytes 반복 업로드의 distinct row/canonical content 정책 유지
+- v1 Case·Artifact·Timeline 조회와 Evidence migration-required 차단
+- 공개 합성 Collection과 Manual Evidence가 같은 Case에 공존하고 Event ID 1/11 표시
+- CSRF 누락, 신뢰하지 않는 Host/Origin, XSS payload 거부 또는 escaping
+- 4 MiB Service 제한, multipart 요청 제한, invalid extension/metadata
+- 성공·실패 후 임시 디렉터리 정리와 evidence bytes/path 비노출
+- Timeline command line, image, target path와 ProcessGuid 비노출
+- Waitress IPv4 loopback bind, debug 비활성화, invalid Project의 bind 전 실패
+- build wheel 안의 Jinja template와 CSS 리소스 포함·로딩

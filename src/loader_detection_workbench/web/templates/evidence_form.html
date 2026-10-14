@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Add evidence — {{ case.case_id.display_id }}{% endblock %}
+{% block content %}
+  <nav><a href="{{ url_for('web.case_detail', case_display_id=case.case_id.display_id) }}">← Case details</a></nav>
+  <h1>Add manual evidence</h1>
+  <p>{{ case.case_id.display_id }} · {{ case.name }}</p>
+  {% if migration_required %}
+    <p class="warning">Registration requires an explicit Project migration to v2.</p>
+  {% elif case.status.value == 'closed' %}
+    <p class="warning">This Case is Closed and cannot accept new evidence.</p>
+  {% else %}
+    <form method="post" action="{{ url_for('web.evidence_add', case_display_id=case.case_id.display_id) }}" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Evidence file
+        <input name="file" type="file" required accept="{{ allowed_extensions }}">
+      </label>
+      <p class="hint">Allowed: {{ allowed_extensions }}. Maximum file size: 4 MiB.</p>
+      <label>Source
+        <input name="source" type="text" required maxlength="512">
+      </label>
+      <label>Evidence type
+        <select name="evidence_type" required>
+          {% for evidence_type in evidence_types %}<option value="{{ evidence_type.value }}">{{ evidence_type.value }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Description
+        <textarea name="description" maxlength="2000" rows="5"></textarea>
+      </label>
+      <button type="submit">Register evidence</button>
+    </form>
+  {% endif %}
+{% endblock %}

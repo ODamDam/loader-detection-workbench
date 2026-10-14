@@ -264,3 +264,23 @@ workbench bundle import BUNDLE.zip
 `docs/manual-evidence-contract-v2.md`를 따른다. CLI는 Application Service만 호출하며,
 수동 증거를 Sysmon Observation으로 자동 변환하지 않는다. Case Bundle v1에는 generic
 Evidence Artifact와 content만 포함되고 provenance는 보존되지 않는다.
+
+## 7. Flask 기본 플랫폼 UI
+
+```text
+workbench ui serve [ROOT] [--port PORT]
+```
+
+- CLI에서 지정한 단일 Project를 서버 시작 전에 검증하고 `127.0.0.1`에만
+  Waitress를 바인딩한다. 브라우저 Project 선택, `--host`, debug와 reloader는 없다.
+- Case 목록·상세, path-safe Artifact/provenance, Manual Evidence 등록, Event ID
+  1/11 Timeline을 server-rendered HTML로 제공한다.
+- UI는 Project, Case, Artifact, Manual Evidence, Timeline Application Service만
+  사용하며 SQLite나 CLI subprocess를 직접 사용하지 않는다.
+- v1 Project는 읽을 수 있지만 Evidence 등록은 명시적 migration-required로
+  거부한다. 자동 migration이나 schema 변경은 없다.
+- Timeline은 timestamp, Event ID, PID, Artifact display ID, EventRecordID만
+  표시한다. command line, image, target path, ProcessGuid와 raw content는 숨긴다.
+- `other` Artifact에는 Collection identity가 없으므로 중립적인 Other Artifact로
+  표시한다. 전체 route, 오류와 보안 계약은 `docs/local-platform-ui-contract.md`를
+  따른다.

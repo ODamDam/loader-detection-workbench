@@ -318,3 +318,23 @@ workbench case collection import CASE-0001 '<collection-directory>'
 중복되지 않는다. SQLite v1/v2를 migration 없이 지원하며 Manual Evidence
 provenance를 만들지 않는다. 검증, 오류, 안전 및 rollback 계약은
 `docs/sysmon-collection-ingestion-contract.md`를 참고한다.
+
+## 10. 로컬 Flask 기본 플랫폼 UI
+
+기존 v1 또는 v2 Project를 CLI에서 하나 선택해 loopback 전용 UI를 실행한다.
+
+```powershell
+workbench ui serve .\workspace --port 8080
+```
+
+브라우저에서 `http://127.0.0.1:8080/cases`를 연다. UI는 Case 목록·상세,
+Artifact와 Manual Evidence provenance, 수동 Evidence 등록, 안전한 Event ID 1/11
+Timeline을 제공한다. 수동 등록은 Open v2 Case에서만 가능하며 기존 4 MiB와 확장자
+정책을 그대로 사용한다. v1 Project의 조회는 가능하지만 등록 전에 별도 백업 후
+명시적인 `project migrate --to 2`가 필요하다.
+
+서버는 `127.0.0.1`에만 바인딩하고 debug/reloader를 사용하지 않는다. UI에는 원본
+증거 다운로드·미리보기, Markdown 보고서 미리보기, VM·AI 실행 기능이 없다.
+내부 ID와 저장 경로, Sysmon command line 및 실행·대상 경로도 표시하지 않는다.
+원격 bind, port forwarding 또는 reverse proxy로 노출하지 않는다. 전체 route,
+오류 및 보안 계약은 `docs/local-platform-ui-contract.md`를 참조한다.

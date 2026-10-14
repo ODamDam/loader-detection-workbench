@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ case.case_id.display_id }} — Detection Workbench{% endblock %}
+{% block content %}
+  <nav><a href="{{ url_for('web.cases') }}">← All Cases</a></nav>
+  <h1>{{ case.case_id.display_id }} · {{ case.name }}</h1>
+  <dl class="summary">
+    <dt>Kind</dt><dd>{{ case.kind.value }}</dd>
+    <dt>Status</dt><dd>{{ case.status.value }}</dd>
+    <dt>Description</dt><dd>{{ case.description or '—' }}</dd>
+  </dl>
+  {% if uploaded %}<p class="notice">Evidence {{ uploaded }} was registered.</p>{% endif %}
+  {% if migration_required %}
+    <p class="warning">This v1 Project is readable, but manual evidence requires an explicit <code>project migrate --to 2</code>.</p>
+  {% elif case.status.value == 'closed' %}
+    <p class="warning">This Case is Closed. Existing evidence remains readable, but new evidence cannot be added.</p>
+  {% endif %}
+  <p class="actions">
+    {% if upload_available %}<a class="button" href="{{ url_for('web.evidence_form', case_display_id=case.case_id.display_id) }}">Add manual evidence</a>{% endif %}
+    <a class="button secondary" href="{{ url_for('web.timeline', case_display_id=case.case_id.display_id) }}">View Sysmon timeline</a>
+  </p>
+  <h2>Artifacts</h2>
+  {% if artifacts %}
+    {% for artifact in artifacts %}
+      <article class="artifact">
+        <h3>{{ artifact.display_id }} · {{ artifact.classification }}</h3>
+        <dl>
+          <dt>Kind</dt><dd>{{ artifact.kind }}</dd>
+          <dt>SHA-256</dt><dd class="digest">{{ artifact.sha256 }}</dd>
+          <dt>Size</dt><dd>{{ artifact.size_bytes }} bytes</dd>
+          <dt>Created</dt><dd>{{ artifact.created_at }}</dd>
+          {% if artifact.original_filename is not none %}
+            <dt>Original filename</dt><dd>{{ artifact.original_filename }}</dd>
+            <dt>Source</dt><dd>{{ artifact.source }}</dd>
+            <dt>Evidence type</dt><dd>{{ artifact.evidence_type }}</dd>
+            <dt>Description</dt><dd>{{ artifact.description or '—' }}</dd>
+          {% endif %}
+        </dl>
+      </article>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No Artifacts are attached to this Case.</p>
+  {% endif %}
+{% endblock %}

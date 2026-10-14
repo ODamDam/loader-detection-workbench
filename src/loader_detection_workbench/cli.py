@@ -68,6 +68,16 @@ def _enum(enum_type: type[Enum]) -> Any:
     return parse
 
 
+def _port(value: str) -> int:
+    try:
+        port = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("port must be an integer") from exc
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("port must be between 1 and 65535")
+    return port
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="workbench", description="Local Detection-as-Code Workbench"
@@ -257,6 +267,11 @@ def build_parser() -> argparse.ArgumentParser:
     report_build = report_commands.add_parser("build")
     report_build.add_argument("case_display_id", metavar="CASE-NNNN")
     report_build.add_argument("output", type=Path, metavar="OUTPUT.md")
+    ui = groups.add_parser("ui", help="serve the local Case platform UI")
+    ui_commands = ui.add_subparsers(dest="ui_command", required=True)
+    ui_serve = ui_commands.add_parser("serve")
+    ui_serve.add_argument("root", type=Path, nargs="?", default=Path("."))
+    ui_serve.add_argument("--port", type=_port, default=8080)
     return parser
 
 
@@ -532,6 +547,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ConfigError as exc:
         parser.error(str(exc))
     configure_console_logging(arguments.log_level or config.log_level)
+    if arguments.group == "ui":
+        try:
+            from loader_detection_workbench.web.server import serve
+
+            serve(arguments.root, port=arguments.port)
+            return 0
+        except DomainError as exc:
+            print(f"error: {exc.code.value}: {exc}", file=sys.stderr)
+            return 2
+        except OSError:
+            print("error: UI_SERVER_FAILED: local server failed", file=sys.stderr)
+            return 2
     if arguments.group == "case":
         try:
             if arguments.case_command == "timeline":

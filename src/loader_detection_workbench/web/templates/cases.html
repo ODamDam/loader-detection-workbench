@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Cases — Detection Workbench{% endblock %}
+{% block content %}
+  <h1>Cases</h1>
+  {% if cases %}
+    <table>
+      <thead><tr><th>ID</th><th>Name</th><th>Kind</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for case in cases %}
+          <tr>
+            <td><a href="{{ url_for('web.case_detail', case_display_id=case.case_id.display_id) }}">{{ case.case_id.display_id }}</a></td>
+            <td>{{ case.name }}</td>
+            <td>{{ case.kind.value }}</td>
+            <td><span class="status status-{{ case.status.value }}">{{ case.status.value }}</span></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty">No Cases are registered in this Project.</p>
+  {% endif %}
+{% endblock %}

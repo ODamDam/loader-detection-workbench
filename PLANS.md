@@ -1,5 +1,25 @@
 # 구현 계획
 
+## 2026-10-14 Flask 기본 플랫폼 UI
+
+Status: `completed` — 로컬 구현·공개 합성 검증 완료, 실제 VM/민감 자료 미사용
+
+- Flask/Flask-WTF/Waitress 기반 server-rendered UI를 기존 Application Service
+  위에 추가한다. 고정 Project, loopback bind, Case/Artifact/provenance, Manual
+  Evidence upload, 안전한 Sysmon Timeline만 범위에 포함한다.
+- 직접 SQLite, 신규 schema, 브라우저 Project 선택, evidence download/raw preview,
+  Markdown preview, VM·AI·rule UI는 제외한다.
+- ADR-021과 `docs/local-platform-ui-contract.md`를 기준으로 CSRF, Host/Origin,
+  escaping, 요청 크기, 임시 파일 정리와 경로·명령 비노출을 검증한다.
+- `workbench ui serve [ROOT] --port PORT`는 Project를 bind 전에 검증하고
+  Waitress를 `127.0.0.1`에만 바인딩한다. v1은 조회만 지원하며 등록은 기존
+  `PROJECT_MIGRATION_REQUIRED`로 차단한다.
+- 전체 pytest 465건, Ruff lint/format, strict mypy `src` 63개, lock 검사와
+  Windows wheel 임시 설치·template/CSS 렌더링 검사가 통과했다. PowerShell guest
+  53건·host 415건·repeat 70건도 공개 합성/mock만 사용해 통과했다.
+- 기존 DB schema, Artifact/Bundle/Collection 계약과 PowerShell 스크립트는 변경하지
+  않았다. commit/push/merge를 수행하지 않았고 보호된 미추적 파일 3개를 보존했다.
+
 ## 2026-10-14 Existing Case Sysmon Collection Ingestion
 
 Status: `completed` — 로컬 구현·공개 합성 검증 완료, 실제 VM/Collection 미실행
