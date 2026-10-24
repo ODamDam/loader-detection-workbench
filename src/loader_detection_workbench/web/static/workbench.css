@@ -31,3 +31,10 @@ label { display: grid; gap: .35rem; margin-bottom: 1rem; font-weight: 700; }
 input, select, textarea { box-sizing: border-box; font: inherit; padding: .55rem; width: 100%; }
 .hint { color: #4f5f78; font-size: .9rem; }
 .digest { font-family: ui-monospace, monospace; }
+.metrics { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; }
+.metrics div { min-width: 9rem; background: #fff; border: 1px solid #d9dee8; border-radius: .4rem; padding: 1rem; }
+.metrics strong, .metrics span { display: block; }
+.metrics strong { font-size: 1.6rem; }
+.metrics span, .relationship { color: #4f5f78; }
+.relation-card { background: #fff; border-left: .3rem solid #2456a6; padding: .8rem 1rem; }
+.command { background: #172033; color: #fff; overflow-wrap: anywhere; padding: .8rem 1rem; }

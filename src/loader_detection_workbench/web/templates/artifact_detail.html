@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{{ artifact.display_id }} · Detection Workbench{% endblock %}
+{% block content %}
+  <nav><a href="{{ url_for('web.case_detail', case_display_id=case.case_id.display_id) }}">← Case details</a></nav>
+  <p class="relationship">{{ case.case_id.display_id }} → {{ artifact.display_id }} → Evidence / Observations</p>
+  <h1>{{ artifact.display_id }} · {{ artifact.classification }}</h1>
+  <dl class="summary">
+    <dt>Kind</dt><dd>{{ artifact.kind }}</dd>
+    <dt>SHA-256</dt><dd class="digest">{{ artifact.sha256 }}</dd>
+    <dt>Size</dt><dd>{{ artifact.size_bytes }} bytes</dd>
+    <dt>Registered</dt><dd>{{ artifact.created_at }}</dd>
+    {% if artifact.original_filename is not none %}
+      <dt>Original filename</dt><dd>{{ artifact.original_filename }}</dd>
+      <dt>Collection / registration source</dt><dd>{{ artifact.source }}</dd>
+      <dt>Evidence type</dt><dd>{{ artifact.evidence_type }}</dd>
+      <dt>Description</dt><dd>{{ artifact.description or '—' }}</dd>
+    {% else %}
+      <dt>Collection / registration source</dt><dd>Managed Artifact Store</dd>
+    {% endif %}
+  </dl>
+
+  <h2>Linked Evidence / Observations</h2>
+  {% if static_result %}
+    <article class="relation-card">
+      <h3>Static PE result</h3>
+      <dl>
+        <dt>Source Artifact</dt><dd><a href="{{ url_for('web.artifact_detail', case_display_id=case.case_id.display_id, artifact_display_id=static_result.source_artifact_id) }}">{{ static_result.source_artifact_id }}</a></dd>
+        <dt>Source SHA-256</dt><dd class="digest">{{ static_result.source_sha256 }}</dd>
+        <dt>Source size</dt><dd>{{ static_result.source_size_bytes }} bytes</dd>
+        <dt>Status</dt><dd>{{ static_result.status }}</dd>
+        <dt>PE</dt><dd>{{ 'yes' if static_result.is_pe else 'no' }}</dd>
+        <dt>Architecture</dt><dd>{{ static_result.architecture or '—' }}</dd>
+        <dt>Machine</dt><dd>{{ static_result.machine or '—' }}</dd>
+        <dt>Optional header</dt><dd>{{ static_result.optional_header or '—' }}</dd>
+        <dt>Characteristics</dt><dd>{{ static_result.characteristics or '—' }}</dd>
+        <dt>Analyzer</dt><dd>{{ static_result.tool_name }} {{ static_result.tool_version }}</dd>
+        <dt>Analyzed</dt><dd>{{ static_result.analyzed_at }}</dd>
+        {% if static_result.error %}<dt>Error</dt><dd>{{ static_result.error }}</dd>{% endif %}
+      </dl>
+      {% if static_result.sections %}
+        <h4>Sections</h4>
+        <table>
+          <thead><tr><th>Name</th><th>Virtual size</th><th>Virtual address</th><th>Raw size</th><th>Characteristics</th></tr></thead>
+          <tbody>
+            {% for section in static_result.sections %}
+              <tr><td>{{ section.name }}</td><td>{{ section.virtual_size }}</td><td>{{ section.virtual_address }}</td><td>{{ section.raw_size }}</td><td>{{ section.characteristics }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </article>
+  {% endif %}
+  {% if artifact.original_filename is not none %}
+    <article class="relation-card">
+      <h3>Manual Evidence provenance</h3>
+      <p>This Artifact is the evidence record. Its analyst-supplied origin is shown above.</p>
+    </article>
+  {% elif migration_required and artifact.kind == 'evidence' %}
+    <p class="warning">Manual Evidence provenance is unavailable until this v1 Project is explicitly migrated to v2.</p>
+  {% endif %}
+
+  {% if events %}
+    <table>
+      <thead><tr><th>Timestamp</th><th>Event</th><th>PID</th><th>Source Artifact</th><th>Original Record</th></tr></thead>
+      <tbody>
+        {% for event in events %}
+          <tr>
+            <td>{{ event.timestamp }}</td>
+            <td>{{ event.event_id }} · {{ event.event_name }}</td>
+            <td>{{ event.process_id }}</td>
+            <td>{{ event.artifact_id }}</td>
+            <td>{{ event.record_id }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% elif artifact.original_filename is none and not static_result %}
+    <p class="empty">No normalized observations are linked to this Artifact.</p>
+  {% endif %}
+  <p class="hint">Raw content, stored paths, command lines, executable paths, target paths, and Process GUIDs are not displayed.</p>
+{% endblock %}

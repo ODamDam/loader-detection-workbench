@@ -31,6 +31,7 @@ def test_presenters_expose_only_approved_fields(tmp_path: Path) -> None:
     artifacts = artifact_views(
         ArtifactService(root).list_artifacts("CASE-0001"),
         ManualEvidenceService(root).list_evidence("CASE-0001"),
+        CaseTimelineQuery(root).query("CASE-0001").observations,
     )
     events = timeline_event_views(
         CaseTimelineQuery(root).query("CASE-0001").observations
@@ -38,6 +39,8 @@ def test_presenters_expose_only_approved_fields(tmp_path: Path) -> None:
 
     assert artifacts[0].classification == "Manual evidence"
     assert artifacts[0].original_filename == "note.txt"
+    assert artifacts[0].observation_count == 0
+    assert artifacts[1].observation_count == 1
     assert not hasattr(artifacts[0], "relative_path")
     assert not hasattr(artifacts[0], "internal_id")
     assert events[0].event_id == 1

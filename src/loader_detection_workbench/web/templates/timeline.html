@@ -4,6 +4,7 @@
   <nav><a href="{{ url_for('web.case_detail', case_display_id=case.case_id.display_id) }}">← Case details</a></nav>
   <h1>Sysmon timeline</h1>
   <p>{{ case.case_id.display_id }} · {{ artifact_count }} Sysmon Artifact(s)</p>
+  <p class="actions"><a class="button secondary" href="{{ url_for('web.report_preview', case_display_id=case.case_id.display_id) }}">Preview report</a></p>
   {% if events %}
     <table>
       <thead><tr><th>Timestamp</th><th>Event</th><th>PID</th><th>Artifact</th><th>Record</th></tr></thead>

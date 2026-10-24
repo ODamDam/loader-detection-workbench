@@ -7,7 +7,14 @@
     <dt>Kind</dt><dd>{{ case.kind.value }}</dd>
     <dt>Status</dt><dd>{{ case.status.value }}</dd>
     <dt>Description</dt><dd>{{ case.description or '—' }}</dd>
+    <dt>Created</dt><dd>{{ case_created_at }}</dd>
+    <dt>Updated</dt><dd>{{ case_updated_at }}</dd>
   </dl>
+  <section class="metrics" aria-label="Case relationship summary">
+    <div><strong>{{ artifact_count }}</strong><span>Artifacts</span></div>
+    <div><strong>{{ evidence_count }}</strong><span>Manual evidence</span></div>
+    <div><strong>{{ observation_count }}</strong><span>Observations</span></div>
+  </section>
   {% if uploaded %}<p class="notice">Evidence {{ uploaded }} was registered.</p>{% endif %}
   {% if migration_required %}
     <p class="warning">This v1 Project is readable, but manual evidence requires an explicit <code>project migrate --to 2</code>.</p>
@@ -17,17 +24,19 @@
   <p class="actions">
     {% if upload_available %}<a class="button" href="{{ url_for('web.evidence_form', case_display_id=case.case_id.display_id) }}">Add manual evidence</a>{% endif %}
     <a class="button secondary" href="{{ url_for('web.timeline', case_display_id=case.case_id.display_id) }}">View Sysmon timeline</a>
+    <a class="button secondary" href="{{ url_for('web.report_preview', case_display_id=case.case_id.display_id) }}">Preview report</a>
   </p>
-  <h2>Artifacts</h2>
+  <h2>Case → Artifacts</h2>
   {% if artifacts %}
     {% for artifact in artifacts %}
       <article class="artifact">
-        <h3>{{ artifact.display_id }} · {{ artifact.classification }}</h3>
+        <h3><a href="{{ url_for('web.artifact_detail', case_display_id=case.case_id.display_id, artifact_display_id=artifact.display_id) }}">{{ artifact.display_id }}</a> · {{ artifact.classification }}</h3>
         <dl>
           <dt>Kind</dt><dd>{{ artifact.kind }}</dd>
           <dt>SHA-256</dt><dd class="digest">{{ artifact.sha256 }}</dd>
           <dt>Size</dt><dd>{{ artifact.size_bytes }} bytes</dd>
           <dt>Created</dt><dd>{{ artifact.created_at }}</dd>
+          <dt>Observations</dt><dd>{{ artifact.observation_count }}</dd>
           {% if artifact.original_filename is not none %}
             <dt>Original filename</dt><dd>{{ artifact.original_filename }}</dd>
             <dt>Source</dt><dd>{{ artifact.source }}</dd>

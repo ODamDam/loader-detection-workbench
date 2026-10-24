@@ -52,6 +52,8 @@ from loader_detection_workbench.sample.domain import (
 )
 from loader_detection_workbench.sample.service import SampleService
 from loader_detection_workbench.sample.sqlite_repository import SQLiteSampleRepository
+from loader_detection_workbench.static_analysis.domain import StaticAnalysis
+from loader_detection_workbench.static_analysis.service import StaticAnalysisService
 
 
 def _log_level_argument(value: str) -> str:
@@ -166,6 +168,13 @@ def build_parser() -> argparse.ArgumentParser:
     collection_import = collection_commands.add_parser("import")
     collection_import.add_argument("case_display_id", metavar="CASE-NNNN")
     collection_import.add_argument("directory", type=Path, metavar="DIRECTORY")
+    static = case_commands.add_parser(
+        "static", help="collect bounded static PE evidence"
+    )
+    static_commands = static.add_subparsers(dest="static_command", required=True)
+    static_analyze = static_commands.add_parser("analyze")
+    static_analyze.add_argument("case_display_id", metavar="CASE-NNNN")
+    static_analyze.add_argument("artifact_display_id", metavar="ART-NNNNNN")
     sample = groups.add_parser("sample", help="manage pre-Case candidate samples")
     commands = sample.add_subparsers(dest="sample_command", required=True)
     add = commands.add_parser("add")
@@ -531,6 +540,17 @@ def _print_collection(result: CollectionIngestionResult) -> None:
     print(f"reused: {result.reused_count}")
 
 
+def _print_static(result: StaticAnalysis) -> None:
+    print(f"result_artifact: {result.artifact.artifact_id.display_id}")
+    print(f"source_artifact: {result.source_artifact_id}")
+    print(f"source_sha256: {result.source_sha256}")
+    print(f"source_size_bytes: {result.source_size_bytes}")
+    print(f"status: {result.status}")
+    print(f"is_pe: {str(result.is_pe).lower()}")
+    print(f"architecture: {result.architecture or 'NULL'}")
+    print(f"sections: {len(result.sections)}")
+
+
 def _run_collection(
     arguments: argparse.Namespace, service: CollectionIngestionService
 ) -> int:
@@ -573,6 +593,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return _run_collection(
                     arguments, CollectionIngestionService(Path.cwd())
                 )
+            if arguments.case_command == "static":
+                result = StaticAnalysisService(Path.cwd()).analyze(
+                    arguments.case_display_id, arguments.artifact_display_id
+                )
+                _print_static(result)
+                return 0
             return _run_case(arguments, CaseService(Path.cwd()))
         except DomainError as exc:
             print(f"error: {exc.code.value}: {exc}", file=sys.stderr)

@@ -9,6 +9,7 @@ build/
 .venv-ai/
 sysmon-demo-output/
 .sysmon-demo-*.tmp/
+.demo/
 *.vdi
 *.vmdk
 *.ova

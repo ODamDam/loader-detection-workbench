@@ -22,6 +22,7 @@ from loader_detection_workbench.web.routes import web
 _REQUEST_OVERHEAD_BYTES = 1024 * 1024
 _SAFE_MESSAGES = {
     DomainErrorCode.CASE_NOT_FOUND: "The requested Case was not found.",
+    DomainErrorCode.ARTIFACT_NOT_FOUND: "The requested Artifact was not found.",
     DomainErrorCode.CASE_CLOSED: "Manual evidence can only be added to an Open Case.",
     DomainErrorCode.PROJECT_MIGRATION_REQUIRED: (
         "Manual evidence registration requires an explicit Project migration to v2."

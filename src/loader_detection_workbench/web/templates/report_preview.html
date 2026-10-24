@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Report preview · {{ case.case_id.display_id }}{% endblock %}
+{% block content %}
+  <nav><a href="{{ url_for('web.case_detail', case_display_id=case.case_id.display_id) }}">← Case details</a></nav>
+  <h1>Case report preview</h1>
+  <p class="hint">Safe browser projection of the existing Case Timeline. Generate the full Markdown file locally with the command below.</p>
+  <dl class="summary">
+    <dt>Case ID</dt><dd>{{ case.case_id.display_id }}</dd>
+    <dt>Name</dt><dd>{{ case.name }}</dd>
+    <dt>Kind</dt><dd>{{ case.kind.value }}</dd>
+    <dt>Status</dt><dd>{{ case.status.value }}</dd>
+    <dt>Description</dt><dd>{{ case.description or '—' }}</dd>
+    <dt>Generated</dt><dd>{{ generated_at }}</dd>
+    <dt>Sysmon Artifacts</dt><dd>{{ artifact_count }}</dd>
+    <dt>Normalized Observations</dt><dd>{{ events|length }}</dd>
+  </dl>
+  <p class="command"><code>workbench report build {{ case.case_id.display_id }} reports/{{ case.case_id.display_id }}.md</code></p>
+  <h2>Timeline evidence</h2>
+  {% if events %}
+    <table>
+      <thead><tr><th>Timestamp</th><th>Event</th><th>PID</th><th>Source Artifact</th><th>Original Record</th></tr></thead>
+      <tbody>
+        {% for event in events %}
+          <tr><td>{{ event.timestamp }}</td><td>{{ event.event_id }} · {{ event.event_name }}</td><td>{{ event.process_id }}</td><td>{{ event.artifact_id }}</td><td>{{ event.record_id }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty">No normalized Sysmon observations are available for this report.</p>
+  {% endif %}
+  <p class="hint">This browser preview omits command lines, executable paths, target paths, Process GUIDs, raw XML, and stored paths.</p>
+{% endblock %}

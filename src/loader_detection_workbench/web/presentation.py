@@ -22,6 +22,7 @@ class ArtifactView:
     source: str | None = None
     description: str | None = None
     evidence_type: str | None = None
+    observation_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,14 +36,22 @@ class TimelineEventView:
 
 
 def artifact_views(
-    artifacts: list[Artifact], evidence: list[ManualEvidence]
+    artifacts: list[Artifact],
+    evidence: list[ManualEvidence],
+    observations: tuple[NormalizedSysmonEvent, ...] = (),
 ) -> tuple[ArtifactView, ...]:
     provenance = {item.artifact.artifact_id.ulid: item.provenance for item in evidence}
+    observation_counts: dict[str, int] = {}
+    for observation in observations:
+        display_id = observation.source_artifact_id.display_id
+        observation_counts[display_id] = observation_counts.get(display_id, 0) + 1
     views: list[ArtifactView] = []
     for artifact in artifacts:
         details = provenance.get(artifact.artifact_id.ulid)
         if artifact.kind is ArtifactKind.SYSMON:
             classification = "Sysmon telemetry"
+        elif artifact.kind is ArtifactKind.STATIC:
+            classification = "Static PE analysis"
         elif artifact.kind is ArtifactKind.EVIDENCE and details is not None:
             classification = "Manual evidence"
         elif artifact.kind is ArtifactKind.EVIDENCE:
@@ -65,6 +74,9 @@ def artifact_views(
                 source=None if details is None else details.source,
                 description=None if details is None else details.description,
                 evidence_type=None if details is None else details.evidence_type.value,
+                observation_count=observation_counts.get(
+                    artifact.artifact_id.display_id, 0
+                ),
             )
         )
     return tuple(views)

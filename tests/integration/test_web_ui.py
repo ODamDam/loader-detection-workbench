@@ -98,6 +98,17 @@ def test_case_list_empty_state_and_security_headers(tmp_path: Path) -> None:
     assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
 
 
+def test_empty_case_detail_shows_relationship_summary(client: FlaskClient) -> None:
+    response = _get(client, "/cases/CASE-0001")
+
+    assert response.status_code == 200
+    assert "Case → Artifacts" in response.text
+    assert "0</strong><span>Artifacts" in response.text
+    assert "0</strong><span>Manual evidence" in response.text
+    assert "0</strong><span>Observations" in response.text
+    assert "No Artifacts are attached" in response.text
+
+
 def test_case_detail_escapes_text_and_hides_internal_paths(root: Path) -> None:
     CaseService(root).rename("CASE-0001", '<script>alert("x")</script>')
     source = root.parent / "generic.txt"
@@ -236,8 +247,10 @@ def test_collection_and_manual_evidence_share_case_with_safe_timeline(
 
     detail = _get(client, "/cases/CASE-0001")
     timeline = _get(client, "/cases/CASE-0001/timeline")
+    report = _get(client, "/cases/CASE-0001/report")
 
     assert "Manual evidence" in detail.text
+    assert "Preview report" in detail.text
     assert detail.text.count("Sysmon telemetry") == 2
     assert "Other artifact" in detail.text
     assert "Collection metadata" not in detail.text
@@ -250,3 +263,77 @@ def test_collection_and_manual_evidence_share_case_with_safe_timeline(
     assert "--message" not in timeline.text
     assert "synthetic-demo/output.txt" not in timeline.text
     assert "11111111-2222-4333-8444-555555555555" not in timeline.text
+    assert report.status_code == 200
+    assert "Case report preview" in report.text
+    assert "workbench report build CASE-0001 reports/CASE-0001.md" in report.text
+    assert "1 · Process Create" in report.text
+    assert "11 · File Create" in report.text
+    assert ">42<" in report.text and ">43<" in report.text
+    assert "benign-demo.exe" not in report.text
+    assert "--message" not in report.text
+    assert "synthetic-demo/output.txt" not in report.text
+    assert str(root) not in report.text
+
+
+def test_artifact_relationship_pages_separate_provenance_and_observations(
+    root: Path, client: FlaskClient, tmp_path: Path
+) -> None:
+    collection = tmp_path / "collection"
+    shutil.copytree(FIXTURES, collection)
+    CollectionIngestionService(root).import_collection("CASE-0001", collection)
+    assert _upload(client, filename="analyst-note.txt").status_code == 303
+
+    detail = _get(client, "/cases/CASE-0001")
+    assert "4</strong><span>Artifacts" in detail.text
+    assert "1</strong><span>Manual evidence" in detail.text
+    assert "2</strong><span>Observations" in detail.text
+
+    artifacts = ArtifactService(root).list_artifacts("CASE-0001")
+    process = next(item for item in artifacts if item.kind.value == "sysmon")
+    evidence = next(item for item in artifacts if item.kind.value == "evidence")
+
+    observation_page = _get(
+        client,
+        f"/cases/CASE-0001/artifacts/{process.artifact_id.display_id}",
+    )
+    provenance_page = _get(
+        client,
+        f"/cases/CASE-0001/artifacts/{evidence.artifact_id.display_id}",
+    )
+
+    assert observation_page.status_code == 200
+    assert "1 · Process Create" in observation_page.text
+    assert ">42<" in observation_page.text
+    assert process.artifact_id.display_id in observation_page.text
+    assert "benign-demo.exe" not in observation_page.text
+    assert "--message" not in observation_page.text
+    assert "artifacts/sha256" not in observation_page.text
+
+    assert provenance_page.status_code == 200
+    assert "Manual Evidence provenance" in provenance_page.text
+    assert "analyst-note.txt" in provenance_page.text
+    assert "analyst" in provenance_page.text
+    assert "sanitized fixture" in provenance_page.text
+
+
+def test_artifact_detail_rejects_missing_invalid_and_wrong_case_ids(
+    root: Path, client: FlaskClient, tmp_path: Path
+) -> None:
+    CaseService(root).create("Another open Case", "benign")
+    source = tmp_path / "generic.txt"
+    source.write_text("safe", encoding="utf-8")
+    artifact = ArtifactService(root).add("CASE-0003", source, "evidence")
+
+    missing = _get(client, "/cases/CASE-0001/artifacts/ART-999999")
+    invalid = _get(client, "/cases/CASE-0001/artifacts/not-an-artifact")
+    wrong_case = _get(
+        client,
+        f"/cases/CASE-0001/artifacts/{artifact.artifact_id.display_id}",
+    )
+
+    assert missing.status_code == 404
+    assert "ARTIFACT_NOT_FOUND" in missing.text
+    assert invalid.status_code == 404
+    assert "INVALID_DISPLAY_ID" in invalid.text
+    assert wrong_case.status_code == 404
+    assert "ARTIFACT_NOT_FOUND" in wrong_case.text

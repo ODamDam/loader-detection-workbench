@@ -29,9 +29,11 @@ validated before Waitress binds to `127.0.0.1`. There is no `--host` option.
 | GET | `/health` | Return only `{"status":"ready"}` |
 | GET | `/cases` | List Cases or show an empty state |
 | GET | `/cases/<case-id>` | Case and path-safe Artifact/provenance detail |
+| GET | `/cases/<case-id>/artifacts/<artifact-id>` | Artifact relationship detail with provenance and safe normalized observations |
 | GET | `/cases/<case-id>/evidence/new` | Registration form or state notice |
 | POST | `/cases/<case-id>/evidence` | Register through `ManualEvidenceService`, then 303 redirect |
 | GET | `/cases/<case-id>/timeline` | Event ID 1/11 safe Timeline projection |
+| GET | `/cases/<case-id>/report` | Safe read-only Case report preview and local Markdown command |
 
 The Artifact view includes display ID, kind, neutral classification, SHA-256,
 size, and creation time. Provenance, when present, adds original filename,
@@ -42,6 +44,21 @@ Collection metadata.
 The Timeline includes timestamp, Event ID and name, PID, source Artifact display
 ID, and EventRecordID. Image, command line, target filename, ProcessGuid, raw XML,
 and stored content paths are deliberately omitted.
+
+The Case detail summarizes Artifact, Manual Evidence, and normalized Observation
+counts. Each Artifact links to a relationship detail page. Manual Evidence remains
+distinguished from normalized Sysmon Observations; the UI does not create a new
+Evidence entity or persist a derived relationship.
+
+A `static` Artifact created by `workbench case static analyze` is rendered as a
+bounded result projection: source Artifact ID/hash/size, parse status, PE header
+summary, architecture, sections, analyzer version, and collection time. The UI
+does not expose or execute the source bytes.
+
+The report preview reuses the Case Timeline projection and deliberately omits the
+sensitive fields excluded from the rest of the browser UI. It does not write a
+file. The existing `workbench report build` command remains the way to generate
+the full Markdown report inside the selected Project.
 
 ## Upload and compatibility
 

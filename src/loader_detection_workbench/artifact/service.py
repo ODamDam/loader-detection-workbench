@@ -96,6 +96,19 @@ class ArtifactService:
             case = repository.get_case(case_display_id)
             return repository.list_artifacts(case.case_id.ulid)
 
+    def show(self, case_display_id: str, artifact_display_id: str) -> Artifact:
+        self._validate_case_selector(case_display_id)
+        ArtifactId("00000000000000000000000000", artifact_display_id)
+        with self._repository() as repository:
+            case = repository.get_case(case_display_id)
+            artifact = repository.get(artifact_display_id)
+            if artifact.case_id != case.case_id.ulid:
+                raise DomainError(
+                    DomainErrorCode.ARTIFACT_NOT_FOUND,
+                    "artifact was not found in the requested case",
+                )
+            return artifact
+
     def detach(self, case_display_id: str, artifact_display_id: str) -> Artifact:
         self._validate_case_selector(case_display_id)
         ArtifactId("00000000000000000000000000", artifact_display_id)
