@@ -27,6 +27,16 @@ from loader_detection_workbench.config import (
     load_config,
     normalize_log_level,
 )
+from loader_detection_workbench.detection.domain import (
+    Benchmark,
+    DetectionRule,
+    Hypothesis,
+    HypothesisStatus,
+    MemberRole,
+    RuleFormat,
+    ValidationRun,
+)
+from loader_detection_workbench.detection.service import DetectionService, check_rule
 from loader_detection_workbench.domain.case import Case
 from loader_detection_workbench.domain.errors import DomainError, DomainErrorCode
 from loader_detection_workbench.domain.time import format_utc
@@ -281,7 +291,103 @@ def build_parser() -> argparse.ArgumentParser:
     ui_serve = ui_commands.add_parser("serve")
     ui_serve.add_argument("root", type=Path, nargs="?", default=Path("."))
     ui_serve.add_argument("--port", type=_port, default=8080)
+    _add_detection_parsers(groups)
     return parser
+
+
+def _add_detection_parsers(groups: Any) -> None:
+    formats = tuple(item.value for item in RuleFormat)
+    rule = groups.add_parser("rule", help="manage versioned YARA/Sigma rules")
+    rule_commands = rule.add_subparsers(dest="rule_command", required=True)
+    rule_check = rule_commands.add_parser("check", help="compile a rule file only")
+    rule_check.add_argument("file", type=Path, metavar="FILE")
+    rule_check.add_argument("--format", required=True, choices=formats)
+    rule_add = rule_commands.add_parser("add", help="register a new draft rule")
+    rule_add.add_argument("file", type=Path, metavar="FILE")
+    rule_add.add_argument("--format", required=True, choices=formats)
+    rule_add.add_argument("--name", required=True)
+    rule_add.add_argument("--note")
+    rule_revise = rule_commands.add_parser("revise", help="add a new draft version")
+    rule_revise.add_argument("rule_id", metavar="RULE-NNNN")
+    rule_revise.add_argument("file", type=Path, metavar="FILE")
+    rule_revise.add_argument("--note")
+    rule_freeze = rule_commands.add_parser("freeze", help="freeze a rule version")
+    rule_freeze.add_argument("rule_id", metavar="RULE-NNNN")
+    rule_freeze.add_argument("--version", type=int)
+    rule_show = rule_commands.add_parser("show")
+    rule_show.add_argument("rule_id", metavar="RULE-NNNN")
+    rule_show.add_argument("--content", action="store_true")
+    rule_commands.add_parser("list")
+
+    hypothesis = groups.add_parser(
+        "hypothesis", help="manage evidence-backed Detection Hypotheses"
+    )
+    hypothesis_commands = hypothesis.add_subparsers(
+        dest="hypothesis_command", required=True
+    )
+    hypothesis_add = hypothesis_commands.add_parser("add")
+    hypothesis_add.add_argument("case_display_id", metavar="CASE-NNNN")
+    hypothesis_add.add_argument("--title", required=True)
+    hypothesis_add.add_argument("--statement", required=True)
+    hypothesis_add.add_argument(
+        "--evidence", nargs="+", default=[], metavar="ART-NNNNNN"
+    )
+    hypothesis_add.add_argument("--expected-benign")
+    hypothesis_evidence = hypothesis_commands.add_parser(
+        "evidence", help="link supporting evidence Artifacts"
+    )
+    hypothesis_evidence.add_argument("hypothesis_id", metavar="HYP-NNNN")
+    hypothesis_evidence.add_argument("artifacts", nargs="+", metavar="ART-NNNNNN")
+    hypothesis_link = hypothesis_commands.add_parser("link", help="link a rule")
+    hypothesis_link.add_argument("hypothesis_id", metavar="HYP-NNNN")
+    hypothesis_link.add_argument("rule_id", metavar="RULE-NNNN")
+    hypothesis_status = hypothesis_commands.add_parser("status")
+    hypothesis_status.add_argument("hypothesis_id", metavar="HYP-NNNN")
+    hypothesis_status.add_argument(
+        "status", choices=tuple(item.value for item in HypothesisStatus)
+    )
+    hypothesis_show = hypothesis_commands.add_parser("show")
+    hypothesis_show.add_argument("hypothesis_id", metavar="HYP-NNNN")
+    hypothesis_list = hypothesis_commands.add_parser("list")
+    hypothesis_list.add_argument("--case", metavar="CASE-NNNN")
+
+    benchmark = groups.add_parser(
+        "benchmark", help="manage dev/unseen/benign Case benchmarks"
+    )
+    benchmark_commands = benchmark.add_subparsers(
+        dest="benchmark_command", required=True
+    )
+    benchmark_create = benchmark_commands.add_parser("create")
+    benchmark_create.add_argument("--name", required=True)
+    benchmark_create.add_argument("--description")
+    benchmark_add = benchmark_commands.add_parser("add", help="add a member Case")
+    benchmark_add.add_argument("benchmark_id", metavar="BMK-NNNN")
+    benchmark_add.add_argument("case_display_id", metavar="CASE-NNNN")
+    benchmark_add.add_argument(
+        "--role", required=True, choices=tuple(item.value for item in MemberRole)
+    )
+    benchmark_freeze = benchmark_commands.add_parser("freeze")
+    benchmark_freeze.add_argument("benchmark_id", metavar="BMK-NNNN")
+    benchmark_show = benchmark_commands.add_parser("show")
+    benchmark_show.add_argument("benchmark_id", metavar="BMK-NNNN")
+    benchmark_commands.add_parser("list")
+
+    validate = groups.add_parser("validate", help="run and inspect rule validation")
+    validate_commands = validate.add_subparsers(dest="validate_command", required=True)
+    validate_run = validate_commands.add_parser("run")
+    validate_run.add_argument("rule_id", metavar="RULE-NNNN")
+    validate_run.add_argument("benchmark_id", metavar="BMK-NNNN")
+    validate_run.add_argument("--version", type=int)
+    validate_run.add_argument(
+        "--role",
+        action="append",
+        choices=tuple(item.value for item in MemberRole),
+        help="member role to evaluate (repeatable; default: dev and benign roles)",
+    )
+    validate_show = validate_commands.add_parser("show")
+    validate_show.add_argument("run_id", metavar="RUN-NNNN")
+    validate_list = validate_commands.add_parser("list")
+    validate_list.add_argument("--rule", metavar="RULE-NNNN")
 
 
 def _value(value: Any) -> Any:
@@ -559,6 +665,172 @@ def _run_collection(
     return 0
 
 
+def _ratio(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.3f}"
+
+
+def _print_rule(rule: DetectionRule, *, content: bool = False) -> None:
+    print(f"rule_id: {rule.display_id}")
+    print(f"name: {rule.name}")
+    print(f"format: {rule.format.value}")
+    print(f"created_at: {format_utc(rule.created_at)}")
+    for item in rule.versions:
+        frozen = "" if item.frozen_at is None else f" {format_utc(item.frozen_at)}"
+        note = "" if item.note is None else f" note={item.note}"
+        print(f"v{item.version}\t{item.status.value}{frozen}\t{item.sha256}{note}")
+    if content:
+        print("--- latest content ---")
+        print(
+            rule.latest.content, end="" if rule.latest.content.endswith("\n") else "\n"
+        )
+
+
+def _print_hypothesis(hypothesis: Hypothesis) -> None:
+    print(f"hypothesis_id: {hypothesis.display_id}")
+    print(f"case_id: {hypothesis.case_display_id or 'NULL'}")
+    print(f"status: {hypothesis.status.value}")
+    print(f"title: {hypothesis.title}")
+    print(f"statement: {hypothesis.statement}")
+    print(f"expected_benign: {hypothesis.expected_benign or 'NULL'}")
+    print(f"evidence: {', '.join(hypothesis.evidence_artifact_ids) or 'none'}")
+    print(f"rules: {', '.join(hypothesis.rule_display_ids) or 'none'}")
+
+
+def _print_benchmark(benchmark: Benchmark) -> None:
+    print(f"benchmark_id: {benchmark.display_id}")
+    print(f"name: {benchmark.name}")
+    frozen = "NULL" if benchmark.frozen_at is None else format_utc(benchmark.frozen_at)
+    print(f"frozen_at: {frozen}")
+    for member in benchmark.members:
+        print(f"{member.case_display_id}\t{member.role.value}")
+
+
+def _print_run(run: ValidationRun) -> None:
+    metrics = run.metrics
+    print(f"run_id: {run.display_id}")
+    print(f"rule: {run.rule_display_id} v{run.rule_version} ({run.rule_sha256[:12]})")
+    print(f"benchmark: {run.benchmark_display_id}")
+    print(f"kind: {run.kind.value}")
+    print(f"roles: {','.join(role.value for role in run.roles)}")
+    print(f"engine: {run.engine}")
+    print(f"created_at: {format_utc(run.created_at)}")
+    print(
+        f"TP={metrics.tp} FN={metrics.fn} (malicious n={metrics.malicious_total}) "
+        f"FP={metrics.fp} TN={metrics.tn} (benign n={metrics.benign_total}) "
+        f"not_evaluable={metrics.not_evaluable}"
+    )
+    print(
+        f"recall={_ratio(metrics.recall)} precision={_ratio(metrics.precision)} "
+        f"fp_rate={_ratio(metrics.false_positive_rate)}"
+    )
+    for result in run.results:
+        print(f"{result.case_display_id}\t{result.role.value}\t{result.outcome.value}")
+
+
+def _run_detection(arguments: argparse.Namespace, service: DetectionService) -> int:
+    group = arguments.group
+    if group == "rule":
+        command = arguments.rule_command
+        if command == "check":
+            text = arguments.file.read_text(encoding="utf-8")
+            print(check_rule(RuleFormat(arguments.format), text).summary)
+        elif command == "add":
+            text = arguments.file.read_text(encoding="utf-8")
+            _print_rule(
+                service.add_rule(arguments.name, arguments.format, text, arguments.note)
+            )
+        elif command == "revise":
+            text = arguments.file.read_text(encoding="utf-8")
+            _print_rule(service.revise_rule(arguments.rule_id, text, arguments.note))
+        elif command == "freeze":
+            _print_rule(service.freeze_rule(arguments.rule_id, arguments.version))
+        elif command == "show":
+            _print_rule(service.show_rule(arguments.rule_id), content=arguments.content)
+        else:
+            for rule in service.list_rules():
+                print(
+                    f"{rule.display_id}\t{rule.format.value}\t"
+                    f"v{rule.latest.version}:{rule.latest.status.value}\t{rule.name}"
+                )
+    elif group == "hypothesis":
+        command = arguments.hypothesis_command
+        if command == "add":
+            _print_hypothesis(
+                service.add_hypothesis(
+                    arguments.case_display_id,
+                    arguments.title,
+                    arguments.statement,
+                    evidence=arguments.evidence,
+                    expected_benign=arguments.expected_benign,
+                )
+            )
+        elif command == "evidence":
+            _print_hypothesis(
+                service.link_evidence(arguments.hypothesis_id, arguments.artifacts)
+            )
+        elif command == "link":
+            _print_hypothesis(
+                service.link_rule(arguments.hypothesis_id, arguments.rule_id)
+            )
+        elif command == "status":
+            _print_hypothesis(
+                service.set_hypothesis_status(arguments.hypothesis_id, arguments.status)
+            )
+        elif command == "show":
+            _print_hypothesis(service.show_hypothesis(arguments.hypothesis_id))
+        else:
+            for hypothesis in service.list_hypotheses(arguments.case):
+                print(
+                    f"{hypothesis.display_id}\t{hypothesis.case_display_id or '-'}\t"
+                    f"{hypothesis.status.value}\t{hypothesis.title}"
+                )
+    elif group == "benchmark":
+        command = arguments.benchmark_command
+        if command == "create":
+            _print_benchmark(
+                service.create_benchmark(arguments.name, arguments.description)
+            )
+        elif command == "add":
+            _print_benchmark(
+                service.add_member(
+                    arguments.benchmark_id, arguments.case_display_id, arguments.role
+                )
+            )
+        elif command == "freeze":
+            _print_benchmark(service.freeze_benchmark(arguments.benchmark_id))
+        elif command == "show":
+            _print_benchmark(service.show_benchmark(arguments.benchmark_id))
+        else:
+            for benchmark in service.list_benchmarks():
+                state = "frozen" if benchmark.is_frozen else "open"
+                print(
+                    f"{benchmark.display_id}\t{state}\t"
+                    f"{len(benchmark.members)}\t{benchmark.name}"
+                )
+    else:
+        command = arguments.validate_command
+        if command == "run":
+            _print_run(
+                service.run_validation(
+                    arguments.rule_id,
+                    arguments.benchmark_id,
+                    version=arguments.version,
+                    roles=arguments.role,
+                )
+            )
+        elif command == "show":
+            _print_run(service.show_run(arguments.run_id))
+        else:
+            for run in service.list_runs(arguments.rule):
+                metrics = run.metrics
+                print(
+                    f"{run.display_id}\t{run.rule_display_id}:v{run.rule_version}\t"
+                    f"{run.benchmark_display_id}\t{run.kind.value}\t"
+                    f"TP={metrics.tp} FP={metrics.fp} FN={metrics.fn} TN={metrics.tn}"
+                )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     arguments = parser.parse_args(argv)
@@ -628,6 +900,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"error: {DomainErrorCode.BUNDLE_IMPORT_FAILED.value}: {exc}",
                 file=sys.stderr,
             )
+            return 2
+    if arguments.group in {"rule", "hypothesis", "benchmark", "validate"}:
+        try:
+            return _run_detection(arguments, DetectionService(Path.cwd()))
+        except DomainError as exc:
+            print(f"error: {exc.code.value}: {exc}", file=sys.stderr)
+            return 2
+        except (OSError, UnicodeDecodeError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
             return 2
     if arguments.group != "sample":
         return 0

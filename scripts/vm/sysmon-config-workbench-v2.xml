@@ -1,0 +1,62 @@
+<!--
+  Workbench analysis VM Sysmon configuration v2 (2026-11-11, ADR-022/ADR-023).
+  Scope: isolated analysis VM only. Collects broad host telemetry for a short
+  execution window so detection logic can be evaluated offline.
+
+  Event IDs: 1 process create, 2 file time change, 3 network connect,
+  5 process terminate, 6 driver load, 7 image load (unsigned only),
+  8 CreateRemoteThread, 10 process access (non-default access only),
+  11 file create, 12/13/14 registry, 15 stream hash, 17/18 pipes,
+  19/20/21 WMI, 22 DNS query, 23 file delete (archived off: logged as 26),
+  25 process tampering.
+  Not included: 4/16 status (always logged), 9 raw access, 24 clipboard.
+
+  If an older Sysmon binary rejects schemaversion 4.90, lower it to the
+  version printed by `sysmon64 -s` and remove unsupported event elements.
+-->
+<Sysmon schemaversion="4.90">
+  <HashAlgorithms>SHA256,IMPHASH</HashAlgorithms>
+  <CheckRevocation>False</CheckRevocation>
+  <DnsLookup>False</DnsLookup>
+  <ArchiveDirectory></ArchiveDirectory>
+  <EventFiltering>
+    <RuleGroup name="process" groupRelation="or">
+      <ProcessCreate onmatch="exclude" />
+      <ProcessTerminate onmatch="exclude" />
+      <ProcessTampering onmatch="exclude" />
+    </RuleGroup>
+    <RuleGroup name="file" groupRelation="or">
+      <FileCreate onmatch="exclude" />
+      <FileCreateTime onmatch="exclude" />
+      <FileCreateStreamHash onmatch="exclude" />
+      <FileDeleteDetected onmatch="exclude" />
+    </RuleGroup>
+    <RuleGroup name="network" groupRelation="or">
+      <NetworkConnect onmatch="exclude" />
+      <DnsQuery onmatch="exclude" />
+    </RuleGroup>
+    <RuleGroup name="registry" groupRelation="or">
+      <RegistryEvent onmatch="exclude" />
+    </RuleGroup>
+    <RuleGroup name="image" groupRelation="or">
+      <ImageLoad onmatch="include">
+        <Signed condition="is">false</Signed>
+      </ImageLoad>
+      <DriverLoad onmatch="exclude" />
+    </RuleGroup>
+    <RuleGroup name="injection" groupRelation="or">
+      <CreateRemoteThread onmatch="exclude" />
+      <ProcessAccess onmatch="include">
+        <GrantedAccess condition="is">0x1fffff</GrantedAccess>
+        <GrantedAccess condition="is">0x1f3fff</GrantedAccess>
+        <GrantedAccess condition="is">0x143a</GrantedAccess>
+        <GrantedAccess condition="is">0x1410</GrantedAccess>
+        <GrantedAccess condition="is">0x1010</GrantedAccess>
+      </ProcessAccess>
+    </RuleGroup>
+    <RuleGroup name="ipc" groupRelation="or">
+      <PipeEvent onmatch="exclude" />
+      <WmiEvent onmatch="exclude" />
+    </RuleGroup>
+  </EventFiltering>
+</Sysmon>

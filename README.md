@@ -1,12 +1,10 @@
-# Windows 악성코드 로더 초기 실행 분석·탐지 룰 검증 프로젝트
+# 다중 증거 기반 Windows 악성코드 분석 지원 플랫폼
 
 ## 1. 프로젝트 개요
 
-공식 과제명은 **「Windows 악성코드 로더의 초기 실행 행위 분석 및 탐지 룰 검증 프레임워크 구축」**이다.
+공식 과제명은 **「다중 증거 기반 Windows 악성코드 분석 지원 플랫폼 구축」**이다(2026-10-25 과제명 변경 신청, ADR-022). 변경 전 과제명은 「Windows 악성코드 로더의 초기 실행 행위 분석 및 탐지 룰 검증 프레임워크 구축」이며, 저장소 이름 `loader-detection-workbench`는 당분간 유지한다.
 
-본 저장소의 소프트웨어 산출물은 가칭 **Local Detection-as-Code Workbench**이다. 이 도구는 Windows 악성코드 로더 또는 다운로더의 초기 실행 구간을 정적·동적으로 분석하고, 탐지 가설과 YARA·Sigma 룰을 작성·검증하며, 케이스별 Markdown·HTML 보고서를 생성하는 로컬 분석 워크벤치이다.
-
-공식 과제명은 유지하며, Workbench는 해당 과제에서 구축하는 구체적 프레임워크 구현체로 취급한다.
+본 저장소의 소프트웨어 산출물은 **Local Detection-as-Code Workbench**이다. 다양한 Windows 악성코드 패밀리의 정적·동적 증거를 Case 단위로 수집·구조화하고, 탐지 가설과 YARA·Sigma 룰을 작성해 악성·정상 데이터에서 반복 검증하며, 케이스별 보고서를 생성하는 로컬 분석 플랫폼이다.
 
 ## 2. 정량 목표
 
@@ -338,3 +336,31 @@ Timeline을 제공한다. 수동 등록은 Open v2 Case에서만 가능하며 �
 내부 ID와 저장 경로, Sysmon command line 및 실행·대상 경로도 표시하지 않는다.
 원격 bind, port forwarding 또는 reverse proxy로 노출하지 않는다. 전체 route,
 오류 및 보안 계약은 `docs/local-platform-ui-contract.md`를 참조한다.
+
+## 11. 탐지 가설·YARA/Sigma 룰·벤치마크 검증 (ADR-023)
+
+Project 루트에서 실행한다. 룰 파일은 UTF-8 텍스트이며 최대 256 KiB이다.
+
+```powershell
+uv run workbench rule check rule.yml --format sigma      # 컴파일만 확인
+uv run workbench rule add rule.yml --format sigma --name "hidden encoded powershell"
+uv run workbench rule revise RULE-0001 rule-v2.yml --note "add -nop"
+uv run workbench rule freeze RULE-0001                   # 최신 draft 버전 동결
+uv run workbench hypothesis add CASE-0001 --title "..." --statement "..." --evidence ART-000002
+uv run workbench hypothesis link HYP-0001 RULE-0001
+uv run workbench benchmark create --name realworld-v1
+uv run workbench benchmark add BMK-0001 CASE-0001 --role dev          # dev|unseen|benign_common|benign_matched
+uv run workbench benchmark freeze BMK-0001
+uv run workbench validate run RULE-0001 BMK-0001                      # 기본: dev + benign 역할
+uv run workbench validate run RULE-0001 BMK-0001 --role unseen        # 동결 룰·동결 벤치마크 필요
+uv run workbench validate show RUN-0001
+```
+
+- 평가 단위는 Benchmark 구성원 Case이다. YARA는 Case의 `sample` Artifact를, Sigma는 `sysmon`
+  Artifact의 모든 이벤트(Event ID 무관)를 평가한다. 대상 Artifact가 없으면 `not_evaluable`이다.
+- 결과는 TP·FP·FN·TN을 분모와 함께 출력하고, 각 Case의 매치 근거(YARA 문자열 위치,
+  Sigma 매치 EventRecordID)를 저장한다.
+- 같은 룰에 대한 두 번째 이후 Unseen 실행은 `tuning`으로 기록되어 최초 평가와 구분된다.
+- Sigma는 `product: windows`와 Sysmon 대응 category 또는 `service: sysmon`만 지원한다.
+  지원하지 않는 수정자·값 유형은 `UNSUPPORTED_SIGMA_FEATURE`로 실패한다.
+- `yara-python`은 Python 3.14용 휠이 없으면 소스 빌드되므로 C 빌드 도구가 필요할 수 있다.

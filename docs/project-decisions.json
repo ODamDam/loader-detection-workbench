@@ -1,5 +1,8 @@
 {
-  "official_project_title": "Windows 악성코드 로더의 초기 실행 행위 분석 및 탐지 룰 검증 프레임워크 구축",
+  "official_project_title": "다중 증거 기반 Windows 악성코드 분석 지원 플랫폼 구축",
+  "previous_project_title": "Windows 악성코드 로더의 초기 실행 행위 분석 및 탐지 룰 검증 프레임워크 구축",
+  "title_change_requested_at": "2026-10-25",
+  "scope_decision": "ADR-022",
   "working_product_name": "Local Detection-as-Code Workbench",
   "mvp": {
     "host": "Windows 11",

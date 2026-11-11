@@ -23,14 +23,16 @@
 | ADR-019 | SQLite v2와 수동 증거 provenance, 명시적 v1→v2 migration | 승인 |
 | ADR-020 | 기존 Open Case Sysmon Collection 등록과 멱등 재사용 | 승인 |
 | ADR-021 | loopback 전용 Flask 기본 플랫폼 UI와 기존 Service 재사용 | 승인 |
+| ADR-022 | 범용 Windows 악성코드 대상과 11월 최종 구현 범위 | 승인 |
+| ADR-023 | 탐지 가설·룰·벤치마크·검증 실행 모듈(모듈 소유 테이블, 오프라인 YARA·Sigma) | 승인 |
 
 ## 남은 주요 결정
 
 다음 항목은 구현 착수 또는 해당 마일스톤 직전에 확정한다.
 
-- 프로젝트 및 제품 최종 명칭
+- 저장소 이름 변경 여부 (공식 과제명은 ADR-022에서 확정)
 - 정적 PE 분석 도구 조합
-- Sigma 오프라인 평가 구현 방식
+- Unseen 평가의 탐지 판정 단위(룰 단위 vs 가설 단위)
 - 모의 DNS·HTTP 서비스 구성
 - 실제 샘플 확보·보관·폐기 절차
 - 공개 라이선스

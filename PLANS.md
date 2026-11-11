@@ -1,5 +1,34 @@
 # 구현 계획
 
+> 11월 기준선: Notion「11월 최종 구현 계획 v1 — 2026-11-11~11-22」, ADR-022.
+> 기능 동결 2026-11-22, 11/23–29는 Unseen 평가·버그 수정·문서화만 수행한다.
+
+## 2026-11-11 W1·W2 탐지 가설·룰·벤치마크·검증 엔진
+
+Status: `completed` — 로컬 구현·무해한 합성 fixture 검증 완료, 실제 샘플·VM 미사용
+
+- 브랜치 `feat/detection-validation-core`(기준 `ef50cf9`). ADR-022(범위),
+  ADR-023(모듈 설계)을 추가했다.
+- `detection` 모듈: Hypothesis(근거 Artifact·룰 연결, 상태), 버전 관리 YARA/Sigma
+  Rule(draft→frozen, append-only), Case 단위 Benchmark(dev·unseen·benign_common·
+  benign_matched, 동결), Validation Run(TP/FP/FN/TN·not_evaluable·매치 근거,
+  development/evaluation/tuning 구분).
+- 테이블은 `project.db`의 모듈 소유 테이블(`detection_schema` v1)이며 핵심
+  스키마 v2와 검증기는 변경하지 않았다. 동결·기록 데이터는 trigger로 보호한다.
+- `sysmon.records`: 모든 Event ID의 EventData 필드를 보존하는 파서(단일 Event와
+  `<Events>` 컨테이너). 기존 ID 1/11 Timeline 정규화는 그대로 둔다.
+- YARA `yara-python` 4.5.4(include 비활성, 메모리 검사), Sigma pySigma 1.5.1 해석
+  트리 오프라인 평가(수정자 contains/startswith/endswith/all/re/cidr/gt·gte·lt·lte/
+  exists/cased, null, 키워드, `1 of`/`all of`/not). 미지원은 fail-closed.
+- CLI: `rule`, `hypothesis`, `benchmark`, `validate` 그룹.
+- 사용자 VM 작업용 `scripts/vm/sysmon-config-workbench-v2.xml`과
+  `docs/24-sysmon-v2-vm-snapshot-procedure.md`를 추가했다(실행은 사용자).
+- 검증: 전체 pytest 491 passed / 1 skipped(신규 20), Ruff lint/format, strict mypy
+  `src`+신규 테스트 76개 파일, `uv lock --check`, `git diff --check` 통과. 기존 테스트
+  일부 파일의 mypy 오류는 이번 변경 이전부터 존재한다.
+- 남은 작업: 핵심 validator의 detection 테이블 검사, 보고서·UI 연동(W5·W6),
+  Collection helper의 전체 Event ID 내보내기(W4). commit/push는 사용자 승인 대기.
+
 ## 2026-10-14 Flask 기본 플랫폼 UI
 
 Status: `completed` — 로컬 구현·공개 합성 검증 완료, 실제 VM/민감 자료 미사용
