@@ -655,6 +655,25 @@ def _print_static(result: StaticAnalysis) -> None:
     print(f"is_pe: {str(result.is_pe).lower()}")
     print(f"architecture: {result.architecture or 'NULL'}")
     print(f"sections: {len(result.sections)}")
+    if result.schema_version < 2:
+        return
+    print(f"file_entropy: {result.file_entropy}")
+    print(f"imphash: {result.imphash or 'NULL'}")
+    print(
+        f"imports: {len(result.imports)} dlls / "
+        f"{result.import_function_count} functions"
+        + (" (truncated)" if result.imports_truncated else "")
+    )
+    print(f"exports: {result.export_count}")
+    print(f"signature: {result.signature or 'NULL'}")
+    print(f"compile_timestamp: {result.compile_timestamp or 'NULL'}")
+    print(f"strings: {len(result.strings)} kept / {result.strings_total} found")
+    for kind, values in sorted(result.indicators.items()):
+        print(f"indicator.{kind}: {len(values)}")
+    for flag in result.flags:
+        print(f"flag: {flag}")
+    if result.parser_warning:
+        print(f"parser_warning: {result.parser_warning}")
 
 
 def _run_collection(

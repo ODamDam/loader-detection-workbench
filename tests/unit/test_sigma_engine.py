@@ -2,7 +2,7 @@ from types import MappingProxyType
 
 import pytest
 
-from loader_detection_workbench.detection import sigma_engine
+import loader_detection_workbench.detection.sigma_engine as sigma_engine
 from loader_detection_workbench.domain.errors import DomainError, DomainErrorCode
 from loader_detection_workbench.sysmon.records import SysmonRecord
 

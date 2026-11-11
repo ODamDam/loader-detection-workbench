@@ -21,6 +21,7 @@ from loader_detection_workbench.evidence.domain import (
 )
 from loader_detection_workbench.evidence.service import ManualEvidenceService
 from loader_detection_workbench.static_analysis.service import StaticAnalysisService
+from loader_detection_workbench.sysmon.records import record_summary
 from loader_detection_workbench.web.presentation import (
     artifact_views,
     timeline_event_views,
@@ -171,11 +172,28 @@ def evidence_add(case_display_id: str) -> ResponseReturnValue:
 @web.get("/cases/<case_display_id>/timeline")
 def timeline(case_display_id: str) -> str:
     result = CaseTimelineQuery(_root()).query(case_display_id)
+    other_events = [
+        {
+            "timestamp": "—"
+            if record.timestamp is None
+            else format_utc(record.timestamp),
+            "event_id": record.event_id,
+            "summary": record_summary(record, include_paths=False),
+            "artifact_id": (
+                "—"
+                if record.source_artifact_id is None
+                else record.source_artifact_id.display_id
+            ),
+            "record_id": record.record_id or "—",
+        }
+        for record in result.other_records
+    ]
     return render_template(
         "timeline.html",
         case=result.case,
         events=timeline_event_views(result.observations),
         artifact_count=result.sysmon_artifact_count,
+        other_events=other_events,
     )
 
 

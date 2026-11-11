@@ -3,6 +3,23 @@
 > 11월 기준선: Notion「11월 최종 구현 계획 v1 — 2026-11-11~11-22」, ADR-022.
 > 기능 동결 2026-11-22, 11/23–29는 Unseen 평가·버그 수정·문서화만 수행한다.
 
+## 2026-11-11 W3 정적 PE 확장·다중 Event ID Timeline
+
+Status: `completed` — 로컬 구현·합성 PE/Sysmon fixture 검증 완료, 실제 샘플·VM 미사용
+
+- 정적 분석 결과 schema v2(`workbench-pe` 2): 파일·섹션 엔트로피와 X/W 권한,
+  `pefile` 2024.8.26 기반 Import(상한 256 DLL/4096 함수)·imphash·Export·
+  compile timestamp·entry point·subsystem·overlay·서명 존재 여부(검증 안 함),
+  ASCII/UTF-16LE 문자열(2000개 상한)과 지표(url·ipv4·registry·windows_path·
+  executable_name·script_keyword), 분석 단서 flag. flag는 판정이 아니다.
+  v1 결과는 그대로 읽힌다. UI는 windows_path 값과 원문 문자열 목록을 노출하지 않는다.
+- Timeline: 단일 Event ID 1/11 문서는 기존 정규화·오류 계약을 그대로 쓰고,
+  `<Events>` 다중 이벤트나 다른 Event ID는 공통 파서로 읽는다. 컨테이너 안 ID 1/11은
+  같은 필수 필드 규칙으로 typed 관측으로 바꾸고, 나머지는 `other_records`로
+  CLI·Markdown 보고서·UI Timeline에 표시한다(UI는 실행 파일·대상 경로 제외).
+- 검증: pytest 502 passed / 1 skipped(신규 11), Ruff lint/format, strict mypy
+  `src`+신규 테스트 80개 파일, `uv lock --check`, `git diff --check` 통과.
+
 ## 2026-11-11 W1·W2 탐지 가설·룰·벤치마크·검증 엔진
 
 Status: `completed` — 로컬 구현·무해한 합성 fixture 검증 완료, 실제 샘플·VM 미사용

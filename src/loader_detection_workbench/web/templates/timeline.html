@@ -23,5 +23,22 @@
   {% else %}
     <p class="empty">No normalized Sysmon observations are available.</p>
   {% endif %}
+  {% if other_events %}
+    <h2>Other Sysmon events ({{ other_events|length }})</h2>
+    <table>
+      <thead><tr><th>Timestamp</th><th>Event ID</th><th>Summary</th><th>Artifact</th><th>Record</th></tr></thead>
+      <tbody>
+        {% for event in other_events %}
+          <tr>
+            <td>{{ event.timestamp }}</td>
+            <td>{{ event.event_id }}</td>
+            <td>{{ event.summary }}</td>
+            <td>{{ event.artifact_id }}</td>
+            <td>{{ event.record_id }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
   <p class="hint">Sensitive command lines, executable paths, target paths, and Process GUIDs are not displayed.</p>
 {% endblock %}

@@ -13,11 +13,25 @@ from loader_detection_workbench.artifact.store import ArtifactStore
 from loader_detection_workbench.domain.artifact import Artifact, ArtifactKind
 from loader_detection_workbench.domain.errors import DomainError, DomainErrorCode
 from loader_detection_workbench.domain.time import format_utc, utc_now
-from loader_detection_workbench.static_analysis.domain import Section, StaticAnalysis
+from loader_detection_workbench.static_analysis.domain import (
+    ExtractedString,
+    ImportEntry,
+    Section,
+    StaticAnalysis,
+)
+from loader_detection_workbench.static_analysis.features import (
+    extract_strings,
+    pe_details,
+    section_entropy,
+    shannon_entropy,
+    suspicion_flags,
+)
 
 MAX_PE_BYTES = 64 * 1024 * 1024
-TOOL_NAME = "workbench-pe-minimal"
-TOOL_VERSION = "1"
+MAX_RESULT_BYTES = 8 * 1024 * 1024
+RESULT_SCHEMA_VERSION = 2
+TOOL_NAME = "workbench-pe"
+TOOL_VERSION = "2"
 _MACHINES = {
     0x014C: "x86",
     0x01C0: "ARM",
@@ -88,6 +102,7 @@ def _inspect(data: bytes) -> dict[str, Any]:
                     "virtual_address": virtual_address,
                     "raw_size": raw_size,
                     "characteristics": f"0x{flags:08x}",
+                    "raw_pointer": raw_pointer,
                 }
             )
         return {
@@ -107,6 +122,45 @@ def _inspect(data: bytes) -> dict[str, Any]:
             "is_pe": False,
             "error": str(exc),
         }
+
+
+def _v2_fields(payload: dict[str, Any]) -> dict[str, Any]:
+    if payload["schema_version"] == 1:
+        return {}
+    pe = payload["pe"]
+    strings = payload["strings"]
+    return {
+        "schema_version": 2,
+        "file_entropy": payload["file_entropy"],
+        "imports": tuple(
+            ImportEntry(str(item["dll"]), tuple(str(f) for f in item["functions"]))
+            for item in pe["imports"]
+        ),
+        "import_function_count": int(pe["import_function_count"]),
+        "imports_truncated": bool(pe["imports_truncated"]),
+        "imphash": pe["imphash"],
+        "exports": tuple(str(item) for item in pe["exports"]),
+        "export_count": int(pe["export_count"]),
+        "compile_timestamp": pe["compile_timestamp"],
+        "entry_point": pe["entry_point"],
+        "image_base": pe["image_base"],
+        "subsystem": pe["subsystem"],
+        "is_dll": pe["is_dll"],
+        "signature": pe["signature"],
+        "overlay_size": int(pe["overlay_size"]),
+        "parser_warning": pe["parser_warning"],
+        "flags": tuple(str(item) for item in payload["flags"]),
+        "strings_total": int(strings["total"]),
+        "strings_truncated": bool(strings["truncated"]),
+        "strings": tuple(
+            ExtractedString(str(item["encoding"]), str(item["value"]))
+            for item in strings["items"]
+        ),
+        "indicators": {
+            str(key): tuple(str(value) for value in values)
+            for key, values in strings["indicators"].items()
+        },
+    }
 
 
 def _deserialize(artifact: Artifact, payload: dict[str, Any]) -> StaticAnalysis:
@@ -131,8 +185,9 @@ def _deserialize(artifact: Artifact, payload: dict[str, Any]) -> StaticAnalysis:
             characteristics=pe["characteristics"],
             sections=sections,
             error=payload["error"],
+            **_v2_fields(payload),
         )
-    except (KeyError, TypeError, ValueError) as exc:
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
         raise DomainError(
             DomainErrorCode.INVALID_ARTIFACT_RECORD,
             "static analysis result is invalid",
@@ -157,8 +212,37 @@ class StaticAnalysisService:
             max_bytes=MAX_PE_BYTES,
         )
         inspected = _inspect(data)
+        section_entropy(data, inspected["sections"])
+        details = (
+            pe_details(data)
+            if inspected["is_pe"]
+            else {
+                "imports": [],
+                "import_function_count": 0,
+                "imports_truncated": False,
+                "imphash": None,
+                "exports": [],
+                "export_count": 0,
+                "compile_timestamp": None,
+                "entry_point": None,
+                "image_base": None,
+                "subsystem": None,
+                "is_dll": None,
+                "signature": None,
+                "overlay_size": 0,
+                "parser_warning": None,
+            }
+        )
+        flags = (
+            suspicion_flags(inspected["sections"], details)
+            if inspected["is_pe"]
+            else []
+        )
         payload = {
-            "schema_version": 1,
+            "schema_version": RESULT_SCHEMA_VERSION,
+            "file_entropy": shannon_entropy(data),
+            "flags": flags,
+            "strings": extract_strings(data),
             "source": {
                 "artifact_id": source.artifact_id.display_id,
                 "sha256": source.sha256,
@@ -172,14 +256,17 @@ class StaticAnalysisService:
             "status": inspected["status"],
             "is_pe": inspected["is_pe"],
             "pe": {
-                key: inspected[key]
-                for key in (
-                    "architecture",
-                    "machine",
-                    "optional_header",
-                    "characteristics",
-                    "sections",
-                )
+                **{
+                    key: inspected[key]
+                    for key in (
+                        "architecture",
+                        "machine",
+                        "optional_header",
+                        "characteristics",
+                        "sections",
+                    )
+                },
+                **details,
             },
             "error": inspected["error"],
         }
@@ -200,7 +287,7 @@ class StaticAnalysisService:
         data = ArtifactStore(self._root).read_verified(
             artifact.relative_path,
             (artifact.sha256, artifact.size_bytes),
-            max_bytes=1024 * 1024,
+            max_bytes=MAX_RESULT_BYTES,
         )
         try:
             payload = json.loads(data)
@@ -209,7 +296,7 @@ class StaticAnalysisService:
                 DomainErrorCode.INVALID_ARTIFACT_RECORD,
                 "static analysis result is invalid",
             ) from exc
-        if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        if not isinstance(payload, dict) or payload.get("schema_version") not in (1, 2):
             raise DomainError(
                 DomainErrorCode.INVALID_ARTIFACT_RECORD,
                 "static analysis result is invalid",

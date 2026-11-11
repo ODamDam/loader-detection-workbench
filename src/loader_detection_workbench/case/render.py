@@ -4,6 +4,7 @@ from loader_detection_workbench.case.timeline import CaseTimeline
 from loader_detection_workbench.domain.events import ProcessCreateEvent
 from loader_detection_workbench.domain.time import format_utc
 from loader_detection_workbench.presentation import single_line
+from loader_detection_workbench.sysmon.records import record_summary
 
 
 def render_timeline(timeline: CaseTimeline) -> str:
@@ -32,4 +33,22 @@ def render_timeline(timeline: CaseTimeline) -> str:
         )
     if not timeline.observations:
         lines.append("No normalized Sysmon observations.")
+    if timeline.other_records:
+        lines.append(f"other_sysmon_events: {len(timeline.other_records)}")
+        for record in timeline.other_records:
+            when = (
+                "unknown-time"
+                if record.timestamp is None
+                else format_utc(record.timestamp)
+            )
+            source = (
+                "?"
+                if record.source_artifact_id is None
+                else record.source_artifact_id.display_id
+            )
+            lines.append(
+                f"{when}  EventID={record.event_id}  "
+                f"{single_line(record_summary(record))}  "
+                f"source: {source}#{record.record_id or '?'}"
+            )
     return "\n".join(lines) + "\n"

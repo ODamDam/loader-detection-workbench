@@ -40,13 +40,56 @@
       {% if static_result.sections %}
         <h4>Sections</h4>
         <table>
-          <thead><tr><th>Name</th><th>Virtual size</th><th>Virtual address</th><th>Raw size</th><th>Characteristics</th></tr></thead>
+          <thead><tr><th>Name</th><th>Virtual size</th><th>Virtual address</th><th>Raw size</th><th>Characteristics</th><th>Entropy</th></tr></thead>
           <tbody>
             {% for section in static_result.sections %}
-              <tr><td>{{ section.name }}</td><td>{{ section.virtual_size }}</td><td>{{ section.virtual_address }}</td><td>{{ section.raw_size }}</td><td>{{ section.characteristics }}</td></tr>
+              <tr><td>{{ section.name }}</td><td>{{ section.virtual_size }}</td><td>{{ section.virtual_address }}</td><td>{{ section.raw_size }}</td><td>{{ section.characteristics }}{% if section.executable %} X{% endif %}{% if section.writable %} W{% endif %}</td><td>{{ section.entropy if section.entropy is not none else '—' }}</td></tr>
             {% endfor %}
           </tbody>
         </table>
+      {% endif %}
+      {% if static_result.schema_version >= 2 %}
+        <h4>Static features</h4>
+        <dl class="metadata">
+          <dt>File entropy</dt><dd>{{ static_result.file_entropy }}</dd>
+          <dt>Imphash</dt><dd class="digest">{{ static_result.imphash or '—' }}</dd>
+          <dt>Imports</dt><dd>{{ static_result.imports|length }} DLLs / {{ static_result.import_function_count }} functions{% if static_result.imports_truncated %} (truncated){% endif %}</dd>
+          <dt>Exports</dt><dd>{{ static_result.export_count }}</dd>
+          <dt>Subsystem</dt><dd>{{ static_result.subsystem or '—' }}</dd>
+          <dt>Compile timestamp</dt><dd>{{ static_result.compile_timestamp or '—' }}</dd>
+          <dt>Signature</dt><dd>{{ static_result.signature or '—' }}</dd>
+          <dt>Overlay</dt><dd>{{ static_result.overlay_size }} bytes</dd>
+          <dt>Strings</dt><dd>{{ static_result.strings|length }} kept / {{ static_result.strings_total }} found</dd>
+          {% if static_result.parser_warning %}<dt>Parser warning</dt><dd>{{ static_result.parser_warning }}</dd>{% endif %}
+        </dl>
+        {% if static_result.flags %}
+          <h4>Analyst leads</h4>
+          <p class="empty">Deterministic leads for review; not a maliciousness verdict.</p>
+          <ul>{% for flag in static_result.flags %}<li>{{ flag }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if static_result.imports %}
+          <h4>Imports</h4>
+          <table>
+            <thead><tr><th>DLL</th><th>Functions</th></tr></thead>
+            <tbody>
+              {% for entry in static_result.imports %}
+                <tr><td>{{ entry.dll }}</td><td>{{ entry.functions|join(', ') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+        {% if static_result.indicators %}
+          <h4>String indicators</h4>
+          <dl class="metadata">
+            {% for kind, values in static_result.indicators|dictsort %}
+              {% if kind == 'windows_path' %}
+                <dt>{{ kind }}</dt><dd>{{ values|length }} (values shown in CLI/JSON only)</dd>
+              {% else %}
+                <dt>{{ kind }}</dt><dd>{{ values|join(', ') }}</dd>
+              {% endif %}
+            {% endfor %}
+          </dl>
+        {% endif %}
       {% endif %}
     </article>
   {% endif %}

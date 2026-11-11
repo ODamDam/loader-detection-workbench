@@ -65,7 +65,7 @@ def _child(parent: ET.Element, name: str) -> ET.Element | None:
     return matches[0] if matches else None
 
 
-def _parse_time(value: str | None) -> datetime | None:
+def parse_sysmon_time(value: str | None) -> datetime | None:
     if value is None or _TIME_PATTERN.fullmatch(value.strip()) is None:
         return None
     text = value.strip().rstrip("Z").replace("T", " ")
@@ -121,10 +121,10 @@ def _record(event: ET.Element, source: ArtifactId | None) -> SysmonRecord:
                     "EventData field names must be present and unique",
                 )
             fields[name] = data.text or ""
-    timestamp = _parse_time(fields.get("UtcTime"))
+    timestamp = parse_sysmon_time(fields.get("UtcTime"))
     if timestamp is None:
         created = _child(system, "TimeCreated")
-        timestamp = _parse_time(
+        timestamp = parse_sysmon_time(
             created.get("SystemTime") if created is not None else None
         )
     return SysmonRecord(
@@ -163,3 +163,43 @@ def parse_sysmon_records(
             DomainErrorCode.INVALID_SYSMON_XML, "no Sysmon Event element was found"
         )
     return [_record(event, source_artifact_id) for event in events]
+
+
+_SUMMARY_FIELDS: dict[int, tuple[str, ...]] = {
+    2: ("Image", "TargetFilename"),
+    3: ("Image", "Protocol", "DestinationIp", "DestinationPort", "DestinationHostname"),
+    5: ("Image",),
+    6: ("ImageLoaded", "Signed"),
+    7: ("Image", "ImageLoaded", "Signed"),
+    8: ("SourceImage", "TargetImage"),
+    10: ("SourceImage", "TargetImage", "GrantedAccess"),
+    12: ("EventType", "Image", "TargetObject"),
+    13: ("EventType", "Image", "TargetObject", "Details"),
+    14: ("EventType", "Image", "TargetObject", "NewName"),
+    15: ("Image", "TargetFilename"),
+    17: ("Image", "PipeName"),
+    18: ("Image", "PipeName"),
+    22: ("Image", "QueryName", "QueryStatus"),
+    23: ("Image", "TargetFilename"),
+    25: ("Image", "Type"),
+    26: ("Image", "TargetFilename"),
+}
+
+
+def record_summary(record: SysmonRecord, *, include_paths: bool = True) -> str:
+    """One-line ``Field=value`` summary of the most useful fields per Event ID."""
+    names = _SUMMARY_FIELDS.get(record.event_id, ("Image",))
+    parts: list[str] = []
+    for name in names:
+        if not include_paths and name in {
+            "Image",
+            "ImageLoaded",
+            "SourceImage",
+            "TargetImage",
+            "TargetFilename",
+        }:
+            continue
+        value = record.fields.get(name)
+        if value:
+            parts.append(f"{name}={' '.join(value.split())[:160]}")
+    return " ".join(parts) if parts else "(no summary fields)"

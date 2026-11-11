@@ -6,6 +6,7 @@ from loader_detection_workbench.case.timeline import CaseTimeline
 from loader_detection_workbench.domain.events import ProcessCreateEvent
 from loader_detection_workbench.domain.time import format_utc
 from loader_detection_workbench.presentation import markdown_text
+from loader_detection_workbench.sysmon.records import record_summary
 
 
 def render_markdown(timeline: CaseTimeline, generated_at: datetime) -> str:
@@ -62,6 +63,30 @@ def render_markdown(timeline: CaseTimeline, generated_at: datetime) -> str:
         )
     if not timeline.observations:
         lines.extend(["No normalized Sysmon observations.", ""])
+    if timeline.other_records:
+        lines.extend(
+            [
+                "## Other Sysmon Events",
+                "",
+                "| Time (UTC) | Event ID | Summary | Source |",
+                "|---|---:|---|---|",
+            ]
+        )
+        for record in timeline.other_records:
+            when = (
+                "unknown" if record.timestamp is None else format_utc(record.timestamp)
+            )
+            source = (
+                "?"
+                if record.source_artifact_id is None
+                else record.source_artifact_id.display_id
+            )
+            summary = markdown_text(record_summary(record)).replace("|", "\\|")
+            lines.append(
+                f"| {when} | {record.event_id} | {summary} | "
+                f"{source}#{record.record_id or '?'} |"
+            )
+        lines.append("")
     lines.extend(
         [
             "## Collection / Analysis Limits",
