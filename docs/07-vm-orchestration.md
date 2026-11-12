@@ -6,17 +6,18 @@
 - Hypervisor: Oracle VirtualBox (ADR-018, 현재 active target)
 - 게스트: Windows 11 x64 VM 한 대
 - 자동 실행 대상: Windows PE `.exe`
-- 게스트 통합: VirtualBox Guest Additions, 현재 benign 수동 전달은 Shared Folder
-- 현재 clean snapshot: `SYSMON-DEMO-CLEAN`
-- 향후 자동화 표면: VBoxManage; 이번 구현은 adapter/guestcontrol을 포함하지 않는다.
+- 게스트 통합: VirtualBox Guest Additions. 자동 실행 런은 `guestcontrol`로 반입·실행·회수한다
+  (ADR-024). 데모 시기의 수동 전달은 Shared Folder였으나 sample 실행 시에는 금지한다.
+- 자동 실행 clean snapshot: `SYSMON-V2-CLEAN`(사용자 생성 예정, docs/24). 데모: `SYSMON-DEMO-CLEAN`
+- 자동화 표면: `VBoxManage` 어댑터(`execution.vboxmanage`), 사용법은 `25-vm-execution-runbook.md`
 - 게스트 실행기: 일회성 PowerShell 오케스트레이터
 - 상시 서비스와 수신 포트는 사용하지 않는다.
 
 ## 2. 실행 흐름
 
-아래는 장기 orchestration 설계이다. 현재는 사용자가 확인한 benign 수동 E2E와
-guest collection/export helper가 범위이며 VM start/stop/restore 자동화는 없다.
-실제 manual Event ID 1/11 → Workbench 성공과 새 helper 검증 상태는 구분한다.
+2026-11-12 W4(ADR-024)에서 아래 흐름을 `workbench vm run|scenario`로 구현했다. 복원 직후
+네트워크 격리를 다시 확인하고, 복원 실패·확인 실패는 안전 잠금으로 다음 실행을 막는다.
+검증은 모의 VBoxManage와 PowerShell mock까지이며 실제 VM 실행 검증은 아직 하지 않았다.
 
 ```text
 사용자 승인

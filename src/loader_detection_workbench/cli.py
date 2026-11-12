@@ -42,6 +42,26 @@ from loader_detection_workbench.domain.errors import DomainError, DomainErrorCod
 from loader_detection_workbench.domain.time import format_utc
 from loader_detection_workbench.evidence.domain import EvidenceType, ManualEvidence
 from loader_detection_workbench.evidence.service import ManualEvidenceService
+from loader_detection_workbench.execution.domain import (
+    BENIGN_SCENARIOS,
+    DEFAULT_SNAPSHOT,
+    DEFAULT_TIMEOUT_SECONDS,
+    DEFAULT_VM_NAME,
+    MAX_TIMEOUT_SECONDS,
+    MIN_TIMEOUT_SECONDS,
+    ExecutionPlan,
+    ExecutionProfile,
+    ExecutionRequest,
+    ExecutionRun,
+    VmSettings,
+    require_timeout,
+)
+from loader_detection_workbench.execution.service import (
+    ExecutionService,
+    LockStatus,
+    PreflightReport,
+)
+from loader_detection_workbench.execution.vboxmanage import VBoxManageHypervisor
 from loader_detection_workbench.logging_config import configure_console_logging
 from loader_detection_workbench.project.migration import ProjectMigrationService
 from loader_detection_workbench.project.service import ProjectService, ProjectWorkspace
@@ -292,7 +312,84 @@ def build_parser() -> argparse.ArgumentParser:
     ui_serve.add_argument("root", type=Path, nargs="?", default=Path("."))
     ui_serve.add_argument("--port", type=_port, default=8080)
     _add_detection_parsers(groups)
+    _add_vm_parsers(groups)
     return parser
+
+
+def _timeout_argument(value: str) -> int:
+    try:
+        return require_timeout(int(value))
+    except (ValueError, DomainError) as exc:
+        raise argparse.ArgumentTypeError(
+            f"timeout must be {MIN_TIMEOUT_SECONDS}-{MAX_TIMEOUT_SECONDS} seconds"
+        ) from exc
+
+
+def _add_vm_target_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--vm", default=DEFAULT_VM_NAME, help="VirtualBox VM name")
+    parser.add_argument(
+        "--snapshot", default=DEFAULT_SNAPSHOT, help="clean snapshot name"
+    )
+
+
+def _add_vm_run_options(parser: argparse.ArgumentParser) -> None:
+    _add_vm_target_options(parser)
+    parser.add_argument(
+        "--timeout",
+        type=_timeout_argument,
+        default=DEFAULT_TIMEOUT_SECONDS,
+        metavar="SECONDS",
+        help=f"execution time limit (default {DEFAULT_TIMEOUT_SECONDS})",
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="validate and print the plan; no VM command is executed",
+    )
+    mode.add_argument(
+        "--approve",
+        action="store_true",
+        help="explicitly approve restoring, starting and running the analysis VM",
+    )
+
+
+def _add_vm_parsers(groups: Any) -> None:
+    vm = groups.add_parser(
+        "vm", help="isolated VM execution runs with clean snapshot restore"
+    )
+    commands = vm.add_subparsers(dest="vm_command", required=True)
+    commands.add_parser("scenarios", help="list fixed benign scenarios")
+    preflight = commands.add_parser(
+        "preflight", help="read-only VM state and isolation check"
+    )
+    _add_vm_target_options(preflight)
+    preflight.add_argument(
+        "--profile",
+        choices=tuple(item.value for item in ExecutionProfile),
+        default=ExecutionProfile.SAMPLE.value,
+    )
+    run = commands.add_parser("run", help="execute a sample Artifact in the VM")
+    run.add_argument("case_display_id", metavar="CASE-NNNN")
+    run.add_argument("--sample", required=True, metavar="ART-NNNNNN")
+    _add_vm_run_options(run)
+    scenario = commands.add_parser(
+        "scenario", help="execute a fixed benign scenario in the VM"
+    )
+    scenario.add_argument("case_display_id", metavar="CASE-NNNN")
+    scenario.add_argument("--scenario", required=True, choices=tuple(BENIGN_SCENARIOS))
+    _add_vm_run_options(scenario)
+    commands.add_parser("status", help="show the safety lock and unfinished runs")
+    show = commands.add_parser("show", help="show one execution run and its steps")
+    show.add_argument("run_id", metavar="VMR-NNNN")
+    commands.add_parser("list", help="list execution runs")
+    unlock = commands.add_parser(
+        "unlock",
+        help="release the safety lock after manually verifying the VM is clean",
+    )
+    unlock.add_argument(
+        "--note", required=True, help="what was verified (stored with the release)"
+    )
 
 
 def _add_detection_parsers(groups: Any) -> None:
@@ -850,6 +947,133 @@ def _run_detection(arguments: argparse.Namespace, service: DetectionService) -> 
     return 0
 
 
+def _print_execution_run(run: ExecutionRun) -> None:
+    print(f"run_id: {run.display_id}")
+    print(f"case_id: {run.case_display_id}")
+    print(f"profile: {run.profile.value}")
+    print(f"target: {run.target}")
+    print(f"target_sha256: {run.target_sha256 or 'NULL'}")
+    print(f"vm: {run.vm_name}")
+    print(f"snapshot: {run.snapshot}")
+    print(f"timeout_seconds: {run.timeout_seconds}")
+    print(f"status: {run.status.value}")
+    print(f"started_at: {format_utc(run.started_at)}")
+    finished = "NULL" if run.finished_at is None else format_utc(run.finished_at)
+    print(f"finished_at: {finished}")
+    print(f"error_code: {run.error_code or 'NULL'}")
+    print(f"sysmon_artifact: {run.sysmon_artifact_id or 'NULL'}")
+    print(f"metadata_artifact: {run.metadata_artifact_id or 'NULL'}")
+    print(f"event_count: {'NULL' if run.event_count is None else run.event_count}")
+    for step in run.steps:
+        detail = "" if step.detail is None else f"\t{step.detail}"
+        print(
+            f"{step.sequence:02d}\t{step.step.value}\t{step.status.value}\t"
+            f"{format_utc(step.at)}{detail}"
+        )
+
+
+def _print_plan(plan: ExecutionPlan, credentials_configured: bool) -> None:
+    request = plan.request
+    print("dry_run: true (no VM command was executed)")
+    print(f"case_id: {request.case_display_id}")
+    print(f"profile: {request.profile.value}")
+    print(f"target: {request.target}")
+    print(f"target_sha256: {plan.target_sha256 or 'NULL'}")
+    print(f"vm: {plan.settings.vm_name}")
+    print(f"snapshot: {plan.settings.snapshot}")
+    print(f"timeout_seconds: {request.timeout_seconds}")
+    print(f"guest_credentials: {'set' if credentials_configured else 'missing'}")
+    for index, step in enumerate(plan.steps, start=1):
+        print(f"{index:02d}\t{step.step.value}\t{step.description}")
+        if step.command is not None:
+            print("\t$ " + " ".join(step.command))
+
+
+def _print_lock(status: LockStatus) -> None:
+    if status.lock is None:
+        print("safety_lock: none")
+    else:
+        print("safety_lock: SET")
+        print(f"lock_run: {status.lock.run_display_id or 'NULL'}")
+        print(f"lock_reason: {status.lock.reason}")
+        print(f"lock_created_at: {format_utc(status.lock.created_at)}")
+    print(f"unfinished_runs: {', '.join(status.running_runs) or 'none'}")
+
+
+def _print_preflight(report: PreflightReport) -> None:
+    info = report.info
+    print(f"vm: {info.name}")
+    print(f"state: {info.state}")
+    print(f"current_snapshot: {info.current_snapshot or 'NULL'}")
+    presence = "present" if report.snapshot_present else "MISSING"
+    print(f"clean_snapshot: {report.snapshot} ({presence})")
+    for nic in info.nics:
+        cable = "connected" if nic.cable_connected else "disconnected"
+        print(f"nic{nic.index}: {nic.attachment} cable={cable}")
+    print(f"shared_folders: {len(info.shared_folders)}")
+    print(f"clipboard: {info.clipboard_mode or 'unknown'}")
+    print(f"drag_and_drop: {info.drag_and_drop_mode or 'unknown'}")
+    print(f"ready: {'yes' if report.ready else 'no'}")
+    for problem in report.problems:
+        print(f"problem: {problem}")
+
+
+def _run_vm(arguments: argparse.Namespace) -> int:
+    command = arguments.vm_command
+    root = Path.cwd()
+    if command == "scenarios":
+        for name, description in BENIGN_SCENARIOS.items():
+            print(f"{name}\t{description}")
+        return 0
+    if command in {"status", "show", "list", "unlock"}:
+        service = ExecutionService(root)
+        if command == "status":
+            _print_lock(service.lock_status())
+        elif command == "show":
+            _print_execution_run(service.show_run(arguments.run_id))
+        elif command == "list":
+            for run in service.list_runs():
+                print(
+                    f"{run.display_id}\t{run.case_display_id}\t{run.profile.value}\t"
+                    f"{run.target}\t{run.status.value}\t{run.error_code or '-'}"
+                )
+        else:
+            before = service.unlock(arguments.note)
+            if not before.locked:
+                print("safety_lock: none (nothing to release)")
+            else:
+                print("safety_lock: released")
+                for run_id in before.running_runs:
+                    print(f"abandoned_run: {run_id}")
+        return 0
+    settings = VmSettings(vm_name=arguments.vm, snapshot=arguments.snapshot)
+    hypervisor = VBoxManageHypervisor()
+    service = ExecutionService(root, settings, hypervisor)
+    if command == "preflight":
+        report = service.preflight(ExecutionProfile(arguments.profile))
+        _print_preflight(report)
+        return 0 if report.ready else 1
+    if command == "run":
+        request = ExecutionRequest(
+            arguments.case_display_id,
+            ExecutionProfile.SAMPLE,
+            arguments.timeout,
+            sample_artifact_id=arguments.sample,
+        )
+    else:
+        request = ExecutionRequest(
+            arguments.case_display_id,
+            ExecutionProfile.BENIGN_SCENARIO,
+            arguments.timeout,
+            scenario=arguments.scenario,
+        )
+    if arguments.dry_run:
+        _print_plan(service.plan(request), service.credentials_configured())
+        return 0
+    _print_execution_run(service.run(request, approved=arguments.approve))
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     arguments = parser.parse_args(argv)
@@ -919,6 +1143,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"error: {DomainErrorCode.BUNDLE_IMPORT_FAILED.value}: {exc}",
                 file=sys.stderr,
             )
+            return 2
+    if arguments.group == "vm":
+        try:
+            return _run_vm(arguments)
+        except DomainError as exc:
+            print(f"error: {exc.code.value}: {exc}", file=sys.stderr)
+            if exc.code is DomainErrorCode.SNAPSHOT_RESTORE_FAILED:
+                print(
+                    "error: SAFETY: the safety lock is set; no further run is "
+                    "possible until the VM is verified and 'workbench vm unlock' "
+                    "is used",
+                    file=sys.stderr,
+                )
             return 2
     if arguments.group in {"rule", "hypothesis", "benchmark", "validate"}:
         try:

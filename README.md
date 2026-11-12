@@ -40,6 +40,7 @@ Workbench의 자동 생성 범위는 **개별 분석 보고서의 Markdown·HTML
 - `docs/05-data-model.md`: 주요 엔터티와 작업공간 구조
 - `docs/06-cli-and-ui-design.md`: CLI 우선 및 로컬 웹 UI 구조
 - `docs/07-vm-orchestration.md`: VirtualBox 기반 분석 VM 설계 (ADR-018)
+- `docs/25-vm-execution-runbook.md`: VM 실행 런 사용·잠금 해제 절차 (ADR-024)
 - `docs/08-detection-validation.md`: YARA·Sigma 검증 기준
 - `docs/09-reporting-and-publication.md`: 보고서와 공개 정책
 - `docs/10-test-plan.md`: 테스트 전략
@@ -364,3 +365,22 @@ uv run workbench validate show RUN-0001
 - Sigma는 `product: windows`와 Sysmon 대응 category 또는 `service: sysmon`만 지원한다.
   지원하지 않는 수정자·값 유형은 `UNSUPPORTED_SIGMA_FEATURE`로 실패한다.
 - `yara-python`은 Python 3.14용 휠이 없으면 소스 빌드되므로 C 빌드 도구가 필요할 수 있다.
+
+## 12. VM 실행 런과 클린 스냅샷 복원 (ADR-024)
+
+승인한 실행만 분석 VM을 움직인다. 복원 → 격리 재확인 → 실행 → 실행 구간 Sysmon 전체 회수·
+해시 검증 → 복원 → Case 등록 순서이며, 복원을 확인하지 못하면 안전 잠금이 다음 실행을 막는다.
+상세 절차와 실패 표는 [`docs/25-vm-execution-runbook.md`](docs/25-vm-execution-runbook.md)를 참조한다.
+
+```powershell
+uv run workbench vm preflight --profile sample                          # 읽기 전용 점검
+uv run workbench vm scenario CASE-0001 --scenario registry-probe --dry-run
+uv run workbench vm run CASE-0002 --sample ART-000001 --timeout 180 --approve
+uv run workbench vm show VMR-0001
+uv run workbench vm status
+uv run workbench vm unlock --note "VM verified by hand"
+```
+
+- 게스트 계정은 `WORKBENCH_GUEST_USER`·`WORKBENCH_GUEST_PASSWORD` 환경 변수로만 받는다.
+- sample 실행은 NIC 케이블 분리, 공유 폴더 없음, 클립보드·드래그 앤 드롭 비활성화를 요구한다.
+- 2026-11-12 기준 실제 VM 실행 검증은 하지 않았다(모의 VBoxManage·PowerShell mock만 통과).

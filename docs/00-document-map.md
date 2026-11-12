@@ -32,6 +32,8 @@
 - `17-development-workflow.md`: 작업 접수, 승인, 구현, 검증과 보고의 상세 절차
 - `18-m0-codex-handoff.md`: 현재 M0-local을 Codex에 넘길 때 사용하는 착수 기준과 작업 경계
 - `23-virtualbox-sysmon-export-helper-handoff.md`: 현재 VirtualBox demo 수집 helper와 guest 검증 인계
+- `24-sysmon-v2-vm-snapshot-procedure.md`: Sysmon v2 설정과 `SYSMON-V2-CLEAN` 스냅샷 생성(사용자 수행)
+- `25-vm-execution-runbook.md`: W4 VM 실행 런(`workbench vm`) 사용·실패·잠금 해제 절차
 
 ## 4. 현재 활성 작업을 읽는 순서
 

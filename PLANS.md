@@ -3,6 +3,30 @@
 > 11월 기준선: Notion「11월 최종 구현 계획 v1 — 2026-11-11~11-22」, ADR-022.
 > 기능 동결 2026-11-22, 11/23–29는 Unseen 평가·버그 수정·문서화만 수행한다.
 
+## 2026-11-12 W4 VM 실행 런·클린 스냅샷 복원
+
+Status: `completed (mock)` — 모의 VBoxManage·PowerShell mock 검증 완료, 실제 VM·샘플 미실행
+
+- ADR-024(D1~D3 승인): `execution` 모듈. `Hypervisor` Protocol + `VBoxManageHypervisor`
+  (shell 없는 인자 목록, 비밀번호는 호출별 임시 `--passwordfile`), 모듈 소유 테이블
+  `execution_schema` v1(런·단계 append-only, 끝난 런 불변, 안전 잠금 1행·해제 이력).
+- 흐름: 승인(`--approve`) → 잠금·미종료 런 확인 → 사전 점검(전원 꺼짐, 스냅샷 존재, NIC
+  분리, sample은 공유 폴더·클립보드·DnD 금지) → 복원·확인 → 복원 설정 격리 재확인 →
+  headless 시작 → Guest Additions 준비 → 반입 → 제한 시간 실행 → `<Events>`·매니페스트 회수 →
+  SHA-256·run ID·대상·EventRecordID 범위 검증 → 전원 끄기 → 복원·확인 → `sysmon`·`other`
+  Artifact 등록. 실패 시 전원 끄기·복원, 복원 실패는 잠금과 `SNAPSHOT_RESTORE_FAILED`.
+- 게스트 스크립트 `execution/guest/Invoke-WorkbenchGuestRun.ps1`(패키지 데이터): 게스트 해시
+  재검증, 전체 제한 시간 관찰 후 프로세스 트리 종료, 기준 이후 모든 Sysmon 이벤트 내보내기.
+  고정 정상 시나리오 5개. 데모용 `Invoke-SysmonDemoCollection.ps1`은 변경하지 않았다.
+- CLI `vm preflight|scenarios|run|scenario|status|show|list|unlock`, `--dry-run`은 VM 명령 없음.
+- 문서: ADR-024, `docs/25-vm-execution-runbook.md`, docs/07·24(스냅샷 전 격리 설정 추가)·14·00, README 12절.
+- 검증: pytest 534 passed / 1 skipped(신규 32), PowerShell guest-run 44·demo 53 checks, Ruff
+  lint/format, strict mypy `src`+신규 테스트 82개 파일, `uv lock --check`, `git diff --check`.
+  host/repeat PowerShell 테스트는 대상 스크립트 미변경으로 재실행하지 않았다.
+- 남은 작업: 사용자가 `SYSMON-V2-CLEAN` 생성(현재 VM은 클립보드·DnD 양방향, 공유 폴더 있음 →
+  docs/24 5절), 게스트 계정 준비 후 승인받아 정상 시나리오 1회 실제 검증. 실제 VBoxManage의
+  `guestcontrol run` 종료 코드 전달 방식은 그때 확인한다. commit/push는 사용자 요청 대기.
+
 ## 2026-11-11 W3 정적 PE 확장·다중 Event ID Timeline
 
 Status: `completed` — 로컬 구현·합성 PE/Sysmon fixture 검증 완료, 실제 샘플·VM 미사용

@@ -56,17 +56,41 @@ wevtutil cl Microsoft-Windows-Sysmon/Operational
 Stop-Computer
 ```
 
-## 5. 스냅샷 생성 (Host, VM이 poweroff인 상태)
+## 5. 호스트 쪽 격리 설정 (Host, VM이 poweroff인 상태) — 2026-11-12 추가
+
+W4 자동 실행(ADR-024)은 sample 실행 전에 아래 설정을 확인하고, 하나라도 맞지 않으면
+실행하지 않는다. 이 설정은 스냅샷에 함께 저장되므로 **스냅샷을 찍기 전에** 바꾼다.
+2026-11-12 조회 기준 현재 VM은 클립보드·드래그 앤 드롭이 `bidirectional`이고 공유 폴더
+`WorkbenchVMExchange`가 연결되어 있다.
 
 ```powershell
 $vb = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
-& $vb snapshot WIN11-ANALYSIS take SYSMON-V2-CLEAN --description "Sysmon config workbench-v2 applied; Operational log cleared; updates paused; network cable off"
+& $vb modifyvm WIN11-ANALYSIS --cable-connected1 off --clipboard-mode disabled --drag-and-drop disabled
+& $vb sharedfolder remove WIN11-ANALYSIS --name WorkbenchVMExchange
+& $vb showvminfo WIN11-ANALYSIS --machinereadable |
+    Select-String '^(cableconnected|clipboard=|draganddrop|SharedFolderName)'
+```
+
+- 1절의 설정 파일 복사에는 공유 폴더가 필요하므로, 이 단계는 1~4절을 마친 뒤 수행한다.
+- 게스트에 **비밀번호가 있는 로컬 계정**을 준비해 둔다. 자동 실행은 이 계정으로
+  `VBoxManage guestcontrol`에 로그온한다(빈 비밀번호 불가). 계정 정보는 실행 세션의 환경
+  변수로만 전달한다(`docs/25-vm-execution-runbook.md`).
+
+## 6. 스냅샷 생성 (Host, VM이 poweroff인 상태)
+
+```powershell
+$vb = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
+& $vb snapshot WIN11-ANALYSIS take SYSMON-V2-CLEAN --description "Sysmon config workbench-v2 applied; Operational log cleared; updates paused; network cable off; no shared folders; clipboard and drag-and-drop disabled"
 & $vb snapshot WIN11-ANALYSIS list
 ```
 
-## 후속 (Workbench 구현, W4)
+이어서 Project 루트에서 `uv run workbench vm preflight --profile sample`로 `ready: yes`를 확인한다.
 
-- `scripts/vm/Invoke-SysmonDemoCollection.ps1`는 아직 Event ID 1·11만 내보낸다.
-  W4에서 실행 구간의 모든 Sysmon 이벤트를 하나의 `<Events>` XML로 내보내도록 확장하며,
-  이 파일은 `sysmon.records` 파서와 Sigma 평가기가 그대로 읽을 수 있다.
-- 자동 실행기는 `SYSMON-V2-CLEAN`으로 복원한 뒤 실행하고, 종료 후 다시 복원한다.
+## 후속 (Workbench 구현, W4) — 2026-11-12 구현
+
+- 실행 구간의 모든 Sysmon 이벤트는 새 게스트 스크립트
+  `src/loader_detection_workbench/execution/guest/Invoke-WorkbenchGuestRun.ps1`이 하나의
+  `<Events>` XML로 내보낸다. 데모용 `scripts/vm/Invoke-SysmonDemoCollection.ps1`(Event ID 1·11)은
+  중간보고 데모 경로로 그대로 둔다(ADR-024 D3).
+- 자동 실행기(`workbench vm run|scenario`)는 `SYSMON-V2-CLEAN`으로 복원한 뒤 실행하고, 종료 후
+  다시 복원한다. 사용 절차는 `docs/25-vm-execution-runbook.md`.
