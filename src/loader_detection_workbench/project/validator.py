@@ -31,6 +31,10 @@ from loader_detection_workbench.evidence.domain import (
     EvidenceType,
 )
 from loader_detection_workbench.project.database import connect_database
+from loader_detection_workbench.project.module_validator import (
+    validate_detection,
+    validate_execution,
+)
 from loader_detection_workbench.project.service import ProjectService, ProjectWorkspace
 
 DATABASE_MISSING = "DATABASE_MISSING"
@@ -163,6 +167,20 @@ def validate_workspace(root: Path, *, full: bool = False) -> ValidationReport:
         if workspace.sqlite_schema_version >= 2:
             _validate_provenance(connection, artifacts, collected)
         _validate_counters(connection, cases, artifacts, collected)
+
+        def emit(
+            tier: int,
+            code: str,
+            severity: FindingSeverity,
+            scope: ValidationScope,
+            subject: str | None,
+            message: str,
+        ) -> None:
+            collected.append(_finding(tier, code, severity, scope, subject, message))
+
+        # Module-owned tables (ADR-023, ADR-024); skipped when never installed.
+        validate_detection(connection, cases, artifacts, emit)
+        validate_execution(connection, cases, artifacts, emit)
         if full:
             _validate_content(workspace, artifacts, collected)
     except sqlite3.Error:

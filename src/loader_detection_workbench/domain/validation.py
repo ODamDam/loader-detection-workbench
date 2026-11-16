@@ -15,6 +15,8 @@ class ValidationScope(StrEnum):
     CASE = "case"
     ARTIFACT = "artifact"
     FILESYSTEM = "filesystem"
+    DETECTION = "detection"
+    EXECUTION = "execution"
 
 
 @dataclass(frozen=True, slots=True)

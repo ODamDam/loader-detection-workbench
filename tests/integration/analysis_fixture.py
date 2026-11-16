@@ -248,7 +248,7 @@ def add_execution_run(
     status: RunStatus = RunStatus.SUCCEEDED,
     error_code: str | None = None,
 ) -> str:
-    """Record a finished benign-scenario run without touching any VM."""
+    """Record a benign-scenario run row without touching any VM."""
     repository = SQLiteExecutionRepository(ProjectService().open(root), write=True)
     try:
         with repository.transaction():
@@ -278,13 +278,14 @@ def add_execution_run(
                 StepName.RESTORE_BEFORE,
             ):
                 repository.append_step(run_id, step, StepStatus.OK, "C:\\host\\secret")
-            repository.finish_run(
-                run_id,
-                status,
-                error_code=error_code,
-                sysmon_artifact_id=sysmon_artifact,
-                event_count=None if sysmon_artifact is None else 4,
-            )
+            if status is not RunStatus.RUNNING:
+                repository.finish_run(
+                    run_id,
+                    status,
+                    error_code=error_code,
+                    sysmon_artifact_id=sysmon_artifact,
+                    event_count=None if sysmon_artifact is None else 4,
+                )
             return run_id
     finally:
         repository.close()

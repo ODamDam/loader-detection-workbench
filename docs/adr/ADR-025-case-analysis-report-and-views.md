@@ -50,3 +50,19 @@ HTML 출력이 없었다. 학기 목표인 케이스별 보고서 6편은 이 �
   실행 단위 결과만 싣고 가설 단위 집계를 계산하지 않는다.
 - 정적 사이트 생성, Publication Bundle, 공개용 비식별화는 이 결정의 범위가 아니다.
 - AI 분석 결과 섹션은 W7에서 관측 사실과 분리해 추가한다.
+
+## 추가 결정: 핵심 validator의 모듈 테이블 검사
+
+ADR-023·024는 detection·execution 테이블을 핵심 cross-contract 검증기 밖에 두었다.
+`project validate`가 이 테이블도 읽기 전용으로 검사하도록 `project.module_validator`를
+추가한다.
+
+- 각 모듈의 schema 표식 테이블이 있을 때만 검사한다. 핵심 스키마 버전과 기존 finding의
+  의미는 바꾸지 않는다. `ValidationScope`에 `detection`, `execution`을 추가한다.
+- 원시 행을 SQL로 읽어 검사하고, 도메인 객체 복원 실패에 의존하지 않는다. 손상된 행
+  하나가 나머지 검사를 막지 않게 하기 위해서다.
+- 동결 불변은 두 층으로 확인한다. 불변 trigger가 남아 있는지, 그리고 저장된 값이
+  서로 맞는지(룰 본문과 SHA-256, 실행에 기록된 해시와 룰 버전, Unseen 실행의 동결
+  전제, 역할·매치와 결과)이다.
+- 끝나지 않은 VM 실행 런과 안전 잠금은 데이터 손상이 아니라 사람이 확인할 VM 상태이므로
+  warning이다. Case에서 분리된 Artifact를 가리키는 참조도 warning이다.

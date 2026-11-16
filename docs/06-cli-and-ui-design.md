@@ -193,6 +193,22 @@ workbench project validate [WORKSPACE] --full
   `BROKEN_CASE_REFERENCE`, `ARTIFACT_PATH_INVALID`, `ARTIFACT_MISSING`,
   `ARTIFACT_SIZE_MISMATCH`, `ARTIFACT_SHA256_MISMATCH`,
   `ORPHAN_ARTIFACT_CONTENT`, `STALE_STAGING_CONTENT`이다.
+- 모듈 소유 테이블(ADR-023 detection, ADR-024 execution)은 해당 schema 표식 테이블이
+  있을 때만 Tier 2에서 검사한다(`project.module_validator`). scope는 `detection`,
+  `execution`이다. 모듈을 한 번도 쓰지 않은 Project에는 finding이 없다.
+  - 구조: `MODULE_SCHEMA_UNSUPPORTED`(지원하지 않는 버전이면 그 모듈 검사를 멈춘다),
+    `MODULE_SCHEMA_INCOMPLETE`(테이블 또는 불변 trigger 누락).
+  - detection: `DETECTION_COUNTER_INVALID`, `DETECTION_RECORD_INVALID`(표시 ID, 버전
+    연속성, 본문과 SHA-256 불일치, 구성원 역할과 Case 종류 불일치),
+    `DETECTION_REFERENCE_BROKEN`(없는 Case·Artifact·Rule·Benchmark, 다른 Case의 근거
+    Artifact), `DETECTION_FREEZE_VIOLATION`(동결 상태와 시각 불일치, 동결되지 않은 룰
+    버전·Benchmark로 기록된 Unseen 실행), `DETECTION_RESULT_INCONSISTENT`(역할과 매치에서
+    나올 수 없는 결과, 동결 Benchmark 구성원이 아닌 결과).
+  - execution: `EXECUTION_COUNTER_INVALID`, `EXECUTION_RECORD_INVALID`,
+    `EXECUTION_REFERENCE_BROKEN`.
+  - warning: `EXECUTION_RUN_UNFINISHED`, `EXECUTION_SAFETY_LOCK_SET`(VM 상태를 사람이
+    확인해야 함을 알린다), `ARTIFACT_REFERENCE_DETACHED`(참조된 Artifact가 Case에서
+    분리됨).
 - 기본 검증은 Artifact bytes를 rehash하지 않는다. `--full`에서만 모든 persisted
   Artifact(분리된 행 포함)를 검사하며, 같은 SHA-256은 한 run에서 hash 결과를
   재사용한다.
