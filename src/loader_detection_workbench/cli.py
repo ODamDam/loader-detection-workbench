@@ -65,7 +65,7 @@ from loader_detection_workbench.execution.vboxmanage import VBoxManageHypervisor
 from loader_detection_workbench.logging_config import configure_console_logging
 from loader_detection_workbench.project.migration import ProjectMigrationService
 from loader_detection_workbench.project.service import ProjectService, ProjectWorkspace
-from loader_detection_workbench.report.service import ReportService
+from loader_detection_workbench.report.service import ReportFormat, ReportService
 from loader_detection_workbench.sample.domain import (
     SCREENING_FIELDS,
     AssignmentReason,
@@ -301,11 +301,16 @@ def build_parser() -> argparse.ArgumentParser:
     bundle_validate.add_argument("bundle", type=Path, metavar="BUNDLE.zip")
     bundle_import = bundle_commands.add_parser("import")
     bundle_import.add_argument("bundle", type=Path, metavar="BUNDLE.zip")
-    report = groups.add_parser("report", help="build a minimal Case Markdown report")
+    report = groups.add_parser("report", help="build a Case Markdown or HTML report")
     report_commands = report.add_subparsers(dest="report_command", required=True)
     report_build = report_commands.add_parser("build")
     report_build.add_argument("case_display_id", metavar="CASE-NNNN")
-    report_build.add_argument("output", type=Path, metavar="OUTPUT.md")
+    report_build.add_argument("output", type=Path, metavar="OUTPUT")
+    report_build.add_argument(
+        "--format",
+        choices=[item.value for item in ReportFormat],
+        help="default: html for .html/.htm output names, otherwise markdown",
+    )
     ui = groups.add_parser("ui", help="serve the local Case platform UI")
     ui_commands = ui.add_subparsers(dest="ui_command", required=True)
     ui_serve = ui_commands.add_parser("serve")
@@ -1120,7 +1125,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
     if arguments.group == "report":
         try:
-            ReportService(Path.cwd()).build(arguments.case_display_id, arguments.output)
+            ReportService(Path.cwd()).build(
+                arguments.case_display_id,
+                arguments.output,
+                None if arguments.format is None else ReportFormat(arguments.format),
+            )
             print("report: created")
             return 0
         except DomainError as exc:

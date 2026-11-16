@@ -118,7 +118,7 @@ XML EventRecordID로 원본 record를 추적한다. Case/Artifact 조회는 기�
 `docs/20-sysmon-event11-handoff.md`를 참조한다. 복수 이벤트 XML과 EVTX는
 지원하지 않는다.
 
-### Case Timeline 및 데모 Markdown 보고서
+### Case Timeline 및 Case 보고서(Markdown·HTML)
 
 현재 Project 디렉터리에서 실행한다. 두 명령은 같은 read-only Case timeline
 query 결과를 사용한다. 기존 `case show`의 metadata 출력은 유지한다.
@@ -126,6 +126,7 @@ query 결과를 사용한다. 기존 `case show`의 metadata 출력은 유지한
 ```text
 workbench case timeline CASE-0001
 workbench report build CASE-0001 reports/demo.md
+workbench report build CASE-0001 reports/demo.html
 ```
 
 attached Sysmon Artifact를 모두 정규화하고 timestamp, event_id, Artifact display
@@ -133,9 +134,12 @@ ID, EventRecordID 순으로 정렬한다. 문자열 tie-breaker는 사전순이�
 손상되면 전체 query가 실패하며 부분 timeline/report를 내보내지 않는다.
 Sysmon이 없으면 0건으로 성공하며 closed Case도 읽을 수 있다.
 
-보고서는 UTF-8 Markdown이며 기존 파일은 덮어쓰지 않는다. Case 개요, evidence 수,
-timeline, 원본 참조와 한계를 포함하는 시연용 subset이다. 전체 분석 보고서나 악성
-판정이 아니다. 정상화 이벤트·report metadata의 DB 저장은 추가하지 않는다.
+보고서는 UTF-8 Markdown 또는 독립형 HTML이며 기존 파일은 덮어쓰지 않는다. 출력
+이름이 `.html`이면 HTML을 만들고 `--format markdown|html`로 바꿀 수 있다. Case 개요,
+evidence 수, timeline, 원본 참조와 한계를 항상 포함한다. Case에 기록이 있으면 정적 PE
+증거, VM 실행 런, 탐지 가설, 룰 버전과 본문, 검증 결과(분모 포함, development·
+evaluation·tuning 분리)를 더한다. 악성 판정은 내리지 않는다. 정상화 이벤트·report
+metadata의 DB 저장은 추가하지 않는다.
 새 PC에서 합성 fixture로 재현하는 명령과 검증은
 `docs/21-case-timeline-report-handoff.md`를 참조한다.
 

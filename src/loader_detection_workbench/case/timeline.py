@@ -10,7 +10,7 @@ from pathlib import Path
 
 from loader_detection_workbench.artifact.service import ArtifactService
 from loader_detection_workbench.case.service import CaseService
-from loader_detection_workbench.domain.artifact import ArtifactKind
+from loader_detection_workbench.domain.artifact import Artifact, ArtifactKind
 from loader_detection_workbench.domain.case import Case
 from loader_detection_workbench.domain.events import NormalizedSysmonEvent
 from loader_detection_workbench.sysmon.records import SysmonRecord
@@ -23,6 +23,8 @@ class CaseTimeline:
     observations: tuple[NormalizedSysmonEvent, ...]
     sysmon_artifact_count: int
     other_records: tuple[SysmonRecord, ...] = ()
+    # Every Artifact attached to the Case, in display-ID order.
+    artifacts: tuple[Artifact, ...] = ()
 
 
 def _record_key(record: SysmonRecord) -> tuple[str, int, str, int]:
@@ -42,10 +44,9 @@ class CaseTimelineQuery:
 
     def query(self, case_display_id: str) -> CaseTimeline:
         case = CaseService(self._root).show(case_display_id)
+        attached = tuple(ArtifactService(self._root).list_artifacts(case_display_id))
         artifacts = [
-            artifact
-            for artifact in ArtifactService(self._root).list_artifacts(case_display_id)
-            if artifact.kind is ArtifactKind.SYSMON
+            artifact for artifact in attached if artifact.kind is ArtifactKind.SYSMON
         ]
         observations: list[NormalizedSysmonEvent] = []
         others: list[SysmonRecord] = []
@@ -66,4 +67,6 @@ class CaseTimelineQuery:
             )
         )
         others.sort(key=_record_key)
-        return CaseTimeline(case, tuple(observations), len(artifacts), tuple(others))
+        return CaseTimeline(
+            case, tuple(observations), len(artifacts), tuple(others), attached
+        )

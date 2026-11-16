@@ -1,104 +1,675 @@
-"""Pure Markdown rendering of the same CaseTimeline used by the CLI."""
+"""Pure rendering of a Case report from the shared query results.
 
+The Timeline part consumes the same ``CaseTimeline`` as the CLI. When a
+``CaseAnalysis`` is supplied, static PE evidence, VM execution runs, Detection
+Hypotheses, Rules and Validation results are added. Sections without recorded
+data are omitted, so a Case with only Sysmon Artifacts renders exactly as it
+did before those sections existed.
+"""
+
+from __future__ import annotations
+
+import json
 from datetime import datetime
+from typing import Any
 
 from loader_detection_workbench.case.timeline import CaseTimeline
+from loader_detection_workbench.detection.domain import (
+    DetectionRule,
+    RuleVersion,
+    RuleVersionStatus,
+    RunKind,
+    ValidationResult,
+    ValidationRun,
+)
 from loader_detection_workbench.domain.events import ProcessCreateEvent
 from loader_detection_workbench.domain.time import format_utc
-from loader_detection_workbench.presentation import markdown_text
+from loader_detection_workbench.execution.domain import ExecutionRun
+from loader_detection_workbench.report import document as doc
+from loader_detection_workbench.report.analysis import CaseAnalysis
+from loader_detection_workbench.report.document import (
+    Block,
+    Bullets,
+    Code,
+    Document,
+    Heading,
+    Paragraph,
+    Table,
+    item,
+    trusted,
+    untrusted,
+)
+from loader_detection_workbench.static_analysis.domain import StaticAnalysis
 from loader_detection_workbench.sysmon.records import record_summary
 
+MAX_INDICATOR_VALUES = 10
+MAX_IMPORT_NAMES = 12
+MAX_MATCH_REFERENCES = 10
+_KIND_TITLES = {
+    RunKind.DEVELOPMENT: "Development Runs",
+    RunKind.EVALUATION: "Evaluation Runs (Unseen, frozen rule and benchmark)",
+    RunKind.TUNING: "Tuning Runs (after the first Unseen evaluation)",
+}
 
-def render_markdown(timeline: CaseTimeline, generated_at: datetime) -> str:
+
+def _optional(value: object | None) -> str:
+    return "—" if value is None or value == "" else str(value)
+
+
+def ratio(numerator: int, denominator: int) -> str:
+    """Always report a count together with its denominator."""
+    return f"{numerator}/{denominator}"
+
+
+def reported_version(rule: DetectionRule) -> RuleVersion:
+    """The latest frozen version if any, otherwise the latest draft."""
+    frozen = [v for v in rule.versions if v.status is RuleVersionStatus.FROZEN]
+    return frozen[-1] if frozen else rule.latest
+
+
+def match_evidence(result: ValidationResult) -> str:
+    """Compact, path-free description of why a rule matched one Case."""
+    try:
+        detail: Any = json.loads(result.detail)
+    except json.JSONDecodeError:
+        return "(unreadable match detail)"
+    if not isinstance(detail, dict):
+        return "(unreadable match detail)"
+    if "reason" in detail:
+        return str(detail["reason"])
+    parts: list[str] = []
+    matches = detail.get("matches")
+    if isinstance(matches, list):
+        for match in matches[:MAX_MATCH_REFERENCES]:
+            if not isinstance(match, dict):
+                continue
+            strings = match.get("strings")
+            hits = (
+                ", ".join(
+                    f"{hit.get('id')}@{hit.get('offset')}+{hit.get('length')}"
+                    for hit in strings[:MAX_MATCH_REFERENCES]
+                    if isinstance(hit, dict)
+                )
+                if isinstance(strings, list)
+                else ""
+            )
+            parts.append(
+                f"{match.get('artifact')} rule {match.get('rule')}"
+                + (f" [{hits}]" if hits else "")
+            )
+        scanned = detail.get("scanned")
+        if not parts and isinstance(scanned, list):
+            return f"no match in {len(scanned)} scanned sample Artifact(s)"
+    records = detail.get("matched_records")
+    if isinstance(records, list):
+        total = detail.get("matched_total", len(records))
+        if not records:
+            return f"no match in {detail.get('records', 0)} Sysmon record(s)"
+        references = ", ".join(
+            f"{record.get('artifact')}#{record.get('record_id')} "
+            f"(EventID {record.get('event_id')})"
+            for record in records[:MAX_MATCH_REFERENCES]
+            if isinstance(record, dict)
+        )
+        parts.append(
+            f"{total} of {detail.get('records', 0)} Sysmon record(s) matched: "
+            f"{references}"
+        )
+    return "; ".join(parts) if parts else "(no match detail)"
+
+
+def _overview(timeline: CaseTimeline, generated_at: datetime) -> list[Block]:
     case = timeline.case
-    lines = [
-        f"# Case Report — {case.case_id.display_id}",
-        "",
-        "## Case Overview",
-        "",
-        f"- Case ID: {case.case_id.display_id}",
-        f"- Name: {markdown_text(case.name)}",
-        f"- Kind: {case.kind.value}",
-        f"- Status: {case.status.value}",
-        f"- Description: {markdown_text(case.description or '')}",
-        f"- Generated At: {format_utc(generated_at)}",
-        "",
-        "## Evidence Summary",
-        "",
-        f"- Sysmon Artifacts: {timeline.sysmon_artifact_count}",
-        f"- Normalized Observations: {len(timeline.observations)}",
-        "- Supported Event IDs: 1, 11",
-        "",
-        "## Timeline",
-        "",
+    return [
+        Heading(2, trusted("Case Overview")),
+        Bullets(
+            (
+                item("Case ID", case.case_id.display_id, is_trusted=True),
+                item("Name", case.name),
+                item("Kind", case.kind.value, is_trusted=True),
+                item("Status", case.status.value, is_trusted=True),
+                item("Description", case.description or ""),
+                item("Generated At", format_utc(generated_at), is_trusted=True),
+            )
+        ),
     ]
+
+
+def _summary(timeline: CaseTimeline, analysis: CaseAnalysis | None) -> list[Block]:
+    items = [
+        item("Sysmon Artifacts", timeline.sysmon_artifact_count, is_trusted=True),
+        item("Normalized Observations", len(timeline.observations), is_trusted=True),
+        item("Supported Event IDs", "1, 11", is_trusted=True),
+    ]
+    if analysis is not None and not analysis.is_empty:
+        counts: dict[str, int] = {}
+        for artifact in analysis.artifacts:
+            counts[artifact.kind.value] = counts.get(artifact.kind.value, 0) + 1
+        items.extend(
+            [
+                item(
+                    "Attached Artifacts",
+                    f"{len(analysis.artifacts)} ("
+                    + ", ".join(f"{k}: {v}" for k, v in sorted(counts.items()))
+                    + ")",
+                    is_trusted=True,
+                ),
+                item(
+                    "Static Analysis Results",
+                    len(analysis.static_results),
+                    is_trusted=True,
+                ),
+                item(
+                    "VM Execution Runs", len(analysis.execution_runs), is_trusted=True
+                ),
+                item("Detection Hypotheses", len(analysis.hypotheses), is_trusted=True),
+                item("Detection Rules", len(analysis.rules), is_trusted=True),
+                item("Validation Runs", len(analysis.validation_runs), is_trusted=True),
+            ]
+        )
+        for membership in analysis.memberships:
+            state = "frozen" if membership.benchmark.is_frozen else "not frozen"
+            items.append(
+                item(
+                    "Benchmark Membership",
+                    f"{membership.benchmark.display_id} as "
+                    f"{membership.member.role.value} ({state})",
+                    is_trusted=True,
+                )
+            )
+    return [Heading(2, trusted("Evidence Summary")), Bullets(tuple(items))]
+
+
+def _static(result: StaticAnalysis) -> list[Block]:
+    blocks: list[Block] = [
+        Heading(
+            3,
+            trusted(
+                f"{result.artifact.artifact_id.display_id} — static result for "
+                f"{result.source_artifact_id}"
+            ),
+        )
+    ]
+    items = [
+        item("Source Artifact", result.source_artifact_id, is_trusted=True),
+        item("Source SHA-256", result.source_sha256, is_trusted=True),
+        item("Source Size", f"{result.source_size_bytes} bytes", is_trusted=True),
+        item("Analyzer", f"{result.tool_name} {result.tool_version}"),
+        item("Analyzed At", result.analyzed_at),
+        item("Status", result.status),
+    ]
+    if result.error:
+        items.append(item("Parse Error", result.error))
+    if result.is_pe:
+        items.append(
+            item(
+                "Architecture",
+                f"{_optional(result.architecture)} "
+                f"({_optional(result.optional_header)})",
+            )
+        )
+    if result.schema_version >= 2:
+        items.append(item("File Entropy", _optional(result.file_entropy)))
+        if result.is_pe:
+            items.extend(
+                [
+                    item("Imphash", _optional(result.imphash)),
+                    item("Compile Timestamp", _optional(result.compile_timestamp)),
+                    item("Entry Point", _optional(result.entry_point)),
+                    item("Subsystem", _optional(result.subsystem)),
+                    item("DLL", _optional(result.is_dll)),
+                    item(
+                        "Signature",
+                        f"{_optional(result.signature)} (presence only; not verified)",
+                    ),
+                    item(
+                        "Overlay Size",
+                        f"{result.overlay_size} bytes",
+                        is_trusted=True,
+                    ),
+                    item(
+                        "Imports",
+                        f"{len(result.imports)} DLLs / "
+                        f"{result.import_function_count} functions"
+                        + (" (truncated)" if result.imports_truncated else ""),
+                        is_trusted=True,
+                    ),
+                    item("Exports", result.export_count, is_trusted=True),
+                ]
+            )
+        items.append(
+            item(
+                "Strings",
+                f"{len(result.strings)} kept / {result.strings_total} found"
+                + (" (truncated)" if result.strings_truncated else ""),
+                is_trusted=True,
+            )
+        )
+        items.append(
+            item(
+                "Analysis Leads (not a verdict)",
+                ", ".join(result.flags) if result.flags else "none",
+            )
+        )
+        if result.parser_warning:
+            items.append(item("Parser Warning", result.parser_warning))
+    blocks.append(Bullets(tuple(items)))
+    if result.sections:
+        blocks.append(
+            Table(
+                ("Section", "Raw Size", "Virtual Size", "Entropy", "Exec", "Write"),
+                tuple(
+                    (
+                        untrusted(section.name),
+                        trusted(section.raw_size),
+                        trusted(section.virtual_size),
+                        trusted(_optional(section.entropy)),
+                        trusted(_optional(section.executable)),
+                        trusted(_optional(section.writable)),
+                    )
+                    for section in result.sections
+                ),
+                frozenset({1, 2, 3}),
+            )
+        )
+    if result.imports:
+        blocks.append(
+            Table(
+                ("Imported DLL", "Functions", "First Names"),
+                tuple(
+                    (
+                        untrusted(entry.dll),
+                        trusted(len(entry.functions)),
+                        untrusted(", ".join(entry.functions[:MAX_IMPORT_NAMES])),
+                    )
+                    for entry in result.imports
+                ),
+                frozenset({1}),
+            )
+        )
+    indicators = {k: v for k, v in sorted(result.indicators.items()) if v}
+    if indicators:
+        blocks.append(
+            Table(
+                ("String Indicator", "Count", f"First {MAX_INDICATOR_VALUES} Values"),
+                tuple(
+                    (
+                        untrusted(kind),
+                        trusted(len(values)),
+                        untrusted(" ; ".join(values[:MAX_INDICATOR_VALUES])),
+                    )
+                    for kind, values in indicators.items()
+                ),
+                frozenset({1}),
+            )
+        )
+    return blocks
+
+
+def _timeline(timeline: CaseTimeline) -> list[Block]:
+    blocks: list[Block] = [Heading(2, trusted("Timeline"))]
     for event in timeline.observations:
         kind = (
             "Process Create" if isinstance(event, ProcessCreateEvent) else "File Create"
         )
-        lines.extend(
-            [
-                f"### {format_utc(event.timestamp)} — {kind}",
-                "",
-                f"- Event ID: {event.event_id}",
-                f"- Image: {markdown_text(event.image)}",
-                f"- Process ID: {event.process_id}",
-            ]
-        )
+        items = [
+            item("Event ID", event.event_id, is_trusted=True),
+            item("Image", event.image),
+            item("Process ID", event.process_id, is_trusted=True),
+        ]
         if isinstance(event, ProcessCreateEvent):
-            lines.append(f"- Command Line: {markdown_text(event.command_line)}")
+            items.append(item("Command Line", event.command_line))
         else:
-            lines.extend(
+            items.extend(
                 [
-                    f"- Target Filename: {markdown_text(event.target_filename)}",
-                    f"- Creation UTC Time: {format_utc(event.creation_utc_time)}",
+                    item("Target Filename", event.target_filename),
+                    item(
+                        "Creation UTC Time",
+                        format_utc(event.creation_utc_time),
+                        is_trusted=True,
+                    ),
                 ]
             )
-        lines.extend(
+        items.extend(
             [
-                f"- Source Artifact: {event.source_artifact_id.display_id}",
-                f"- Source Record: {event.source_record_id}",
-                "",
+                item(
+                    "Source Artifact",
+                    event.source_artifact_id.display_id,
+                    is_trusted=True,
+                ),
+                item("Source Record", event.source_record_id, is_trusted=True),
+            ]
+        )
+        blocks.extend(
+            [
+                Heading(3, trusted(f"{format_utc(event.timestamp)} — {kind}")),
+                Bullets(tuple(items)),
             ]
         )
     if not timeline.observations:
-        lines.extend(["No normalized Sysmon observations.", ""])
+        blocks.append(Paragraph(trusted("No normalized Sysmon observations.")))
     if timeline.other_records:
-        lines.extend(
+        blocks.append(Heading(2, trusted("Other Sysmon Events")))
+        blocks.append(
+            Table(
+                ("Time (UTC)", "Event ID", "Summary", "Source"),
+                tuple(
+                    (
+                        trusted(
+                            "unknown"
+                            if record.timestamp is None
+                            else format_utc(record.timestamp)
+                        ),
+                        trusted(record.event_id),
+                        untrusted(record_summary(record)),
+                        trusted(
+                            (
+                                "?"
+                                if record.source_artifact_id is None
+                                else record.source_artifact_id.display_id
+                            )
+                            + f"#{record.record_id or '?'}"
+                        ),
+                    )
+                    for record in timeline.other_records
+                ),
+                frozenset({1}),
+            )
+        )
+    return blocks
+
+
+def _execution(runs: tuple[ExecutionRun, ...]) -> list[Block]:
+    blocks: list[Block] = [
+        Heading(2, trusted("VM Execution Runs")),
+        Table(
+            (
+                "Run",
+                "Profile",
+                "Target",
+                "VM / Clean Snapshot",
+                "Status",
+                "Started",
+                "Finished",
+                "Events",
+                "Sysmon Artifact",
+                "Error",
+            ),
+            tuple(
+                (
+                    trusted(run.display_id),
+                    trusted(run.profile.value),
+                    untrusted(run.target),
+                    untrusted(f"{run.vm_name} / {run.snapshot}"),
+                    trusted(run.status.value),
+                    trusted(format_utc(run.started_at)),
+                    trusted(
+                        "—" if run.finished_at is None else format_utc(run.finished_at)
+                    ),
+                    trusted(_optional(run.event_count)),
+                    trusted(_optional(run.sysmon_artifact_id)),
+                    untrusted(_optional(run.error_code)),
+                )
+                for run in runs
+            ),
+            frozenset({7}),
+        ),
+    ]
+    step_items = tuple(
+        item(
+            run.display_id,
+            f"timeout {run.timeout_seconds}s; steps: "
+            + (
+                " → ".join(f"{s.step.value} {s.status.value}" for s in run.steps)
+                or "none recorded"
+            ),
+            is_trusted=True,
+        )
+        for run in runs
+    )
+    blocks.append(Bullets(step_items))
+    return blocks
+
+
+def _hypotheses(analysis: CaseAnalysis) -> list[Block]:
+    kinds = {a.artifact_id.display_id: a.kind.value for a in analysis.artifacts}
+    blocks: list[Block] = [Heading(2, trusted("Detection Hypotheses"))]
+    for hypothesis in analysis.hypotheses:
+        evidence = (
+            ", ".join(
+                f"{value} ({kinds.get(value, 'unknown')})"
+                for value in hypothesis.evidence_artifact_ids
+            )
+            or "none linked"
+        )
+        blocks.extend(
             [
-                "## Other Sysmon Events",
-                "",
-                "| Time (UTC) | Event ID | Summary | Source |",
-                "|---|---:|---|---|",
+                Heading(3, untrusted(hypothesis.title), f"{hypothesis.display_id} — "),
+                Bullets(
+                    (
+                        item("Status", hypothesis.status.value, is_trusted=True),
+                        item("Statement", hypothesis.statement),
+                        item(
+                            "Expected Benign Counterpart",
+                            _optional(hypothesis.expected_benign),
+                        ),
+                        item("Evidence Artifacts", evidence, is_trusted=True),
+                        item(
+                            "Linked Rules",
+                            ", ".join(hypothesis.rule_display_ids) or "none linked",
+                            is_trusted=True,
+                        ),
+                        item(
+                            "Created At",
+                            format_utc(hypothesis.created_at),
+                            is_trusted=True,
+                        ),
+                        item(
+                            "Updated At",
+                            format_utc(hypothesis.updated_at),
+                            is_trusted=True,
+                        ),
+                    )
+                ),
             ]
         )
-        for record in timeline.other_records:
-            when = (
-                "unknown" if record.timestamp is None else format_utc(record.timestamp)
-            )
-            source = (
-                "?"
-                if record.source_artifact_id is None
-                else record.source_artifact_id.display_id
-            )
-            summary = markdown_text(record_summary(record)).replace("|", "\\|")
-            lines.append(
-                f"| {when} | {record.event_id} | {summary} | "
-                f"{source}#{record.record_id or '?'} |"
-            )
-        lines.append("")
-    lines.extend(
-        [
-            "## Collection / Analysis Limits",
-            "",
-            "- Only attached Sysmon XML Artifacts are queried.",
-            "- Supported events are Event ID 1 and Event ID 11.",
-            "- Results are normalized in memory; timestamps use second-precision UTC.",
-            "- No maliciousness verdict is produced.",
-            "- The report does not independently attest how the source telemetry "
-            "was collected.",
-            "- This demo report is a subset of the full analysis report template.",
-            "",
-        ]
+    return blocks
+
+
+def _rules(analysis: CaseAnalysis) -> list[Block]:
+    blocks: list[Block] = [Heading(2, trusted("Detection Rules"))]
+    for rule in analysis.rules:
+        shown = reported_version(rule)
+        blocks.extend(
+            [
+                Heading(3, untrusted(rule.name), f"{rule.display_id} — "),
+                Bullets(
+                    (
+                        item("Format", rule.format.value, is_trusted=True),
+                        item(
+                            "Created At", format_utc(rule.created_at), is_trusted=True
+                        ),
+                        item(
+                            "Linked Hypotheses",
+                            ", ".join(
+                                h.display_id
+                                for h in analysis.hypotheses
+                                if rule.display_id in h.rule_display_ids
+                            )
+                            or "none in this Case",
+                            is_trusted=True,
+                        ),
+                    )
+                ),
+                Table(
+                    ("Version", "Status", "SHA-256", "Created", "Frozen", "Note"),
+                    tuple(
+                        (
+                            trusted(version.version),
+                            trusted(version.status.value),
+                            trusted(version.sha256),
+                            trusted(format_utc(version.created_at)),
+                            trusted(
+                                "—"
+                                if version.frozen_at is None
+                                else format_utc(version.frozen_at)
+                            ),
+                            untrusted(_optional(version.note)),
+                        )
+                        for version in rule.versions
+                    ),
+                    frozenset({0}),
+                ),
+                Paragraph(
+                    trusted(
+                        f"Content of version {shown.version} ({shown.status.value}):"
+                    )
+                ),
+                Code(shown.content),
+            ]
+        )
+    return blocks
+
+
+def _run_row(analysis: CaseAnalysis, run: ValidationRun) -> tuple[doc.Text, ...]:
+    metrics = run.metrics
+    result = analysis.case_result(run)
+    return (
+        trusted(run.display_id),
+        trusted(f"{run.rule_display_id} v{run.rule_version}"),
+        trusted(run.benchmark_display_id),
+        trusted(", ".join(role.value for role in run.roles)),
+        trusted(ratio(metrics.tp, metrics.malicious_total)),
+        trusted(ratio(metrics.fp, metrics.benign_total)),
+        trusted(metrics.not_evaluable),
+        trusted(
+            "not a member"
+            if result is None
+            else f"{result.role.value}: {result.outcome.value}"
+        ),
+        trusted(format_utc(run.created_at)),
     )
-    return "\n".join(lines)
+
+
+def _validation(analysis: CaseAnalysis) -> list[Block]:
+    blocks: list[Block] = [
+        Heading(2, trusted("Validation Results")),
+        Paragraph(
+            trusted(
+                "Detected = true positives / malicious members evaluated. "
+                "False Positives = false positives / benign members evaluated. "
+                "Members without a target Artifact are counted as Not Evaluable "
+                "and excluded from both denominators."
+            )
+        ),
+    ]
+    for kind in (RunKind.DEVELOPMENT, RunKind.EVALUATION, RunKind.TUNING):
+        runs = analysis.runs_of_kind(kind)
+        if not runs:
+            continue
+        blocks.extend(
+            [
+                Heading(3, trusted(_KIND_TITLES[kind])),
+                Table(
+                    (
+                        "Run",
+                        "Rule",
+                        "Benchmark",
+                        "Roles",
+                        "Detected",
+                        "False Positives",
+                        "Not Evaluable",
+                        "This Case",
+                        "Created",
+                    ),
+                    tuple(_run_row(analysis, run) for run in runs),
+                    frozenset({6}),
+                ),
+            ]
+        )
+    evidence = tuple(
+        item(
+            f"{run.display_id} ({run.rule_display_id} v{run.rule_version}, "
+            f"{run.kind.value}, {result.outcome.value})",
+            match_evidence(result),
+        )
+        for run in analysis.validation_runs
+        if (result := analysis.case_result(run)) is not None
+    )
+    if evidence:
+        blocks.extend(
+            [Heading(3, trusted("Match Evidence for This Case")), Bullets(evidence)]
+        )
+    return blocks
+
+
+def _limits(analysis: CaseAnalysis | None) -> list[Block]:
+    lines = [
+        "Only attached Sysmon XML Artifacts are queried.",
+        "Supported events are Event ID 1 and Event ID 11.",
+        "Results are normalized in memory; timestamps use second-precision UTC.",
+        "No maliciousness verdict is produced.",
+        "The report does not independently attest how the source telemetry "
+        "was collected.",
+        "This demo report is a subset of the full analysis report template.",
+    ]
+    if analysis is not None and not analysis.is_empty:
+        lines.extend(
+            [
+                "Static analysis leads and string indicators are analyst cues, "
+                "not findings.",
+                "Hypotheses are analyst statements; their status is set by a "
+                "person, not derived automatically.",
+                "Validation outcomes describe one rule version on one recorded "
+                "benchmark and do not generalize beyond its members.",
+                "Tuning runs are recorded separately and are not Unseen "
+                "evaluation results.",
+            ]
+        )
+    return [
+        Heading(2, trusted("Collection / Analysis Limits")),
+        Bullets(tuple(item(None, line, is_trusted=True) for line in lines)),
+    ]
+
+
+def build_document(
+    timeline: CaseTimeline,
+    generated_at: datetime,
+    analysis: CaseAnalysis | None = None,
+) -> Document:
+    blocks: list[Block] = [
+        *_overview(timeline, generated_at),
+        *_summary(timeline, analysis),
+    ]
+    if analysis is not None and analysis.static_results:
+        blocks.append(Heading(2, trusted("Static Evidence")))
+        for result in analysis.static_results:
+            blocks.extend(_static(result))
+    blocks.extend(_timeline(timeline))
+    if analysis is not None:
+        if analysis.execution_runs:
+            blocks.extend(_execution(analysis.execution_runs))
+        if analysis.hypotheses:
+            blocks.extend(_hypotheses(analysis))
+        if analysis.rules:
+            blocks.extend(_rules(analysis))
+        if analysis.validation_runs:
+            blocks.extend(_validation(analysis))
+    blocks.extend(_limits(analysis))
+    return Document(f"Case Report — {timeline.case.case_id.display_id}", tuple(blocks))
+
+
+def render_markdown(
+    timeline: CaseTimeline,
+    generated_at: datetime,
+    analysis: CaseAnalysis | None = None,
+) -> str:
+    return doc.render_markdown(build_document(timeline, generated_at, analysis))
+
+
+def render_html(
+    timeline: CaseTimeline,
+    generated_at: datetime,
+    analysis: CaseAnalysis | None = None,
+) -> str:
+    return doc.render_html(build_document(timeline, generated_at, analysis))

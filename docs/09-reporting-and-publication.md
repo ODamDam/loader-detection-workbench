@@ -2,26 +2,43 @@
 
 ## 1. 자동 생성 범위
 
-### 현재 구현: 시연용 Case Markdown subset
+### 현재 구현: Case Markdown·HTML 보고서 (W5, ADR-025)
 
-`workbench report build CASE-NNNN OUTPUT.md`는 CLI timeline과 같은
-`CaseTimelineQuery` 결과로 Markdown을 렌더링한다. Case Overview, Evidence Summary,
-Timeline, Collection / Analysis Limits만 포함하며 아래 장기 full-report 항목 및
-`templates/case-report-template.md`를 삭제하거나 대체하지 않는다.
+`workbench report build CASE-NNNN OUTPUT [--format markdown|html]`은 CLI timeline과
+같은 `CaseTimelineQuery` 결과에 `CaseAnalysisQuery` 결과를 더해 보고서를 만든다.
+출력 이름이 `.html`·`.htm`이면 HTML, 그 밖에는 Markdown이며 `--format`이 우선한다.
 
-Case 정보, Event ID 1/11의 시간순 observation, Artifact display ID/EventRecordID를
-포함한다. File Create에는 Creation UTC Time도 표시한다. Generated At은 기존 UTC
-helper를 사용하며 renderer 인자로 전달해 테스트할 수 있다. 빈 Case는 evidence
-0건과 `No normalized Sysmon observations.`를 표시한다.
+보고서는 한 번 만든 블록 문서(`report.document`)를 두 형식으로 렌더링한다. 따라서
+두 형식의 내용은 항상 같다. 섹션 순서는 다음과 같고, 기록이 없는 섹션은 생략한다.
 
-신뢰하지 않는 Case/XML 문자열의 줄바꿈·제어문자는 공백으로 표시하고 HTML
-metacharacter 및 Markdown punctuation을 escape한다. 원본 normalized 값은 변경하지
-않는다. 이 escaping은 공개용 개인정보 비식별화를 대신하지 않는다.
+1. Case Overview
+2. Evidence Summary — Artifact 종류별 수, 기록 수, Benchmark 소속과 동결 여부
+3. Static Evidence — 정적 PE 결과(헤더 요약, 섹션 엔트로피·권한, Import, 문자열 지표,
+   분석 단서). 서명은 존재 여부만 표시하고 검증하지 않는다. 단서는 판정이 아니다.
+4. Timeline / Other Sysmon Events — 기존 Event ID 1/11 관측과 그 밖의 Event ID
+5. VM Execution Runs — 런 상태와 단계 이름·결과. 단계 상세 문자열은 싣지 않는다.
+6. Detection Hypotheses — 상태, 진술, 정상 대응, 근거 Artifact, 연결 룰
+7. Detection Rules — 버전 이력(SHA-256, 동결 시각)과 보고 대상 버전의 본문. 동결된
+   버전이 있으면 가장 최근 동결 버전, 없으면 최신 초안을 싣는다.
+8. Validation Results — development·evaluation·tuning을 별도 표로 나눈다. 탐지 수는
+   `TP/악성 구성원 수`, 오탐 수는 `FP/정상 구성원 수`로 분모와 함께 표시하고,
+   `not_evaluable`은 따로 센다. 이 Case의 매치 근거(Artifact·문자열 위치 또는
+   Artifact#EventRecordID)를 덧붙인다.
+9. Collection / Analysis Limits
 
-결과는 memory-only projection이며 report metadata를 DB에 저장하지 않는다.
-보고서는 VM 수집 성공, 탐지 결과 또는 악성 판정을 암시하지 않는다. HTML,
-Publication Bundle, 자동 공개는 지원 범위가 아니다. 파일 게시 정책과 오류는
-`06-cli-and-ui-design.md`, 재현 명령은 `21-case-timeline-report-handoff.md`를 따른다.
+Sysmon Artifact만 있는 Case는 기존 4개 섹션 보고서와 바이트 단위로 같다. Generated
+At은 renderer 인자로 전달해 테스트할 수 있다. 조회 중 하나라도 실패하면(손상된 정적
+결과 등) 보고서 파일을 만들지 않는다.
+
+신뢰하지 않는 문자열(Case·가설·룰 이름, XML 값, 샘플에서 추출한 문자열)은 한 줄로
+만들고 Markdown 구두점과 HTML 메타문자를 escape한다. 룰 본문은 본문 안의 가장 긴
+backtick 연속보다 긴 fence로 감싼다. HTML은 inline style만 쓰는 독립 파일이며
+script·링크·외부 자원이 없고 `default-src 'none'` CSP meta를 포함한다. 이 escaping은
+공개용 개인정보 비식별화를 대신하지 않는다.
+
+결과는 memory-only projection이며 report metadata를 DB에 저장하지 않는다. 보고서는
+악성 판정을 내리지 않는다. 정적 사이트, Publication Bundle, 자동 공개는 아직 지원
+범위가 아니다. 파일 게시 정책과 오류는 `06-cli-and-ui-design.md`를 따른다.
 
 ### 포함
 - 케이스별 Markdown 보고서

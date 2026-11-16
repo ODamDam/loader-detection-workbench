@@ -10,7 +10,7 @@ CLI가 핵심 제품 인터페이스이다. 로컬 웹 UI는 별도 비즈니스
 
 ```text
 workbench case timeline CASE-NNNN
-workbench report build CASE-NNNN OUTPUT.md
+workbench report build CASE-NNNN OUTPUT [--format markdown|html]
 ```
 
 - 현재 디렉터리를 Project root로 사용한다. 상위 탐색이나 `--database` override는
@@ -30,6 +30,10 @@ workbench report build CASE-NNNN OUTPUT.md
   변조는 ARTIFACT_INTEGRITY_MISMATCH 등 기존 오류를 surface한다. stdout의 부분
   timeline이나 report 파일을 생성하지 않는다. 성공 exit 0, 오류 exit 2와
   `error: CODE: safe message` 형식을 사용한다.
+- `report build`는 timeline 결과에 정적 PE 결과, VM 실행 런, 가설, 룰, 검증 결과를
+  더한다(`CaseAnalysisQuery`). 출력 이름이 `.html`·`.htm`이면 HTML을 만들고
+  `--format`으로 바꿀 수 있다. 기록이 없는 섹션은 생략하므로 Sysmon만 있는 Case의
+  Markdown은 이전과 같다. 섹션과 escape 규칙은 `09-reporting-and-publication.md`를 따른다.
 - report 성공 stdout은 `report: created`이다. 상대 OUTPUT은 현재 Project 기준이며
   명시적인 절대 OUTPUT도 허용한다. 부모 디렉터리는 필요한 만큼 생성한다.
   기존 파일/디렉터리/링크는 REPORT_OUTPUT_EXISTS로 거부한다. 쓰기·게시·cleanup

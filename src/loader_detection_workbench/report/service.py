@@ -1,15 +1,27 @@
-"""Query once, render, then atomically publish a new Markdown file."""
+"""Query once, render, then atomically publish a new Markdown or HTML file."""
 
 import os
 import tempfile
 from collections.abc import Callable
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 
 from loader_detection_workbench.case.timeline import CaseTimelineQuery
 from loader_detection_workbench.domain.errors import DomainError, DomainErrorCode
 from loader_detection_workbench.domain.time import utc_now
-from loader_detection_workbench.report.render import render_markdown
+from loader_detection_workbench.report.analysis import CaseAnalysisQuery
+from loader_detection_workbench.report.render import render_html, render_markdown
+
+
+class ReportFormat(StrEnum):
+    MARKDOWN = "markdown"
+    HTML = "html"
+
+    @classmethod
+    def for_output(cls, output: Path) -> "ReportFormat":
+        """``.html``/``.htm`` selects HTML; every other name stays Markdown."""
+        return cls.HTML if output.suffix.lower() in {".html", ".htm"} else cls.MARKDOWN
 
 
 def _publish(staging: Path, output: Path) -> None:
@@ -59,9 +71,17 @@ class ReportService:
         self._root = root
         self._clock = clock
 
-    def build(self, case_display_id: str, output: Path) -> Path:
+    def build(
+        self,
+        case_display_id: str,
+        output: Path,
+        report_format: ReportFormat | None = None,
+    ) -> Path:
         timeline = CaseTimelineQuery(self._root).query(case_display_id)
-        content = render_markdown(timeline, self._clock())
+        analysis = CaseAnalysisQuery(self._root).query(timeline)
+        selected = report_format or ReportFormat.for_output(output)
+        render = render_html if selected is ReportFormat.HTML else render_markdown
+        content = render(timeline, self._clock(), analysis)
         destination = self._root / output
         write_report(destination, content)
         return destination
