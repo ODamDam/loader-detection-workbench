@@ -67,6 +67,34 @@
     <p class="empty">No Validation run includes this Case or its linked Rules.</p>
   {% endfor %}
 
+  <h2>AI-assisted analysis</h2>
+  {% if analysis.ai_analyses %}
+    <p class="warning">Inference, not observed evidence. A suggestion changes nothing until a person accepts it with the CLI (<code>workbench ai accept</code>).</p>
+    {% for record in analysis.ai_analyses %}
+      <article class="artifact ai-analysis">
+        <h3>{{ record.display_id }} · {{ record.provider }} / {{ record.model }}</h3>
+        <p class="hint">Input scope: {{ record.input_scope }} · input SHA-256 <span class="digest">{{ record.input_sha256 }}</span></p>
+        <table>
+          <thead><tr><th>No.</th><th>Kind</th><th>Review</th><th>Suggestion</th><th>Cited evidence</th><th>Result</th></tr></thead>
+          <tbody>
+            {% for suggestion in record.suggestions %}
+              <tr>
+                <td>{{ suggestion.sequence }}</td>
+                <td>{{ suggestion.kind.value }}</td>
+                <td><span class="badge review-{{ suggestion.state.value }}">{{ suggestion.state.value }}</span></td>
+                <td>{% if suggestion.title %}<strong>{{ suggestion.title }}</strong>: {% endif %}{{ suggestion.text }}</td>
+                <td>{{ suggestion.evidence_artifact_ids|join(', ') or '—' }}</td>
+                <td>{{ suggestion.hypothesis_display_id or '—' }}{% if suggestion.review_note %} ({{ suggestion.review_note }}){% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </article>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No AI-assisted analysis is recorded for this Case. It is optional: every other view works without it.</p>
+  {% endif %}
+
   <h2>Process and file relationships</h2>
   {% if not process_graph.is_empty %}
     {{ render_graph(process_graph, 'Process tree and written files from Sysmon records') }}

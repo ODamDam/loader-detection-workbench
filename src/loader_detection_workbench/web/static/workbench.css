@@ -78,3 +78,7 @@ summary { cursor: pointer; font-weight: 700; }
 tr.changed td { background: #fff9e8; }
 table.comparison th { text-align: center; }
 td.digest { word-break: break-all; }
+.ai-analysis { border-left: .3rem dashed #6b3fa0; }
+.review-accepted { background: #dcf6e7; }
+.review-rejected { background: #fbdcdc; }
+.review-pending { background: #fff0d5; }

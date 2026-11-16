@@ -3,6 +3,39 @@
 > 11월 기준선: Notion「11월 최종 구현 계획 v1 — 2026-11-11~11-22」, ADR-022.
 > 기능 동결 2026-11-22, 11/23–29는 Unseen 평가·버그 수정·문서화만 수행한다.
 
+## 2026-11-17 W5 보고서·validator 확장·W6 읽기 전용 UI·W7 오프라인 골격
+
+Status: `completed` — 로컬 구현·합성 fixture 검증 완료. 실제 VM·샘플·외부 AI Provider 미사용
+
+사용자의 일괄 사전 승인(야간 자율 구현) 범위에서 수행했다. 새 의존성은 없고 핵심
+스키마 v2는 변경하지 않았다.
+
+- **W5 (ADR-025):** `report.analysis.CaseAnalysisQuery`가 정적 결과, 가설, 룰, 검증 실행,
+  Benchmark 소속, VM 실행 런을 한 번에 모은다. `report.document`의 블록 문서를 Markdown과
+  독립형 HTML로 렌더링한다. `report build CASE OUTPUT [--format markdown|html]`. 검증
+  수치는 분모와 함께 표시하고 development·evaluation·tuning을 나눈다. Sysmon만 있는
+  Case의 Markdown은 이전과 바이트 단위로 같다.
+- **validator 확장:** `project validate`가 detection·execution 모듈 테이블을 읽기 전용으로
+  검사한다(`project.module_validator`). 불변 trigger 누락, 카운터, 깨진 참조, 동결된 룰
+  버전 변조, 동결 전제 없는 Unseen 실행, 불가능한 결과를 찾는다. 끝나지 않은 VM 런과
+  안전 잠금은 warning이다.
+- **W6 (ADR-025):** `/cases/<CASE>/analysis`(증거 → 가설 → 룰 → 검증 그래프, 프로세스·
+  파일 그래프, VM 런), `/detection`, `/rules/<RULE>`(버전 비교), `/validation/<RUN>`.
+  서버에서 배치한 inline SVG이며 script와 외부 자원이 없다. 편집 기능은 넣지 않았다.
+  프로세스·파일 그래프는 파일 이름(경로의 마지막 요소)만 표시한다.
+- **W7 골격 (ADR-026):** `ai` 모듈. 구조 요약 입력, `offline-template` Provider(언어 모델
+  아님), fail-closed 출력 검증, 추론 분리 저장(`ai_schema` v1), 사람이 수락한 가설
+  후보만 Detection Hypothesis로 반영. CLI `ai providers|preview|analyze|list|show|accept|
+  reject`. 외부 전송이 필요한 Provider는 호출 전에 거부한다.
+- 검증: 전체 pytest 597 passed / 1 skipped(신규 63), Ruff lint/format, strict mypy `src`
+  94개 파일과 신규 테스트, `uv lock --check`, `git diff --check`. UI는 합성 Project를
+  로컬 브라우저에 띄워 분석·룰 비교·검증 실행 화면을 눈으로 확인했다(W7 섹션 추가
+  이후의 화면은 자동 테스트로만 확인). PowerShell 테스트는 대상 스크립트를 바꾸지 않아
+  재실행하지 않았다.
+- 남은 작업: 실제 VM 검증(SYSMON-V2-CLEAN 생성 후 정상 시나리오 1회), 외부 Provider
+  연결과 전송 데이터 범위 결정, W8 다중 LLM 비교, AI 테이블의 `project validate` 검사,
+  Unseen 탐지 판정 단위 결정, 실제 Case로 보고서 6편 생성.
+
 ## 2026-11-12 W4 VM 실행 런·클린 스냅샷 복원
 
 Status: `completed (mock)` — 모의 VBoxManage·PowerShell mock 검증 완료, 실제 VM·샘플 미실행

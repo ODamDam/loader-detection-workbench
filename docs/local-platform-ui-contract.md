@@ -106,6 +106,9 @@ state-changing route of the UI remains manual evidence registration.
 - **VM runs:** status, target, event count and step names with results. Recorded
   step detail and hypervisor commands are not shown, and the UI cannot start,
   stop or unlock a run.
+- **AI-assisted analysis (ADR-026):** stored suggestions are listed read-only
+  under a notice that they are inference, not observed evidence. The UI cannot
+  run a provider or accept or reject a suggestion.
 - Graphs are inline SVG laid out on the server. No script, inline style or
   third-party resource is used, so the existing Content-Security-Policy is
   unchanged.

@@ -14,6 +14,11 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
+from loader_detection_workbench.ai.domain import AiAnalysis
+from loader_detection_workbench.ai.service import (
+    DEFAULT_PROVIDER,
+    AiAnalysisService,
+)
 from loader_detection_workbench.artifact.service import ArtifactService
 from loader_detection_workbench.bundle.service import BundleService
 from loader_detection_workbench.case.render import render_timeline
@@ -63,6 +68,7 @@ from loader_detection_workbench.execution.service import (
 )
 from loader_detection_workbench.execution.vboxmanage import VBoxManageHypervisor
 from loader_detection_workbench.logging_config import configure_console_logging
+from loader_detection_workbench.presentation import single_line
 from loader_detection_workbench.project.migration import ProjectMigrationService
 from loader_detection_workbench.project.service import ProjectService, ProjectWorkspace
 from loader_detection_workbench.report.service import ReportFormat, ReportService
@@ -317,6 +323,7 @@ def build_parser() -> argparse.ArgumentParser:
     ui_serve.add_argument("root", type=Path, nargs="?", default=Path("."))
     ui_serve.add_argument("--port", type=_port, default=8080)
     _add_detection_parsers(groups)
+    _add_ai_parsers(groups)
     _add_vm_parsers(groups)
     return parser
 
@@ -395,6 +402,33 @@ def _add_vm_parsers(groups: Any) -> None:
     unlock.add_argument(
         "--note", required=True, help="what was verified (stored with the release)"
     )
+
+
+def _add_ai_parsers(groups: Any) -> None:
+    ai = groups.add_parser(
+        "ai", help="optional AI-assisted analysis (offline providers only)"
+    )
+    commands = ai.add_subparsers(dest="ai_command", required=True)
+    commands.add_parser("providers", help="list analysis providers")
+    preview = commands.add_parser(
+        "preview", help="print the exact provider input; calls no provider"
+    )
+    preview.add_argument("case_display_id", metavar="CASE-NNNN")
+    analyze = commands.add_parser("analyze", help="store suggestions for review")
+    analyze.add_argument("case_display_id", metavar="CASE-NNNN")
+    analyze.add_argument("--provider", default=DEFAULT_PROVIDER)
+    listing = commands.add_parser("list")
+    listing.add_argument("--case", dest="case_display_id", metavar="CASE-NNNN")
+    show = commands.add_parser("show")
+    show.add_argument("analysis_id", metavar="AIA-NNNN")
+    for name, text in (
+        ("accept", "accept a suggestion; a hypothesis candidate becomes a Hypothesis"),
+        ("reject", "reject a suggestion"),
+    ):
+        review = commands.add_parser(name, help=text)
+        review.add_argument("analysis_id", metavar="AIA-NNNN")
+        review.add_argument("number", type=int, metavar="N")
+        review.add_argument("--note")
 
 
 def _add_detection_parsers(groups: Any) -> None:
@@ -952,6 +986,69 @@ def _run_detection(arguments: argparse.Namespace, service: DetectionService) -> 
     return 0
 
 
+def _print_ai_analysis(analysis: AiAnalysis) -> None:
+    print(f"analysis: {analysis.display_id}")
+    print(f"case: {analysis.case_display_id}")
+    print(f"provider: {analysis.provider}")
+    print(f"model: {analysis.model}")
+    print(f"input_scope: {analysis.input_scope}")
+    print(f"input_sha256: {analysis.input_sha256}")
+    print(f"created_at: {format_utc(analysis.created_at)}")
+    print("note: suggestions are inferences, not observed evidence")
+    for suggestion in analysis.suggestions:
+        title = "" if suggestion.title is None else f"{suggestion.title}: "
+        print(
+            f"[{suggestion.sequence}] {suggestion.kind.value} "
+            f"({suggestion.state.value}) {single_line(title + suggestion.text)}"
+        )
+        if suggestion.evidence_artifact_ids:
+            print(f"    evidence: {', '.join(suggestion.evidence_artifact_ids)}")
+        if suggestion.expected_benign:
+            print(f"    expected_benign: {single_line(suggestion.expected_benign)}")
+        if suggestion.hypothesis_display_id:
+            print(f"    hypothesis: {suggestion.hypothesis_display_id}")
+        if suggestion.review_note:
+            print(f"    review_note: {single_line(suggestion.review_note)}")
+
+
+def _run_ai(arguments: argparse.Namespace, service: AiAnalysisService) -> int:
+    command = arguments.ai_command
+    if command == "providers":
+        for provider in service.providers():
+            state = "enabled" if provider.enabled else "disabled (external)"
+            print(f"{provider.name}\t{provider.model}\t{state}")
+    elif command == "preview":
+        preview = service.preview(arguments.case_display_id)
+        print(f"case: {preview.case_display_id}")
+        print(f"input_scope: {preview.scope}")
+        print(f"input_sha256: {preview.sha256}")
+        print(f"input_bytes: {preview.size_bytes}")
+        print(json.dumps(preview.digest, indent=2, sort_keys=True))
+    elif command == "analyze":
+        _print_ai_analysis(
+            service.analyze(arguments.case_display_id, arguments.provider)
+        )
+    elif command == "list":
+        for analysis in service.list_analyses(arguments.case_display_id):
+            pending = sum(1 for s in analysis.suggestions if s.state.value == "pending")
+            print(
+                f"{analysis.display_id}\t{analysis.case_display_id}\t"
+                f"{analysis.provider}\t{len(analysis.suggestions)} suggestions\t"
+                f"{pending} pending"
+            )
+    elif command == "show":
+        _print_ai_analysis(service.show(arguments.analysis_id))
+    elif command == "accept":
+        _print_ai_analysis(
+            service.accept(arguments.analysis_id, arguments.number, arguments.note)
+        )
+    else:
+        _print_ai_analysis(
+            service.reject(arguments.analysis_id, arguments.number, arguments.note)
+        )
+    return 0
+
+
 def _print_execution_run(run: ExecutionRun) -> None:
     print(f"run_id: {run.display_id}")
     print(f"case_id: {run.case_display_id}")
@@ -1165,6 +1262,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "is used",
                     file=sys.stderr,
                 )
+            return 2
+    if arguments.group == "ai":
+        try:
+            return _run_ai(arguments, AiAnalysisService(Path.cwd()))
+        except DomainError as exc:
+            print(f"error: {exc.code.value}: {exc}", file=sys.stderr)
             return 2
     if arguments.group in {"rule", "hypothesis", "benchmark", "validate"}:
         try:

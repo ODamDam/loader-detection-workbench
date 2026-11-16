@@ -167,6 +167,14 @@ def _summary(timeline: CaseTimeline, analysis: CaseAnalysis | None) -> list[Bloc
                 item("Validation Runs", len(analysis.validation_runs), is_trusted=True),
             ]
         )
+        if analysis.ai_analyses:
+            items.append(
+                item(
+                    "AI-Assisted Analyses (inference)",
+                    len(analysis.ai_analyses),
+                    is_trusted=True,
+                )
+            )
         for membership in analysis.memberships:
             state = "frozen" if membership.benchmark.is_frozen else "not frozen"
             items.append(
@@ -603,6 +611,68 @@ def _validation(analysis: CaseAnalysis) -> list[Block]:
     return blocks
 
 
+def _ai(analysis: CaseAnalysis) -> list[Block]:
+    blocks: list[Block] = [
+        Heading(2, trusted("AI-Assisted Analysis (inference, not observed evidence)")),
+        Paragraph(
+            trusted(
+                "The suggestions below were generated from a bounded structural "
+                "digest of this Case. They are not observations. A suggestion "
+                "affects the analysis only after a person accepts it; an accepted "
+                "hypothesis candidate is then listed under Detection Hypotheses."
+            )
+        ),
+    ]
+    for record in analysis.ai_analyses:
+        blocks.extend(
+            [
+                Heading(
+                    3,
+                    untrusted(f"{record.provider} / {record.model}"),
+                    f"{record.display_id} — ",
+                ),
+                Bullets(
+                    (
+                        item(
+                            "Created At", format_utc(record.created_at), is_trusted=True
+                        ),
+                        item("Input Scope", record.input_scope),
+                        item("Input SHA-256", record.input_sha256, is_trusted=True),
+                    )
+                ),
+                Table(
+                    ("No.", "Kind", "Review", "Suggestion", "Cited Evidence", "Result"),
+                    tuple(
+                        (
+                            trusted(suggestion.sequence),
+                            trusted(suggestion.kind.value),
+                            trusted(suggestion.state.value),
+                            untrusted(
+                                suggestion.text
+                                if suggestion.title is None
+                                else f"{suggestion.title}: {suggestion.text}"
+                            ),
+                            untrusted(
+                                ", ".join(suggestion.evidence_artifact_ids) or "—"
+                            ),
+                            untrusted(
+                                _optional(suggestion.hypothesis_display_id)
+                                + (
+                                    f" ({suggestion.review_note})"
+                                    if suggestion.review_note
+                                    else ""
+                                )
+                            ),
+                        )
+                        for suggestion in record.suggestions
+                    ),
+                    frozenset({0}),
+                ),
+            ]
+        )
+    return blocks
+
+
 def _limits(analysis: CaseAnalysis | None) -> list[Block]:
     lines = [
         "Only attached Sysmon XML Artifacts are queried.",
@@ -626,6 +696,11 @@ def _limits(analysis: CaseAnalysis | None) -> list[Block]:
                 "evaluation results.",
             ]
         )
+        if analysis.ai_analyses:
+            lines.append(
+                "AI-assisted suggestions are unverified inferences; only "
+                "suggestions accepted by a person become Hypotheses."
+            )
     return [
         Heading(2, trusted("Collection / Analysis Limits")),
         Bullets(tuple(item(None, line, is_trusted=True) for line in lines)),
@@ -655,6 +730,8 @@ def build_document(
             blocks.extend(_rules(analysis))
         if analysis.validation_runs:
             blocks.extend(_validation(analysis))
+        if analysis.ai_analyses:
+            blocks.extend(_ai(analysis))
     blocks.extend(_limits(analysis))
     return Document(f"Case Report — {timeline.case.case_id.display_id}", tuple(blocks))
 

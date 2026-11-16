@@ -308,3 +308,26 @@ workbench ui serve [ROOT] [--port PORT]
 - `other` Artifact에는 Collection identity가 없으므로 중립적인 Other Artifact로
   표시한다. 전체 route, 오류와 보안 계약은 `docs/local-platform-ui-contract.md`를
   따른다.
+
+## 8. AI 분석 보조 CLI (ADR-026)
+
+```text
+workbench ai providers
+workbench ai preview CASE-NNNN
+workbench ai analyze CASE-NNNN [--provider offline-template]
+workbench ai list [--case CASE-NNNN]
+workbench ai show AIA-NNNN
+workbench ai accept AIA-NNNN N [--note TEXT]
+workbench ai reject AIA-NNNN N [--note TEXT]
+```
+
+- 현재 디렉터리를 Project root로 쓴다. 성공 exit 0, 오류 exit 2와
+  `error: CODE: safe message` 형식을 따른다.
+- `preview`는 Provider를 호출하지 않고 입력 범위, SHA-256, 크기, 구조 요약 JSON을
+  출력한다. `analyze`가 저장하는 입력과 같다.
+- `analyze`는 제안을 `pending`으로 저장한다. 출력에는 제안이 추론이라는 안내가 항상
+  포함된다. `accept`·`reject`는 `pending` 제안에 한 번만 적용된다.
+- 오류 코드: `AI_PROVIDER_UNAVAILABLE`(모르는 Provider, 외부 전송이 필요한 Provider),
+  `AI_PROVIDER_FAILED`, `AI_OUTPUT_INVALID`, `AI_ANALYSIS_NOT_FOUND`,
+  `AI_SUGGESTION_ALREADY_REVIEWED`, `INVALID_AI_REQUEST`, `AI_PERSISTENCE_FAILED`.
+- UI는 저장된 제안을 읽기 전용으로만 보여준다. 검토는 CLI에서만 한다.

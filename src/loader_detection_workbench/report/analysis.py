@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from loader_detection_workbench.ai.domain import AiAnalysis
+from loader_detection_workbench.ai.store import AiAnalysisReader
 from loader_detection_workbench.case.timeline import CaseTimeline
 from loader_detection_workbench.detection.domain import (
     Benchmark,
@@ -46,6 +48,8 @@ class CaseAnalysis:
     validation_runs: tuple[ValidationRun, ...]
     memberships: tuple[BenchmarkMembership, ...]
     execution_runs: tuple[ExecutionRun, ...]
+    # Inferences, kept apart from every observed record above (ADR-026).
+    ai_analyses: tuple[AiAnalysis, ...] = ()
 
     @property
     def is_empty(self) -> bool:
@@ -56,6 +60,7 @@ class CaseAnalysis:
             or self.validation_runs
             or self.memberships
             or self.execution_runs
+            or self.ai_analyses
         )
 
     def rule(self, display_id: str) -> DetectionRule | None:
@@ -123,4 +128,5 @@ class CaseAnalysisQuery:
             runs,
             memberships,
             execution_runs,
+            tuple(AiAnalysisReader(self._root).list(case_id)),
         )

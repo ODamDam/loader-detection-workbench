@@ -396,3 +396,32 @@ uv run workbench vm unlock --note "VM verified by hand"
 - 게스트 계정은 `WORKBENCH_GUEST_USER`·`WORKBENCH_GUEST_PASSWORD` 환경 변수로만 받는다.
 - sample 실행은 NIC 케이블 분리, 공유 폴더 없음, 클립보드·드래그 앤 드롭 비활성화를 요구한다.
 - 2026-11-12 기준 실제 VM 실행 검증은 하지 않았다(모의 VBoxManage·PowerShell mock만 통과).
+
+## 13. AI 분석 보조 골격 (ADR-026, 오프라인 전용)
+
+AI 분석 보조는 선택 기능이다. 쓰지 않아도 나머지 기능은 그대로 동작한다. 현재는 이
+PC 안에서만 도는 `offline-template` Provider만 있다. 이 Provider는 언어 모델이 아니라
+고정 템플릿이며, API 키와 네트워크 없이 전체 흐름을 동작시키기 위한 것이다. 외부
+Provider(Claude·GPT·Gemini)는 구현되어 있지 않고, 외부로 증거를 보내는 Provider는
+호출 전에 거부된다.
+
+```text
+workbench ai providers
+workbench ai preview CASE-0001          # Provider에 전달될 입력만 출력, 호출 없음
+workbench ai analyze CASE-0001          # 제안을 pending 상태로 저장
+workbench ai show AIA-0001
+workbench ai accept AIA-0001 2 --note "부모 프로세스 확인"
+workbench ai reject AIA-0001 1
+workbench ai list --case CASE-0001
+```
+
+- Provider 입력은 구조 요약(`structural`)뿐이다. 개수, 종류, API·파일 **이름**, 표시
+  ID만 담고 샘플 바이트, 원본 로그, 추출 문자열, 지표 값, 명령줄, 디렉터리 경로, 해시,
+  Case 이름 같은 자유 서술은 담지 않는다. 입력은 SHA-256과 함께 저장된다.
+- 제안(요약 1개, 가설 후보, 검토 항목)은 관측 사실이 아니다. 별도 테이블에 저장하고
+  보고서와 UI에서 추론임을 표시한다.
+- 제안은 사람이 수락하기 전에는 아무것도 바꾸지 않는다. 가설 후보를 `ai accept`하면
+  `proposed` 상태의 Detection Hypothesis가 만들어진다. 가설의 상태 판단과 룰 채택은
+  계속 사람이 한다.
+- Case에 없는 Artifact를 인용하는 등 계약을 벗어난 Provider 출력은 전체를 거부하고
+  저장하지 않는다.
