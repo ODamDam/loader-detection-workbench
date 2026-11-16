@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ run.display_id }} — Detection Workbench{% endblock %}
+{% block content %}
+  <nav><a href="{{ url_for('web.rule_detail', rule_display_id=run.rule_display_id) }}">← {{ run.rule_display_id }}</a></nav>
+  <h1>{{ run.display_id }} · {{ run.kind_title }}</h1>
+  <dl class="summary">
+    <dt>Rule</dt><dd><a href="{{ url_for('web.rule_detail', rule_display_id=run.rule_display_id) }}">{{ run.rule_display_id }}</a> v{{ run.rule_version }}</dd>
+    <dt>Rule SHA-256</dt><dd class="digest">{{ rule_sha256 }}</dd>
+    <dt>Benchmark</dt><dd>{{ run.benchmark_display_id }}</dd>
+    <dt>Roles</dt><dd>{{ run.roles }}</dd>
+    <dt>Engine</dt><dd>{{ run.engine }}</dd>
+    <dt>Created</dt><dd>{{ run.created_at }}</dd>
+  </dl>
+  <section class="metrics" aria-label="Run metrics with denominators">
+    <div><strong>{{ run.detected }}</strong><span>Detected (TP / malicious)</span></div>
+    <div><strong>{{ run.missed }}</strong><span>Missed (FN)</span></div>
+    <div><strong>{{ run.false_positives }}</strong><span>False positives (FP / benign)</span></div>
+    <div><strong>{{ run.not_evaluable }}</strong><span>Not evaluable</span></div>
+  </section>
+  {% if run.kind == 'tuning' %}
+    <p class="warning">Tuning run: this Rule was already evaluated on Unseen members. This result is not an Unseen evaluation result.</p>
+  {% elif run.kind == 'evaluation' %}
+    <p class="notice">Evaluation run on a frozen Rule version and a frozen Benchmark, including Unseen members.</p>
+  {% endif %}
+  <h2>Results by Case</h2>
+  <table>
+    <thead><tr><th>Case</th><th>Role</th><th>Outcome</th><th>Match evidence</th></tr></thead>
+    <tbody>
+      {% for result in results %}
+        <tr>
+          <td><a href="{{ url_for('web.case_analysis', case_display_id=result.case_display_id) }}">{{ result.case_display_id }}</a></td>
+          <td>{{ result.role }}</td>
+          <td><span class="badge outcome-{{ result.outcome|lower }}">{{ result.outcome }}</span></td>
+          <td>{{ result.evidence }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">Match evidence lists Artifact IDs, rule names, string identifiers with offsets, and Sysmon record IDs only. Matched content is not displayed.</p>
+{% endblock %}

@@ -23,6 +23,7 @@
   {% endif %}
   <p class="actions">
     {% if upload_available %}<a class="button" href="{{ url_for('web.evidence_form', case_display_id=case.case_id.display_id) }}">Add manual evidence</a>{% endif %}
+    <a class="button" href="{{ url_for('web.case_analysis', case_display_id=case.case_id.display_id) }}">Evidence and detection analysis</a>
     <a class="button secondary" href="{{ url_for('web.timeline', case_display_id=case.case_id.display_id) }}">View Sysmon timeline</a>
     <a class="button secondary" href="{{ url_for('web.report_preview', case_display_id=case.case_id.display_id) }}">Preview report</a>
   </p>

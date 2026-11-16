@@ -66,3 +66,26 @@ ADR-023·024는 detection·execution 테이블을 핵심 cross-contract 검증�
   전제, 역할·매치와 결과)이다.
 - 끝나지 않은 VM 실행 런과 안전 잠금은 데이터 손상이 아니라 사람이 확인할 VM 상태이므로
   warning이다. Case에서 분리된 Artifact를 가리키는 참조도 warning이다.
+
+## 추가 결정: 읽기 전용 분석·탐지 화면 (W6)
+
+- **범위:** `/cases/<CASE>/analysis`, `/detection`, `/rules/<RULE>`, `/validation/<RUN>`
+  네 개의 GET 화면을 추가한다. 가설·룰·벤치마크·검증의 생성과 수정은 CLI에만 둔다.
+  11월 계획의 축소 규칙(W6은 읽기 전용 관계 그래프를 최소로 유지)에 따른 것이다.
+- **그래프 구현:** 서버에서 열 단위로 노드를 배치하고 곡선 간선을 계산해 inline SVG로
+  그린다(`web.graph`). JS 그래프 라이브러리와 CDN을 쓰지 않아 새 의존성이 없고, UI의
+  Content-Security-Policy(`default-src 'self'`)를 바꾸지 않는다. 사례당 노드가 수십 개
+  수준이라 교차 최소화 같은 자동 배치는 넣지 않았다.
+- **프로세스·파일 관계:** `sysmon.relations`가 Event ID 1의 `ParentProcessGuid`와 Event
+  ID 11의 `TargetFilename`으로 관계를 만들고, 그 밖의 Event ID는 프로세스별 개수로만
+  센다. 기존 Timeline 정규화 계약은 바꾸지 않는다.
+- **표시 범위 확장:** 기존 UI는 Image와 대상 파일 이름을 전혀 표시하지 않았다. 관계
+  그래프는 노드를 구분해야 하므로 **경로의 마지막 요소(파일 이름)만** 표시한다.
+  디렉터리, 명령줄, ProcessGuid, 원본 XML은 계속 숨긴다. 그래프는 프로세스 60개,
+  프로세스당 파일 8개까지만 그린다.
+- **버전 비교 기준:** Benchmark별로 룰 버전마다 종류별 최신 실행 하나를 쓴다. Case별
+  결과 비교는 development 실행만 사용해 Unseen 구성원이 반복 비교에 섞이지 않게 한다.
+- **실패 처리:** 읽을 수 없는 기록이 하나라도 있으면 화면 전체가 안전한 오류 코드로
+  실패한다.
+
+파일 이름 표시가 과하다고 판단되면 `leaf_name` 한 곳에서 PID만 남기도록 줄일 수 있다.

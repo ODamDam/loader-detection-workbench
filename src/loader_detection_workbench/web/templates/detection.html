@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_graph.html" import run_table %}
+{% block title %}Detection — Detection Workbench{% endblock %}
+{% block content %}
+  <h1>Detection rules and validation</h1>
+  <p class="hint">Read-only view. Rules, Benchmarks and Validation runs are created with the CLI.</p>
+
+  <h2>Rules</h2>
+  {% if rules %}
+    <table>
+      <thead><tr><th>Rule</th><th>Name</th><th>Format</th><th>Versions</th><th>Latest</th></tr></thead>
+      <tbody>
+        {% for rule in rules %}
+          <tr>
+            <td><a href="{{ url_for('web.rule_detail', rule_display_id=rule.display_id) }}">{{ rule.display_id }}</a></td>
+            <td>{{ rule.name }}</td>
+            <td>{{ rule.format.value }}</td>
+            <td>{{ rule.versions|length }}</td>
+            <td>v{{ rule.latest.version }} <span class="badge version-{{ rule.latest.status.value }}">{{ rule.latest.status.value }}</span></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty">No Rule is registered in this Project.</p>
+  {% endif %}
+
+  <h2>Benchmarks</h2>
+  {% for benchmark in benchmarks %}
+    <article class="artifact">
+      <h3>{{ benchmark.display_id }} · {{ benchmark.name }} <span class="badge version-{{ 'frozen' if benchmark.is_frozen else 'draft' }}">{{ 'frozen' if benchmark.is_frozen else 'not frozen' }}</span></h3>
+      <p>{{ benchmark.description or '—' }}</p>
+      <table>
+        <thead><tr><th>Case</th><th>Role</th><th>Expected</th></tr></thead>
+        <tbody>
+          {% for member in benchmark.members %}
+            <tr>
+              <td><a href="{{ url_for('web.case_analysis', case_display_id=member.case_display_id) }}">{{ member.case_display_id }}</a></td>
+              <td>{{ member.role.value }}</td>
+              <td>{{ 'malicious' if member.role.expected_malicious else 'benign' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </article>
+  {% else %}
+    <p class="empty">No Benchmark is registered in this Project.</p>
+  {% endfor %}
+
+  <h2>Validation runs</h2>
+  {% for title, runs in runs_by_kind %}
+    <h3>{{ title }}</h3>
+    {{ run_table(runs) }}
+  {% else %}
+    <p class="empty">No Validation run is recorded in this Project.</p>
+  {% endfor %}
+{% endblock %}

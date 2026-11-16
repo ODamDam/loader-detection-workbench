@@ -40,6 +40,12 @@ _SAFE_MESSAGES = {
     DomainErrorCode.ARTIFACT_INTEGRITY_MISMATCH: (
         "Stored evidence failed its integrity check."
     ),
+    DomainErrorCode.DETECTION_RULE_NOT_FOUND: "The requested Rule was not found.",
+    DomainErrorCode.VALIDATION_RUN_NOT_FOUND: (
+        "The requested Validation run was not found."
+    ),
+    DomainErrorCode.INVALID_ARTIFACT_RECORD: "A stored analysis result is invalid.",
+    DomainErrorCode.INVALID_DETECTION_RECORD: "A stored detection record is invalid.",
     DomainErrorCode.INVALID_SYSMON_XML: "Stored Sysmon XML is invalid.",
     DomainErrorCode.INVALID_PROCESS_CREATE: "A Process Create event is invalid.",
     DomainErrorCode.INVALID_FILE_CREATE: "A File Create event is invalid.",

@@ -28,7 +28,7 @@ from loader_detection_workbench.project.service import ProjectService
 from loader_detection_workbench.static_analysis.service import StaticAnalysisService
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "unit"))
-from test_static_features import (  # type: ignore[import-not-found]  # noqa: E402
+from test_static_features import (  # type: ignore[import-not-found,unused-ignore]  # noqa: E402
     synthetic_pe_with_imports,
 )
 

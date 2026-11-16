@@ -9,6 +9,8 @@
   <body>
     <header class="site-header">
       <a href="{{ url_for('web.cases') }}">Local Detection Workbench</a>
+      <a class="nav" href="{{ url_for('web.cases') }}">Cases</a>
+      <a class="nav" href="{{ url_for('web.detection_overview') }}">Detection</a>
     </header>
     <main>
       {% block content %}{% endblock %}

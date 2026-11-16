@@ -7,9 +7,16 @@ shows attached Artifacts and available Manual Evidence provenance, registers a
 manual file in an Open v2 Case, and shows the safe subset of Event ID 1/11
 Timeline fields. It is a presentation adapter over existing Application Services.
 
+Since W6 (ADR-025) it also shows, read-only, the recorded analysis of a Case
+(evidence, hypothesis, rule and validation relationships as a graph, the process
+and file relationships derived from Sysmon records, VM execution runs) and the
+Project's Rules, Benchmarks and Validation runs including a per-version
+comparison.
+
 It does not provide Project selection in the browser, evidence download or raw
-preview, Markdown report preview, Collection import, VM controls, graph or rule
-editing, AI features, authentication, or remote access.
+preview, Markdown report preview, Collection import, VM controls, creating or
+editing Hypotheses, Rules, Benchmarks or Validation runs, graph editing, AI
+features, authentication, or remote access.
 
 ## Start command
 
@@ -33,7 +40,11 @@ validated before Waitress binds to `127.0.0.1`. There is no `--host` option.
 | GET | `/cases/<case-id>/evidence/new` | Registration form or state notice |
 | POST | `/cases/<case-id>/evidence` | Register through `ManualEvidenceService`, then 303 redirect |
 | GET | `/cases/<case-id>/timeline` | Event ID 1/11 safe Timeline projection |
-| GET | `/cases/<case-id>/report` | Safe read-only Case report preview and local Markdown command |
+| GET | `/cases/<case-id>/report` | Safe read-only Case report preview and local Markdown/HTML commands |
+| GET | `/cases/<case-id>/analysis` | Relationship graph, hypotheses, validation results, process/file graph and VM runs of one Case |
+| GET | `/detection` | Rules, Benchmarks with members, and Validation runs of the Project |
+| GET | `/rules/<rule-id>` | Rule versions, rule text, version comparison and runs |
+| GET | `/validation/<run-id>` | One Validation run with per-Case outcome and match evidence |
 
 The Artifact view includes display ID, kind, neutral classification, SHA-256,
 size, and creation time. Provenance, when present, adds original filename,
@@ -59,6 +70,47 @@ The report preview reuses the Case Timeline projection and deliberately omits th
 sensitive fields excluded from the rest of the browser UI. It does not write a
 file. The existing `workbench report build` command remains the way to generate
 the full Markdown report inside the selected Project.
+
+## Analysis and detection views (W6)
+
+All four views are GET-only projections of `CaseAnalysisQuery`,
+`CaseProcessRelationsQuery` and `DetectionService`. They never write, and the only
+state-changing route of the UI remains manual evidence registration.
+
+- **Relationship graph:** columns Evidence (Artifacts) → Hypotheses → Rules →
+  Validation runs. An edge means *supports*, *implements* or *validated by*. A run
+  node is colored by the outcome of this Case in that run (TP, TN, FP, FN, not
+  evaluable, or not a member). Nodes link to the Artifact, Rule and Run pages.
+- **Process and file graph:** built from every attached Sysmon Artifact. A process
+  is labeled with the file name of its image and its PID; a written file with its
+  file name and the source `Artifact#EventRecordID`. **Only the last path element
+  is shown.** Directories, command lines, ProcessGuids and raw XML stay omitted,
+  as in the Timeline. Other Event IDs appear as per-process counts (dns, network,
+  registry, image load). A process referenced only as a parent or actor is drawn
+  dashed. At most 60 processes and 8 files per process are drawn and the page
+  states when the graph is truncated.
+- **Validation numbers:** every count is shown with its denominator: Detected is
+  `TP / malicious members evaluated`, False positives is `FP / benign members
+  evaluated`. Members without a target Artifact are counted as not evaluable and
+  are excluded from both denominators. Ratios such as recall are not shown.
+- **Run kinds:** development, evaluation (Unseen, frozen rule version and frozen
+  Benchmark) and tuning (any Unseen run after the first evaluation of that rule)
+  are always listed in separate tables. A tuning run page states that it is not an
+  Unseen evaluation result.
+- **Version comparison:** per Benchmark, one row per rule version with the latest
+  run of each kind. The per-Case matrix uses the latest development run of each
+  version and marks Cases whose outcome changed between versions.
+- **Rule text** is analyst-authored and is shown escaped in a `<pre>` block.
+  **Match evidence** lists Artifact IDs, rule names, string identifiers with
+  offsets and Sysmon record IDs; matched content is not shown.
+- **VM runs:** status, target, event count and step names with results. Recorded
+  step detail and hypervisor commands are not shown, and the UI cannot start,
+  stop or unlock a run.
+- Graphs are inline SVG laid out on the server. No script, inline style or
+  third-party resource is used, so the existing Content-Security-Policy is
+  unchanged.
+- Any unreadable record (for example an invalid static result) fails the whole
+  page with 422 and a stable code; a partial analysis is never rendered.
 
 ## Upload and compatibility
 

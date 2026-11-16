@@ -10,8 +10,15 @@ from flask import Blueprint, current_app, redirect, render_template, request, ur
 from flask.typing import ResponseReturnValue
 
 from loader_detection_workbench.artifact.service import ArtifactService
+from loader_detection_workbench.case.relations import CaseProcessRelationsQuery
 from loader_detection_workbench.case.service import CaseService
 from loader_detection_workbench.case.timeline import CaseTimelineQuery
+from loader_detection_workbench.detection.domain import (
+    RunKind,
+    ValidationRun,
+    require_display_id,
+)
+from loader_detection_workbench.detection.service import DetectionService
 from loader_detection_workbench.domain.case import CaseStatus
 from loader_detection_workbench.domain.errors import DomainError, DomainErrorCode
 from loader_detection_workbench.domain.time import format_utc, utc_now
@@ -20,8 +27,19 @@ from loader_detection_workbench.evidence.domain import (
     EvidenceType,
 )
 from loader_detection_workbench.evidence.service import ManualEvidenceService
+from loader_detection_workbench.report.analysis import CaseAnalysisQuery
 from loader_detection_workbench.static_analysis.service import StaticAnalysisService
 from loader_detection_workbench.sysmon.records import record_summary
+from loader_detection_workbench.web.detection_views import (
+    KIND_ORDER,
+    KIND_TITLES,
+    RunView,
+    compare_versions,
+    result_views,
+    run_view,
+    version_views,
+)
+from loader_detection_workbench.web.graph import evidence_graph, process_graph
 from loader_detection_workbench.web.presentation import (
     artifact_views,
     timeline_event_views,
@@ -206,4 +224,111 @@ def report_preview(case_display_id: str) -> str:
         generated_at=format_utc(utc_now()),
         events=timeline_event_views(result.observations),
         artifact_count=result.sysmon_artifact_count,
+    )
+
+
+def _runs_by_kind(
+    runs: list[ValidationRun] | tuple[ValidationRun, ...],
+    case_display_id: str | None = None,
+) -> list[tuple[str, list[RunView]]]:
+    grouped: dict[RunKind, list[RunView]] = {}
+    for run in runs:
+        grouped.setdefault(run.kind, []).append(run_view(run, case_display_id))
+    return [
+        (KIND_TITLES[kind], grouped[kind]) for kind in KIND_ORDER if kind in grouped
+    ]
+
+
+@web.get("/cases/<case_display_id>/analysis")
+def case_analysis(case_display_id: str) -> str:
+    result = CaseTimelineQuery(_root()).query(case_display_id)
+    analysis = CaseAnalysisQuery(_root()).query(result)
+    relations = CaseProcessRelationsQuery(_root()).query(result)
+    graph = evidence_graph(
+        analysis,
+        artifact_href={
+            artifact.artifact_id.display_id: url_for(
+                "web.artifact_detail",
+                case_display_id=case_display_id,
+                artifact_display_id=artifact.artifact_id.display_id,
+            )
+            for artifact in analysis.artifacts
+        },
+        rule_href={
+            rule.display_id: url_for("web.rule_detail", rule_display_id=rule.display_id)
+            for rule in analysis.rules
+        },
+        run_href={
+            run.display_id: url_for("web.validation_run", run_display_id=run.display_id)
+            for run in analysis.validation_runs
+        },
+    )
+    execution_runs = [
+        {
+            "display_id": run.display_id,
+            "profile": run.profile.value,
+            "target": run.target,
+            "status": run.status.value,
+            "error_code": run.error_code,
+            "started_at": format_utc(run.started_at),
+            "event_count": "—" if run.event_count is None else run.event_count,
+            "sysmon_artifact_id": run.sysmon_artifact_id or "—",
+            # Step names and results only; recorded step detail is never shown.
+            "steps": ", ".join(f"{s.step.value} {s.status.value}" for s in run.steps),
+        }
+        for run in analysis.execution_runs
+    ]
+    return render_template(
+        "case_analysis.html",
+        case=result.case,
+        analysis=analysis,
+        evidence_graph=graph,
+        process_graph=process_graph(relations),
+        relations=relations,
+        runs_by_kind=_runs_by_kind(analysis.validation_runs, case_display_id),
+        execution_runs=execution_runs,
+    )
+
+
+@web.get("/detection")
+def detection_overview() -> str:
+    service = DetectionService(_root())
+    return render_template(
+        "detection.html",
+        rules=service.list_rules(),
+        benchmarks=service.list_benchmarks(),
+        runs_by_kind=_runs_by_kind(service.list_runs()),
+    )
+
+
+@web.get("/rules/<rule_display_id>")
+def rule_detail(rule_display_id: str) -> str:
+    service = DetectionService(_root())
+    rule = service.show_rule(rule_display_id)
+    runs = service.list_runs(rule_display_id)
+    return render_template(
+        "rule_detail.html",
+        rule=rule,
+        created_at=format_utc(rule.created_at),
+        versions=version_views(rule),
+        hypotheses=[
+            hypothesis
+            for hypothesis in service.list_hypotheses()
+            if rule_display_id in hypothesis.rule_display_ids
+        ],
+        comparisons=compare_versions(rule, runs, service.list_benchmarks()),
+        kind_titles=[KIND_TITLES[kind] for kind in KIND_ORDER],
+        runs_by_kind=_runs_by_kind(runs),
+    )
+
+
+@web.get("/validation/<run_display_id>")
+def validation_run(run_display_id: str) -> str:
+    require_display_id("run", run_display_id)
+    run = DetectionService(_root()).show_run(run_display_id)
+    return render_template(
+        "validation_run.html",
+        run=run_view(run),
+        rule_sha256=run.rule_sha256,
+        results=result_views(run),
     )

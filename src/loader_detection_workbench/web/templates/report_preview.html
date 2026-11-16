@@ -15,6 +15,8 @@
     <dt>Normalized Observations</dt><dd>{{ events|length }}</dd>
   </dl>
   <p class="command"><code>workbench report build {{ case.case_id.display_id }} reports/{{ case.case_id.display_id }}.md</code></p>
+  <p class="command"><code>workbench report build {{ case.case_id.display_id }} reports/{{ case.case_id.display_id }}.html</code></p>
+  <p class="hint">The generated report also contains static evidence, hypotheses, rules, validation results and VM runs. The <a href="{{ url_for('web.case_analysis', case_display_id=case.case_id.display_id) }}">analysis view</a> shows the same records in the browser.</p>
   <h2>Timeline evidence</h2>
   {% if events %}
     <table>

@@ -38,3 +38,43 @@ input, select, textarea { box-sizing: border-box; font: inherit; padding: .55rem
 .metrics span, .relationship { color: #4f5f78; }
 .relation-card { background: #fff; border-left: .3rem solid #2456a6; padding: .8rem 1rem; }
 .command { background: #172033; color: #fff; overflow-wrap: anywhere; padding: .8rem 1rem; }
+.site-header { display: flex; gap: 1.5rem; align-items: baseline; }
+.site-header a.nav { font-weight: 400; }
+.badge { display: inline-block; border-radius: 1rem; padding: .1rem .6rem; font-size: .85rem; background: #e9edf3; }
+.graph-scroll { overflow-x: auto; background: #fff; border: 1px solid #d9dee8; border-radius: .4rem; padding: .5rem; }
+.graph { display: block; font-family: system-ui, sans-serif; }
+.graph-column { font-size: 13px; font-weight: 700; fill: #4f5f78; }
+.graph-edge { stroke: #8a97ad; stroke-width: 1.5; }
+.edge-validated { stroke-dasharray: 4 3; }
+.edge-wrote { stroke: #b9853a; }
+.graph-node rect { fill: #f4f6f9; stroke: #4f5f78; stroke-width: 1.2; }
+.graph-node.artifact rect { fill: #e7eefb; stroke: #2456a6; }
+.graph-node.hypothesis rect { fill: #f3ecfb; stroke: #6b3fa0; }
+.graph-node.rule rect { fill: #fff5dc; stroke: #a6781f; }
+.graph-node.process rect { fill: #e7eefb; stroke: #2456a6; }
+.graph-node.process-external rect { fill: #fff; stroke-dasharray: 5 3; }
+.graph-node.file rect { fill: #fff5dc; stroke: #b9853a; }
+.graph-label { font-size: 13px; font-weight: 700; fill: #172033; }
+.graph-sublabel { font-size: 11px; fill: #4f5f78; }
+a:hover .graph-node rect, a:focus .graph-node rect { stroke-width: 2.5; }
+.outcome-tp, .graph-node.outcome-tp rect { background: #dcf6e7; fill: #dcf6e7; }
+.outcome-tn, .graph-node.outcome-tn rect { background: #e3f1f6; fill: #e3f1f6; }
+.outcome-fp, .graph-node.outcome-fp rect { background: #fbdcdc; fill: #fbdcdc; }
+.outcome-fn, .graph-node.outcome-fn rect { background: #fff0d5; fill: #fff0d5; }
+.outcome-not_evaluable, .graph-node.outcome-not_evaluable rect { background: #e9edf3; fill: #e9edf3; }
+.outcome-none, .graph-node.outcome-none rect { background: #fff; fill: #fff; }
+.hypothesis-supported { background: #dcf6e7; }
+.hypothesis-weakened { background: #fff0d5; }
+.hypothesis-rejected { background: #fbdcdc; }
+.version-frozen { background: #dbe7fb; }
+.run-succeeded { background: #dcf6e7; }
+.run-failed, .run-abandoned { background: #fbdcdc; }
+.run-running { background: #fff0d5; }
+.legend { display: flex; flex-wrap: wrap; gap: 1rem; list-style: none; padding: 0; font-size: .9rem; }
+.swatch { display: inline-block; width: .9rem; height: .9rem; border: 1px solid #4f5f78; margin-right: .3rem; vertical-align: middle; }
+.rule-content { background: #172033; color: #fff; overflow-x: auto; padding: .8rem 1rem; }
+details { margin: .6rem 0; }
+summary { cursor: pointer; font-weight: 700; }
+tr.changed td { background: #fff9e8; }
+table.comparison th { text-align: center; }
+td.digest { word-break: break-all; }

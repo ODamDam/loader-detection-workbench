@@ -336,9 +336,17 @@ Timeline을 제공한다. 수동 등록은 Open v2 Case에서만 가능하며 �
 정책을 그대로 사용한다. v1 Project의 조회는 가능하지만 등록 전에 별도 백업 후
 명시적인 `project migrate --to 2`가 필요하다.
 
+Case 상세의 **Evidence and detection analysis**(`/cases/<CASE>/analysis`)는 증거 →
+가설 → 룰 → 검증 관계 그래프, 가설, 검증 결과, 프로세스·파일 관계 그래프와 VM 실행
+런을 읽기 전용으로 보여준다. 상단 **Detection**(`/detection`)에서 룰, 벤치마크, 검증
+실행 목록을 보고, 룰 페이지에서 버전별 결과를 비교한다. 검증 수치는 항상 분모와 함께
+표시하고 development·evaluation·tuning 실행을 나눠서 보여준다. 가설·룰·벤치마크·검증의
+생성과 수정은 CLI에서만 한다.
+
 서버는 `127.0.0.1`에만 바인딩하고 debug/reloader를 사용하지 않는다. UI에는 원본
 증거 다운로드·미리보기, Markdown 보고서 미리보기, VM·AI 실행 기능이 없다.
 내부 ID와 저장 경로, Sysmon command line 및 실행·대상 경로도 표시하지 않는다.
+프로세스·파일 그래프는 경로의 마지막 요소(파일 이름)만 표시한다.
 원격 bind, port forwarding 또는 reverse proxy로 노출하지 않는다. 전체 route,
 오류 및 보안 계약은 `docs/local-platform-ui-contract.md`를 참조한다.
 

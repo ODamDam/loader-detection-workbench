@@ -301,6 +301,10 @@ workbench ui serve [ROOT] [--port PORT]
   거부한다. 자동 migration이나 schema 변경은 없다.
 - Timeline은 timestamp, Event ID, PID, Artifact display ID, EventRecordID만
   표시한다. command line, image, target path, ProcessGuid와 raw content는 숨긴다.
+- W6(ADR-025): `/cases/<CASE>/analysis`, `/detection`, `/rules/<RULE>`,
+  `/validation/<RUN>`은 읽기 전용 조회 화면이다. 관계 그래프는 서버에서 배치한 inline
+  SVG이며 script와 외부 자원을 쓰지 않는다. 프로세스·파일 그래프는 파일 이름(경로의
+  마지막 요소)만 표시한다. 가설·룰·벤치마크·검증의 생성과 수정은 CLI에서만 한다.
 - `other` Artifact에는 Collection identity가 없으므로 중립적인 Other Artifact로
   표시한다. 전체 route, 오류와 보안 계약은 `docs/local-platform-ui-contract.md`를
   따른다.
