@@ -8,8 +8,14 @@ import stat
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Protocol
 
+from loader_detection_workbench.artifact.seal import (
+    MAGIC,
+    ContentReader,
+    SealingWriter,
+    seal_bytes,
+)
 from loader_detection_workbench.domain.artifact import canonical_path
 from loader_detection_workbench.domain.errors import DomainError, DomainErrorCode
 from loader_detection_workbench.domain.paths import ProjectRelativePath
@@ -26,9 +32,17 @@ def _publish_exclusive(staging: Path, destination: Path) -> None:
         os.link(staging, destination)
 
 
+class _Reader(Protocol):
+    def read(self, size: int = -1, /) -> bytes: ...
+
+
+class _Writer(Protocol):
+    def write(self, data: bytes, /) -> int: ...
+
+
 def _digest(
-    stream: BinaryIO,
-    target: BinaryIO | None = None,
+    stream: _Reader,
+    target: _Writer | None = None,
     *,
     max_bytes: int | None = None,
 ) -> tuple[str, int]:
@@ -60,6 +74,11 @@ def _open_regular(path: Path) -> BinaryIO:
     except BaseException:
         os.close(descriptor)
         raise
+
+
+def open_content(path: Path) -> ContentReader:
+    """Open regular stored content for reading its unsealed bytes (ADR-030)."""
+    return ContentReader(_open_regular(path))
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,7 +120,7 @@ class ArtifactStore:
 
     def verify(self, path: Path, expected: tuple[str, int]) -> None:
         try:
-            with _open_regular(path) as stream:
+            with open_content(path) as stream:
                 actual = _digest(stream)
         except OSError as exc:
             raise DomainError(
@@ -123,7 +142,7 @@ class ArtifactStore:
     ) -> bytes:
         """Read bounded regular content and verify exactly the returned bytes."""
         try:
-            with _open_regular(self.resolve(relative_path)) as stream:
+            with open_content(self.resolve(relative_path)) as stream:
                 data = stream.read(max_bytes + 1)
         except OSError as exc:
             raise DomainError(
@@ -141,12 +160,18 @@ class ArtifactStore:
         return data
 
     def publish(
-        self, source: Path, *, max_bytes: int | None = None
+        self, source: Path, *, max_bytes: int | None = None, seal: bool = False
     ) -> PublishedContent:
+        """Publish the unsealed content of ``source``.
+
+        The stored form is sealed when ``seal`` is set or the source itself is
+        sealed, so sealed content is never written back in the original form.
+        Existing content with the same hash is reused in whatever form it has.
+        """
         self.published = None
         # Read the same open source twice; detect changes before publication.
         try:
-            stream = _open_regular(source)
+            stream = open_content(source)
         except (OSError, ValueError) as exc:
             raise DomainError(
                 DomainErrorCode.ARTIFACT_SOURCE_INVALID,
@@ -181,10 +206,13 @@ class ArtifactStore:
                 )
                 staging = Path(name)
                 with os.fdopen(fd, "wb") as target:
+                    writer: _Writer = (
+                        SealingWriter(target) if seal or stream.sealed else target
+                    )
                     copied = (
-                        _digest(stream, target)
+                        _digest(stream, writer)
                         if max_bytes is None
-                        else _digest(stream, target, max_bytes=max_bytes)
+                        else _digest(stream, writer, max_bytes=max_bytes)
                     )
                     target.flush()
                     os.fsync(target.fileno())
@@ -222,9 +250,15 @@ class ArtifactStore:
                         "artifact staging cleanup failed",
                     ) from exc
 
-    def publish_bytes(self, data: bytes) -> PublishedContent:
-        """Atomically publish already-validated immutable content."""
+    def publish_bytes(self, data: bytes, *, seal: bool = False) -> PublishedContent:
+        """Atomically publish already-validated immutable (unsealed) content."""
         self.published = None
+        if not seal and data.startswith(MAGIC):
+            # Stored unsealed, it would be read back as sealed content.
+            raise DomainError(
+                DomainErrorCode.ARTIFACT_SOURCE_INVALID,
+                "content starts with the sealed-content header",
+            )
         sha256 = hashlib.sha256(data).hexdigest()
         expected = (sha256, len(data))
         relative = canonical_path(sha256)
@@ -242,7 +276,7 @@ class ArtifactStore:
             )
             staging = Path(name)
             with os.fdopen(fd, "wb") as target:
-                target.write(data)
+                target.write(seal_bytes(data) if seal else data)
                 target.flush()
                 os.fsync(target.fileno())
             self.verify(staging, expected)

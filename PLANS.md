@@ -3,6 +3,30 @@
 > 11월 기준선: Notion「11월 최종 구현 계획 v1 — 2026-11-11~11-22」, ADR-022.
 > 기능 동결 2026-11-22, 11/23–29는 Unseen 평가·버그 수정·문서화만 수행한다.
 
+## 2026-11-17 봉인 샘플 저장과 암호 ZIP 가져오기 (ADR-030)
+
+Status: `completed` — 실제 샘플은 아직 없음(사용자 확보 대기)
+
+- `artifact.seal`(공개 키스트림 XOR, `LDWSEAL1` 헤더), `ArtifactStore` 투명 봉인·해제,
+  `sample` 종류는 항상 봉인. `artifact.archive`(`pyzipper`)로 비밀번호 ZIP을 메모리에서만 읽는
+  `case artifact import-zip`과 `sample add --zip`. 게스트 스크립트가 VM 안에서 봉인 해제 후 해시
+  확인. 번들은 봉인 상태로 왕복.
+- 확보 절차: `docs/26-sample-acquisition-guide.md`(패밀리 3종 이상, dev 6, eval 4~6, 후보
+  16~20).
+- 미검증: 실제 VM에서 봉인된 sample 실행(PowerShell 단위 테스트와 fake VBoxManage로만 확인).
+  다음 시뮬레이터 VM 실행 때 함께 확인한다.
+
+## 2026-11-17 M4 비식별화한 정적 보고서 사이트
+
+Status: `completed` — 로컬 생성까지. 공개는 하지 않음
+
+- `workbench report site OUTPUT_DIR`(`report.site`), `report.redact`, 문서 모델 `Links` 블록,
+  ADR-029.
+- 실제 데이터: 검증용 Project에서 5페이지, 치환 6,500건. 게스트 사용자명·호스트명·SID 잔존
+  0건, script·외부 링크 0건. 처음 구현은 본문의 `a` 모양을 계정으로 추측해 레지스트리
+  경로 조각(`Defender`, `State`)을 호스트로 가렸고, Sysmon 필드에서만 배우도록 고쳤다.
+- 남은 작업: Publication Bundle(정제 이벤트·IOC·룰·검증 결과·manifest), 행위·ATT&CK 태그.
+
 ## 2026-11-17 YARA 정상 비교 파일 세트
 
 Status: `completed`

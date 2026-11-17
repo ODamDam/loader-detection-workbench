@@ -8,7 +8,9 @@ Copied into the isolated analysis VM by the Workbench host (ADR-024) and run
 through VBoxManage guestcontrol. Never run on the host. No network access,
 downloads, Sysmon configuration changes or credential handling.
 
-Mode Sample   : verify the transferred file's SHA-256, then start it.
+Mode Sample   : unseal the transferred file if it is sealed (ADR-030: "LDWSEAL1"
+                header, XOR with a fixed public keystream), verify its SHA-256,
+                then start it.
 Mode Scenario : run one fixed benign scenario (no arbitrary commands).
 
 The target runs for the full TimeoutSeconds (child activity after the root
@@ -95,6 +97,44 @@ function Get-WorkbenchSha256 {
     (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
+$script:WorkbenchSealMagic = [Text.Encoding]::ASCII.GetBytes('LDWSEAL1')
+
+function Get-WorkbenchSealKey {
+    # Same public keystream as loader_detection_workbench.artifact.seal (not a secret).
+    $label = [Text.Encoding]::ASCII.GetBytes('loader-detection-workbench/seal/v1')
+    $sha = [Security.Cryptography.SHA256]::Create()
+    $key = New-Object byte[] 4096
+    try {
+        for ($i = 0; $i -lt 128; $i++) {
+            $counter = [byte[]]@((($i -shr 24) -band 255), (($i -shr 16) -band 255), (($i -shr 8) -band 255), ($i -band 255))
+            $block = $sha.ComputeHash([byte[]]($label + $counter))
+            [Array]::Copy($block, 0, $key, $i * 32, 32)
+        }
+    } finally { $sha.Dispose() }
+    return ,$key
+}
+
+function Restore-WorkbenchSample {
+    param([string]$Source, [string]$Destination)
+    $data = [IO.File]::ReadAllBytes($Source)
+    $magic = $script:WorkbenchSealMagic
+    $sealed = $data.Length -ge $magic.Length
+    for ($i = 0; $sealed -and $i -lt $magic.Length; $i++) {
+        if ($data[$i] -ne $magic[$i]) { $sealed = $false }
+    }
+    if (-not $sealed) {
+        Move-Item -LiteralPath $Source -Destination $Destination -ErrorAction Stop
+        return
+    }
+    $key = Get-WorkbenchSealKey
+    $offset = $magic.Length
+    $plain = New-Object byte[] ($data.Length - $offset)
+    for ($i = 0; $i -lt $plain.Length; $i++) { $plain[$i] = $data[$i + $offset] -bxor $key[$i % 4096] }
+    $stream = New-Object IO.FileStream($Destination, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
+    try { $stream.Write($plain, 0, $plain.Length) } finally { $stream.Dispose() }
+    Remove-Item -LiteralPath $Source -Force -ErrorAction Stop
+}
+
 function Get-WorkbenchDescendants {
     param([int]$RootId, [object[]]$Processes)
     $children = @{}
@@ -136,10 +176,10 @@ function Start-WorkbenchTarget {
     if ($RunMode -eq 'Sample') {
         $source = Join-Path $Work $File
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw 'SAMPLE_HASH_MISMATCH: sample missing' }
-        if ((Get-WorkbenchSha256 $source) -cne $Sha) { throw 'SAMPLE_HASH_MISMATCH: sample hash differs' }
         $target = Join-Path $Work ('target-' + $Sha.Substring(0, 12) + '.exe')
-        Move-Item -LiteralPath $source -Destination $target -ErrorAction Stop
-        if ((Get-WorkbenchSha256 $target) -cne $Sha) { throw 'SAMPLE_HASH_MISMATCH: moved sample hash differs' }
+        try { Restore-WorkbenchSample -Source $source -Destination $target }
+        catch { throw 'SAMPLE_HASH_MISMATCH: sample could not be restored' }
+        if ((Get-WorkbenchSha256 $target) -cne $Sha) { throw 'SAMPLE_HASH_MISMATCH: sample hash differs' }
         try { return Start-Process -FilePath $target -WorkingDirectory $Work -PassThru -ErrorAction Stop }
         catch { throw 'TARGET_START_FAILED: sample could not be started' }
     }

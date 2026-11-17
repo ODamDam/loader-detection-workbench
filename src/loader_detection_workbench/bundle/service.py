@@ -12,6 +12,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+from loader_detection_workbench.artifact.seal import ContentReader
 from loader_detection_workbench.artifact.store import ArtifactStore
 from loader_detection_workbench.bundle.domain import (
     ARTIFACT_SENSITIVITY,
@@ -48,9 +49,11 @@ class BundleService:
 
     @staticmethod
     def _content_digest(stream: Any) -> tuple[str, int]:
+        # Sealed members (ADR-030) are identified by their unsealed content.
+        reader = ContentReader(stream)
         digest = hashlib.sha256()
         size = 0
-        while chunk := stream.read(1024 * 1024):
+        while chunk := reader.read(1024 * 1024):
             digest.update(chunk)
             size += len(chunk)
         return digest.hexdigest(), size

@@ -62,7 +62,26 @@ class Code:
     content: str
 
 
-type Block = Heading | Bullets | Paragraph | Table | Code
+_HREF = re.compile(r"(?:\.\./)?[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\.html", re.ASCII)
+
+
+@dataclass(frozen=True, slots=True)
+class Links:
+    """Navigation between pages of a generated site.
+
+    Targets are Workbench-generated relative ``.html`` paths only; anything
+    else is refused, so evidence text can never become a link.
+    """
+
+    items: tuple[tuple[str, Text], ...]
+
+    def __post_init__(self) -> None:
+        for href, _ in self.items:
+            if _HREF.fullmatch(href) is None:
+                raise ValueError("link target must be a relative .html path")
+
+
+type Block = Heading | Bullets | Paragraph | Table | Code | Links
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +131,11 @@ def render_markdown(document: Document) -> str:
             lines.append("")
         elif isinstance(block, Paragraph):
             lines.extend([_markdown(block.text), ""])
+        elif isinstance(block, Links):
+            lines.extend(
+                f"- [{_markdown(label)}]({href})" for href, label in block.items
+            )
+            lines.append("")
         elif isinstance(block, Table):
             lines.append("| " + " | ".join(block.headers) + " |")
             lines.append(
@@ -197,6 +221,13 @@ def render_html(document: Document) -> str:
             parts.append("</ul>")
         elif isinstance(block, Paragraph):
             parts.append(f"<p>{_html(block.text)}</p>")
+        elif isinstance(block, Links):
+            parts.append('<ul class="links">')
+            parts.extend(
+                f'<li><a href="{html.escape(href, quote=True)}">{_html(label)}</a></li>'
+                for href, label in block.items
+            )
+            parts.append("</ul>")
         elif isinstance(block, Table):
             parts.append("<table>")
             parts.append(

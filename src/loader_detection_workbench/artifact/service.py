@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -57,8 +57,34 @@ class ArtifactService:
             raise DomainError(DomainErrorCode.CASE_CLOSED, "closed case is read-only")
 
     def add(self, case_display_id: str, source: Path, kind: str) -> Artifact:
-        self._validate_case_selector(case_display_id)
         parsed_kind = ArtifactKind.parse(kind)
+        # Samples are always stored sealed (ADR-030).
+        return self._add(
+            case_display_id,
+            parsed_kind,
+            lambda store: store.publish(
+                source, seal=parsed_kind is ArtifactKind.SAMPLE
+            ),
+        )
+
+    def add_content(self, case_display_id: str, data: bytes, kind: str) -> Artifact:
+        """Add in-memory content, for example a sample read from an archive."""
+        parsed_kind = ArtifactKind.parse(kind)
+        return self._add(
+            case_display_id,
+            parsed_kind,
+            lambda store: store.publish_bytes(
+                data, seal=parsed_kind is ArtifactKind.SAMPLE
+            ),
+        )
+
+    def _add(
+        self,
+        case_display_id: str,
+        parsed_kind: ArtifactKind,
+        publish: Callable[[ArtifactStore], PublishedContent],
+    ) -> Artifact:
+        self._validate_case_selector(case_display_id)
         content: PublishedContent | None = None
         store = ArtifactStore(self._root)
         try:
@@ -67,7 +93,7 @@ class ArtifactService:
             with self._repository(write=True) as repository:
                 case = repository.get_case(case_display_id)
                 self._require_open(case)
-                content = store.publish(source)
+                content = publish(store)
                 artifact = Artifact(
                     ArtifactId(generate_ulid(), repository.allocate_display_id()),
                     case.project_id,

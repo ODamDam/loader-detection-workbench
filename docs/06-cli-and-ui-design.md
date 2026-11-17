@@ -123,6 +123,7 @@ workbench case reopen CASE-NNNN
 workbench case artifact add CASE-NNNN SOURCE --kind KIND
 workbench case artifact list CASE-NNNN
 workbench case artifact detach CASE-NNNN ART-NNNNNN
+workbench case artifact import-zip CASE-NNNN ARCHIVE [--password P] [--member NAME]
 ```
 
 - 현재 Project만 사용한다. 상위 디렉터리 검색과 Sample Intake의 숨김
@@ -146,6 +147,11 @@ workbench case artifact detach CASE-NNNN ART-NNNNNN
 - `INVALID_ARTIFACT_KIND`, `ARTIFACT_SOURCE_INVALID`, `ARTIFACT_NOT_FOUND`,
   `ARTIFACT_NOT_ATTACHED`, `INVALID_ARTIFACT_RECORD`로 입력·관계·저장 행 오류를
   구분한다. 기존 Case/ID/Project 오류도 유지한다.
+- ADR-030: `sample` kind 내용은 봉인 형태(`LDWSEAL1` 헤더 + 공개 키스트림 XOR)로
+  저장한다. 기록하는 SHA-256·크기는 봉인 전 기준이다. `import-zip`은 비밀번호 ZIP(기본
+  `infected`)의 멤버 하나를 메모리로만 읽어 `sample`로 추가하고, 디스크에 풀지 않는다.
+  멤버가 여러 개면 `--member`가 필요하다. 오류는 `ARCHIVE_INVALID`,
+  `ARCHIVE_PASSWORD_REJECTED`, `ARTIFACT_SIZE_LIMIT_EXCEEDED`(64 MiB)다.
 - `PATH_ESCAPE`로 symlink/reparse point 경로를 거부하고 기존 canonical bytes의
   hash/size가 다르면 `ARTIFACT_INTEGRITY_MISMATCH`로 거부한다. 덮어쓰지 않는다.
 - 같은 filesystem에 임시 파일을 staging하고 hash/size 재검증 및 fsync 후
@@ -338,3 +344,14 @@ workbench ai compare CASE-NNNN [--analysis AIA-NNNN ...]
 - `project validate`는 AI 테이블도 검사한다(scope `ai`): 저장된 입력과 SHA-256 불일치
   (`AI_INPUT_TAMPERED`), 검토 상태와 검토 필드 불일치, 없는 가설·분석 참조, 카운터.
 - UI는 저장된 제안을 읽기 전용으로만 보여준다. 검토는 CLI에서만 한다.
+
+## 9. 정적 보고서 사이트 (ADR-029)
+
+```text
+workbench report site OUTPUT_DIR
+```
+
+- 현재 디렉터리를 Project root로 쓴다. 출력은 `index.html`, `rules.html`,
+  `cases/CASE-NNNN.html`이다. 성공 시 페이지 수, Case 수, 비식별화 치환 수를 출력한다.
+- 대상이 이미 있으면 `REPORT_OUTPUT_EXISTS`, 쓰기 실패는 `REPORT_WRITE_FAILED`(exit 2).
+- 아무것도 공개하지 않는다. 공개 전 검토는 사람이 한다.

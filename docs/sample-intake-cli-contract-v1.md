@@ -4,7 +4,7 @@
 
 ## 명령과 전이
 
-`workbench sample`은 `add`, `show`, `list`, `screen`, `eligible`, `exclude`, `validate`, `assign`, `split`, `freeze`, `eval-open`을 제공한다. `add`는 정규 파일을 1 MiB 청크로 읽어 SHA-256만 계산한다. 실행, 심층 검사, 문자열·PE 분석, 복사, 외부 조회 및 Case 생성은 하지 않는다. `screen`은 일곱 사실을 기록할 뿐 eligibility를 바꾸지 않는다.
+`workbench sample`은 `add`, `show`, `list`, `screen`, `eligible`, `exclude`, `validate`, `assign`, `split`, `freeze`, `eval-open`을 제공한다. `add`는 정규 파일을 1 MiB 청크로 읽어 SHA-256만 계산한다. 실행, 심층 검사, 문자열·PE 분석, 복사, 외부 조회 및 Case 생성은 하지 않는다. `add FILE --zip [--password P] [--member NAME]`은 FILE을 비밀번호 ZIP으로 보고 멤버 하나를 메모리로만 읽어 SHA-256을 계산한다(ADR-030). 디스크에 풀지 않고, 압축 오류는 `ARCHIVE_INVALID`·`ARCHIVE_PASSWORD_REJECTED`로 종료 코드 2다. `screen`은 일곱 사실을 기록할 뿐 eligibility를 바꾸지 않는다.
 
 Eligibility는 일곱 criterion pass, unique duplicate status, SHA-256 및 provenance를 요구한다. 배정은 eligible+unique만 허용되고 freeze 뒤에는 변경할 수 없다. Split은 sample ID 순으로 얻은 pool에 seeded shuffle을 적용하며 behavior metadata는 입력으로 쓰지 않는다. family/source가 한쪽에 과반 집중되면 경고한다.
 

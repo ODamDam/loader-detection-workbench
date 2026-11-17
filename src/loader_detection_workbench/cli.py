@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sqlite3
 import sys
@@ -10,6 +11,7 @@ import zipfile
 from collections.abc import Sequence
 from dataclasses import asdict
 from enum import Enum
+from functools import partial
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any
@@ -20,6 +22,7 @@ from loader_detection_workbench.ai.service import (
     DEFAULT_PROVIDER,
     AiAnalysisService,
 )
+from loader_detection_workbench.artifact.archive import DEFAULT_PASSWORD, read_member
 from loader_detection_workbench.artifact.service import ArtifactService
 from loader_detection_workbench.bundle.service import BundleService
 from loader_detection_workbench.case.render import render_timeline
@@ -77,6 +80,7 @@ from loader_detection_workbench.presentation import single_line
 from loader_detection_workbench.project.migration import ProjectMigrationService
 from loader_detection_workbench.project.service import ProjectService, ProjectWorkspace
 from loader_detection_workbench.report.service import ReportFormat, ReportService
+from loader_detection_workbench.report.site import SiteService
 from loader_detection_workbench.sample.domain import (
     SCREENING_FIELDS,
     AssignmentReason,
@@ -183,6 +187,14 @@ def build_parser() -> argparse.ArgumentParser:
             artifact_command.add_argument("--kind", required=True)
         elif command == "detach":
             artifact_command.add_argument("artifact_display_id", metavar="ART-NNNNNN")
+    import_zip = artifact_commands.add_parser(
+        "import-zip",
+        help="add a sample from a password-protected ZIP without extracting it; "
+        "stored sealed (ADR-030)",
+    )
+    import_zip.add_argument("case_display_id", metavar="CASE-NNNN")
+    import_zip.add_argument("archive", type=Path, metavar="ARCHIVE")
+    _archive_options(import_zip)
     benign_files = case_commands.add_parser(
         "benign-files",
         help="add the fixed Windows system binary set to a benign Case "
@@ -229,6 +241,12 @@ def build_parser() -> argparse.ArgumentParser:
     commands = sample.add_subparsers(dest="sample_command", required=True)
     add = commands.add_parser("add")
     add.add_argument("file", type=Path)
+    add.add_argument(
+        "--zip",
+        action="store_true",
+        help="FILE is a password-protected archive; hash its member in memory",
+    )
+    _archive_options(add)
     add.add_argument("--source", required=True)
     add.add_argument("--source-reference", required=True)
     add.add_argument("--source-record-id")
@@ -331,6 +349,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[item.value for item in ReportFormat],
         help="default: html for .html/.htm output names, otherwise markdown",
     )
+    report_site = report_commands.add_parser(
+        "site",
+        help="build a de-identified static HTML site of every Case into a new "
+        "directory; publishes nothing",
+    )
+    report_site.add_argument("output", type=Path, metavar="OUTPUT_DIR")
     ui = groups.add_parser("ui", help="serve the local Case platform UI")
     ui_commands = ui.add_subparsers(dest="ui_command", required=True)
     ui_serve = ui_commands.add_parser("serve")
@@ -582,13 +606,30 @@ def _print(samples: list[Any], output_format: str = "text") -> None:
         )
 
 
+def _archive_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--password",
+        default=DEFAULT_PASSWORD,
+        help=f"archive password (default: {DEFAULT_PASSWORD})",
+    )
+    parser.add_argument(
+        "--member", help="file inside the archive (required if it holds several)"
+    )
+
+
 def _run_sample(a: argparse.Namespace, service: SampleService) -> int:
     command = a.sample_command
     if command == "add":
+        if a.zip:
+            data = read_member(a.file, password=a.password, member=a.member).data
+            register = partial(service.register, hashlib.sha256(data).hexdigest())
+        else:
+            if a.member is not None:
+                raise ContractViolation("--member requires --zip")
+            register = partial(service.add, a.file)
         _print(
             [
-                service.add(
-                    a.file,
+                register(
                     source=a.source,
                     source_reference=a.source_reference,
                     source_record_id=a.source_record_id,
@@ -762,6 +803,13 @@ def _run_artifact(arguments: argparse.Namespace, service: ArtifactService) -> in
     if arguments.artifact_command == "add":
         artifacts = [
             service.add(arguments.case_display_id, arguments.source, arguments.kind)
+        ]
+    elif arguments.artifact_command == "import-zip":
+        member = read_member(
+            arguments.archive, password=arguments.password, member=arguments.member
+        )
+        artifacts = [
+            service.add_content(arguments.case_display_id, member.data, "sample")
         ]
     elif arguments.artifact_command == "detach":
         artifacts = [
@@ -1310,6 +1358,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
     if arguments.group == "report":
         try:
+            if arguments.report_command == "site":
+                summary = SiteService(Path.cwd()).build(arguments.output)
+                print(f"site: created ({summary.pages} pages, {summary.cases} Cases)")
+                print(f"redactions: {summary.redactions}")
+                print("note: review the pages before sharing; nothing was published")
+                return 0
             ReportService(Path.cwd()).build(
                 arguments.case_display_id,
                 arguments.output,
@@ -1378,7 +1432,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (ContractViolation, DuplicateSampleError) as exc:
         print(f"contract violation: {exc}", file=sys.stderr)
         return 1
-    except (NotFoundError, SampleError, DomainError, OSError, sqlite3.Error) as exc:
+    except DomainError as exc:
+        print(f"error: {exc.code.value}: {exc}", file=sys.stderr)
+        return 2
+    except (NotFoundError, SampleError, OSError, sqlite3.Error) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     finally:

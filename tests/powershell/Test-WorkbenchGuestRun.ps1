@@ -118,6 +118,24 @@ try {
     Assert-True ($script:started.Count -eq 0) 'mismatching sample never started'
     Assert-Failure { Start-WorkbenchTarget -RunMode Sample -Work $temp -File ('b' * 64) -Sha ('b' * 64) } 'SAMPLE_HASH_MISMATCH'
 
+    # -- sealed sample (ADR-030): unsealed in the guest, then verified --------------
+    $keySha = (New-Object Security.Cryptography.SHA256Managed).ComputeHash((Get-WorkbenchSealKey))
+    Assert-True ((-join ($keySha | ForEach-Object { $_.ToString('x2') })) -eq '13f1ba9c1b791556b3fe221c9b9343c0e2374e05f078c2feb7ba6859491d664a') 'keystream matches the host'
+    $sealedHex = '4c44575345414c31984027f1dfc0768d458a3043da100cd501531558ac3341d2'
+    $sealed = [byte[]]@(for ($i = 0; $i -lt $sealedHex.Length; $i += 2) { [Convert]::ToByte($sealedHex.Substring($i, 2), 16) })
+    [IO.File]::WriteAllBytes((Join-Path $temp $realSha), $sealed)
+    Remove-Item -LiteralPath (Join-Path $temp ('target-' + $realSha.Substring(0, 12) + '.exe')) -Force
+    $script:started = @()
+    [void](Start-WorkbenchTarget -RunMode Sample -Work $temp -File $realSha -Sha $realSha)
+    $restored = [IO.File]::ReadAllBytes($script:started[0].FilePath)
+    Assert-True ([Text.Encoding]::ASCII.GetString($restored) -eq 'harmless synthetic bytes') 'sealed sample restored'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $temp $realSha))) 'sealed transfer removed'
+    $sealed[10] = $sealed[10] -bxor 1
+    [IO.File]::WriteAllBytes((Join-Path $temp $sha), $sealed)
+    $script:started = @()
+    Assert-Failure { Start-WorkbenchTarget -RunMode Sample -Work $temp -File $sha -Sha $sha } 'SAMPLE_HASH_MISMATCH'
+    Assert-True ($script:started.Count -eq 0) 'tampered sealed sample never started'
+
     # -- scenario start uses a fixed encoded command ------------------------------
     $script:started = @()
     [void](Start-WorkbenchTarget -RunMode Scenario -Work $temp -Name 'registry-probe')

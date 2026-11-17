@@ -83,7 +83,7 @@ uv run workbench vm unlock --note "poweroff + SYSMON-V2-CLEAN restored and verif
 | 10 | 잘못된 인자(작업 경로는 `C:\WorkbenchRun\VMR-NNNN`만 허용) |
 | 11 | Sysmon 서비스가 실행 중이 아님 |
 | 12 | Sysmon Operational 로그를 읽을 수 없음 |
-| 13 | 게스트에서 sample SHA-256 불일치(실행하지 않음) |
+| 13 | 게스트에서 sample 봉인 해제 실패 또는 SHA-256 불일치(실행하지 않음, ADR-030) |
 | 14 | 대상 시작 실패 |
 | 15 | 출력 디렉터리가 이미 있음 |
 | 16 | 내보내기 실패 |

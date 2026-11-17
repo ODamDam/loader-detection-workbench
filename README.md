@@ -451,3 +451,27 @@ uv run workbench vm run CASE-0002 --sample ART-NNNNNN --approve
   `.invalid` 이름 조회, TEST-NET-1(192.0.2.1) 연결 시도. 종료 전에 모두 되돌린다.
 - **호스트에서 실행하지 않는다.** 분석 VM에서 승인 후 `vm run`으로만 실행한다.
 - 리허설용 YARA·Sigma 룰은 `tools/simulator/rules/`에 있다(최종 채택 룰 아님).
+
+## 15. 정적 보고서 사이트 (ADR-029)
+
+```text
+uv run workbench report site site
+```
+
+Project의 모든 Case 보고서, 정량 목표와 검증 요약(`index.html`), 룰 버전·검증(`rules.html`)을
+새 디렉터리에 독립형 HTML로 만든다. 사용자 이름·호스트 이름·SID는 자동으로 가리지만 패턴
+기반이므로 공유 전에 직접 확인한다. 이 명령은 아무것도 공개하지 않는다. 로컬 분석용
+`report build`는 원본 그대로 둔다.
+
+## 16. 실제 샘플 등록: 봉인 저장과 암호 ZIP (ADR-030)
+
+```text
+uv run workbench sample add <ZIP> --zip --source MalwareBazaar --source-reference <URL>
+uv run workbench case artifact import-zip CASE-0001 <ZIP>
+```
+
+MalwareBazaar 같은 출처의 비밀번호 ZIP(기본 `infected`, AES 지원)을 디스크에 풀지 않고
+메모리에서 읽는다. `sample` Artifact는 항상 봉인된 형태(`LDWSEAL1` 헤더 + 공개 키스트림
+XOR)로 저장되므로 원본 바이트가 호스트 디스크에 남지 않는다. 암호화가 아니라 백신 격리와
+실수 실행을 막는 장치다. 해시·검증·YARA·보고서는 원본 기준으로 동작하고, VM 실행 때는 게스트
+스크립트가 VM 안에서 봉인을 푼다. 확보 절차는 `docs/26-sample-acquisition-guide.md`를 본다.

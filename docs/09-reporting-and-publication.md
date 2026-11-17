@@ -37,8 +37,16 @@ script·링크·외부 자원이 없고 `default-src 'none'` CSP meta를 포함�
 공개용 개인정보 비식별화를 대신하지 않는다.
 
 결과는 memory-only projection이며 report metadata를 DB에 저장하지 않는다. 보고서는
-악성 판정을 내리지 않는다. 정적 사이트, Publication Bundle, 자동 공개는 아직 지원
-범위가 아니다. 파일 게시 정책과 오류는 `06-cli-and-ui-design.md`를 따른다.
+악성 판정을 내리지 않는다. Publication Bundle과 자동 공개는 아직 지원 범위가 아니다.
+
+### 현재 구현: 비식별화한 정적 사이트 (M4, ADR-029)
+
+`workbench report site OUTPUT_DIR`은 Project의 모든 Case 보고서와 `index.html`(개요,
+정량 목표, Case 목록, 룰별 최신 검증), `rules.html`(룰 버전·본문·검증 실행)을 새 디렉터리에
+만든다. 모든 페이지에서 사용자 프로필 이름, 도메인 SID, Sysmon `Computer`·`User` 필드에서
+배운 호스트·사용자 이름을 `<user>`·`<host>`·`S-1-5-21-<sid>`로 바꾼다. 페이지 사이 링크는
+Workbench가 만든 상대 `.html` 경로만 허용한다. 대상 디렉터리가 이미 있으면 거부하며,
+공개는 별도 승인 단계다. 비식별화는 패턴 기반이므로 공개 전에 사람이 검토한다. 파일 게시 정책과 오류는 `06-cli-and-ui-design.md`를 따른다.
 
 ### 포함
 - 케이스별 Markdown 보고서

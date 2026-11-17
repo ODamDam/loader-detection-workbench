@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from collections import Counter
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from loader_detection_workbench.sample.domain import (
     SCREENING_FIELDS,
@@ -32,9 +34,22 @@ class SampleService:
     def __init__(self, repository: SampleRepository) -> None:
         self.repository = repository
 
-    def add(
+    def add(self, path: Path, **labels: Any) -> CandidateSample:
+        """Register a candidate from a file on disk (hash only; not stored)."""
+        if not path.is_file():
+            raise ContractViolation("input must be an existing regular file")
+        digest = hashlib.sha256()
+        try:
+            with path.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        except OSError as exc:
+            raise ContractViolation("input file could not be read") from exc
+        return self.register(digest.hexdigest(), **labels)
+
+    def register(
         self,
-        path: Path,
+        sha256: str,
         *,
         source: str,
         source_reference: str,
@@ -46,16 +61,9 @@ class SampleService:
         family_label_source: str | None = None,
         family_label_confidence: Confidence = Confidence.UNKNOWN,
     ) -> CandidateSample:
-        if not path.is_file():
-            raise ContractViolation("input must be an existing regular file")
-        digest = hashlib.sha256()
-        try:
-            with path.open("rb") as stream:
-                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                    digest.update(chunk)
-        except OSError as exc:
-            raise ContractViolation("input file could not be read") from exc
-        sha256 = digest.hexdigest()
+        """Register a candidate by the SHA-256 of its content."""
+        if re.fullmatch(r"[0-9a-f]{64}", sha256, re.ASCII) is None:
+            raise ContractViolation("sha256 must be lowercase hexadecimal")
         with self.repository.transaction():
             duplicate = self.repository.find_by_sha256(sha256)
             if duplicate is not None:

@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from loader_detection_workbench.artifact.seal import MAGIC, unseal_bytes
 from loader_detection_workbench.artifact.service import ArtifactService
 from loader_detection_workbench.artifact.store import ArtifactStore
 from loader_detection_workbench.case.service import CaseService
@@ -113,6 +114,7 @@ class FakeVBoxManage:
     snapshot_config: VmConfig = field(default_factory=VmConfig)
     run_level: int = 3
     guest_files: dict[str, bytes] = field(default_factory=dict)
+    copied: list[bytes] = field(default_factory=list)
     commands: list[tuple[str, ...]] = field(default_factory=list)
     password_files: list[str] = field(default_factory=list)
     fail: dict[str, int] = field(default_factory=dict)
@@ -188,6 +190,7 @@ class FakeVBoxManage:
                 if not target.endswith("\\"):  # real VBoxManage 7.2 refuses
                     return CommandResult(1, "", "VBOX_E_IPRT_ERROR")
                 self.guest_files[f"{target}{path.name}"] = path.read_bytes()
+                self.copied.append(path.read_bytes())
             return CommandResult(0, "")
         if op == "guest-run":
             code = self._guest_run(argv)
@@ -227,7 +230,10 @@ class FakeVBoxManage:
             "completed_at": "2026-11-12T01:05:00Z",
         }
         if values["Mode"] == "Sample":
-            sample = self.guest_files[f"{work}\\{values['SampleFileName']}"]
+            # The guest script unseals the transferred file (ADR-030).
+            sample = unseal_bytes(
+                self.guest_files[f"{work}\\{values['SampleFileName']}"]
+            )
             if hashlib.sha256(sample).hexdigest() != values["ExpectedSha256"]:
                 return 13
         events = _guest_events(self.baseline).encode("utf-8")
@@ -379,6 +385,8 @@ def test_sample_run_transfers_verified_artifact(root: Path) -> None:
     assert run.target_sha256 == sample.sha256
     copy = next(c for c in fake.commands if c[1] == "guestcontrol" and c[3] == "copyto")
     assert copy[-1].endswith(sample.sha256)
+    # The sample is sealed on the host and in transit; only the guest unseals.
+    assert sum(data.startswith(MAGIC) for data in fake.copied) == 1
     run_cmd = next(c for c in fake.commands if c[1] == "guestcontrol" and c[3] == "run")
     assert "--timeout=240000" in run_cmd  # 120 s + guest overhead
     assert run_cmd[-6:] == (

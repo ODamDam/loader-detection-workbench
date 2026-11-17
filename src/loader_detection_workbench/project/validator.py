@@ -13,7 +13,7 @@ from pathlib import Path
 from loader_detection_workbench.artifact.sqlite_repository import (
     SQLiteArtifactRepository,
 )
-from loader_detection_workbench.artifact.store import ArtifactStore, _open_regular
+from loader_detection_workbench.artifact.store import ArtifactStore, open_content
 from loader_detection_workbench.case.sqlite_repository import SQLiteCaseRepository
 from loader_detection_workbench.domain.artifact import Artifact, canonical_path
 from loader_detection_workbench.domain.case import Case
@@ -489,7 +489,7 @@ def _validate_content(
             if artifact.sha256 in cache:
                 size, digest = cache[artifact.sha256]
             else:
-                with _open_regular(path) as stream:
+                with open_content(path) as stream:
                     digest_obj = hashlib.sha256()
                     size = 0
                     while chunk := stream.read(1024 * 1024):

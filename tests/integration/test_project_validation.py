@@ -57,7 +57,7 @@ def test_default_validation_does_not_read_artifact_bytes(
     def unexpected(*args: object, **kwargs: object) -> object:
         pytest.fail("default validation read Artifact bytes")
 
-    monkeypatch.setattr(validator, "_open_regular", unexpected)
+    monkeypatch.setattr(validator, "open_content", unexpected)
     assert validate_workspace(workspace).findings == ()
 
 
