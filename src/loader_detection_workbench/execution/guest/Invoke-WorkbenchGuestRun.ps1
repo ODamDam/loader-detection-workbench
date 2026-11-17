@@ -152,30 +152,46 @@ function Start-WorkbenchTarget {
     } catch { throw 'TARGET_START_FAILED: scenario could not be started' }
 }
 
+function Invoke-WorkbenchLogExport {
+    # wevtutil streams the log natively and oldest first. On the analysis VM it
+    # exported 44,796 events in 11 s; Get-WinEvent plus ToXml took 294 s, which
+    # pushed busy runs past the host time limit. /uni:true keeps non-ASCII text
+    # intact as UTF-16; the caller re-encodes the document as UTF-8.
+    param([long]$Baseline, [string]$Path)
+    $tool = Join-Path $env:SystemRoot 'System32\wevtutil.exe'
+    $arguments = @('qe', 'Microsoft-Windows-Sysmon/Operational', "/q:*[System[EventRecordID>$Baseline]]",
+        '/f:xml', '/e:Events', '/uni:true')
+    try {
+        $exporter = Start-Process -FilePath $tool -ArgumentList $arguments -RedirectStandardOutput $Path `
+            -NoNewWindow -Wait -PassThru -ErrorAction Stop
+    } catch { throw 'SYSMON_LOG_UNREADABLE: export tool could not start' }
+    if ($exporter.ExitCode -ne 0) { throw 'SYSMON_LOG_UNREADABLE: export tool failed' }
+}
+
 function Export-WorkbenchEvents {
     param([long]$Baseline, [string]$OutDirectory, [System.Collections.IDictionary]$Manifest)
-    $records = @(Get-WorkbenchLogRecords -XPath "*[System[EventRecordID > $Baseline]]")
-    # Get-WinEvent returns newest first; export in record order.
-    $ordered = @($records | Sort-Object { [long]$_.RecordId })
-    $builder = New-Object System.Text.StringBuilder
-    [void]$builder.Append('<Events>')
-    foreach ($record in $ordered) {
-        $xml = $record.ToXml()
-        if ($xml -match '<!DOCTYPE') { throw 'EXPORT_FAILED: DTD in event XML' }
-        [void]$builder.Append($xml)
+    $raw = Join-Path $OutDirectory 'events.export.tmp'
+    Invoke-WorkbenchLogExport -Baseline $Baseline -Path $raw
+    if (-not (Test-Path -LiteralPath $raw -PathType Leaf)) { throw 'EXPORT_FAILED: no export output' }
+    $document = [IO.File]::ReadAllText($raw, [Text.Encoding]::Unicode).Trim()
+    Remove-Item -LiteralPath $raw -Force
+    if ($document -match '<!DOCTYPE') { throw 'EXPORT_FAILED: DTD in event XML' }
+    if (-not ($document.StartsWith('<Events>') -and $document.EndsWith('</Events>'))) {
+        throw 'EXPORT_FAILED: unexpected export format'
     }
-    [void]$builder.Append('</Events>')
+    # "<Event " / "<Event>" only: <Events>, <EventID>, <EventData> do not match.
+    $count = [regex]::Matches($document, '<Event[ >]').Count
     $encoding = New-Object System.Text.UTF8Encoding($false)
     $eventsPath = Join-Path $OutDirectory 'events.xml'
-    [IO.File]::WriteAllText($eventsPath, $builder.ToString(), $encoding)
-    $Manifest.event_count = $ordered.Count
+    [IO.File]::WriteAllText($eventsPath, $document, $encoding)
+    $Manifest.event_count = $count
     $Manifest.events_file = 'events.xml'
     $Manifest.events_sha256 = Get-WorkbenchSha256 $eventsPath
     $Manifest.completed_at = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
     $manifestPath = Join-Path $OutDirectory 'run-manifest.json'
     [IO.File]::WriteAllText($manifestPath, ($Manifest | ConvertTo-Json -Depth 3), $encoding)
     if ((Get-WorkbenchSha256 $eventsPath) -cne $Manifest.events_sha256) { throw 'EXPORT_FAILED: events changed' }
-    return $ordered.Count
+    return $count
 }
 
 function Invoke-WorkbenchGuestRun {

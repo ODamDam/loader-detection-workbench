@@ -1,7 +1,7 @@
-"""Read-only Tier 2 checks for the module-owned detection and execution tables.
+"""Read-only Tier 2 checks for the module-owned detection, execution and AI tables.
 
 The core validator (``project.validator``) owns Project/Case/Artifact checks.
-The detection (ADR-023) and execution (ADR-024) tables live in the same
+The detection (ADR-023), execution (ADR-024) and AI (ADR-026) tables live in the same
 ``project.db`` but are versioned by their own schema tables, so they are
 checked here only when that marker table exists. A Project that never used
 those modules produces no finding.
@@ -12,10 +12,13 @@ Every check reads raw rows with SQL. Nothing is repaired or written.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sqlite3
 from collections.abc import Callable
 
+from loader_detection_workbench.ai.digest import DIGEST_SCOPE
+from loader_detection_workbench.ai.sqlite_repository import AI_SCHEMA_VERSION
 from loader_detection_workbench.detection.sqlite_repository import (
     DETECTION_SCHEMA_VERSION,
 )
@@ -41,6 +44,10 @@ EXECUTION_RECORD_INVALID = "EXECUTION_RECORD_INVALID"
 EXECUTION_REFERENCE_BROKEN = "EXECUTION_REFERENCE_BROKEN"
 EXECUTION_RUN_UNFINISHED = "EXECUTION_RUN_UNFINISHED"
 EXECUTION_SAFETY_LOCK_SET = "EXECUTION_SAFETY_LOCK_SET"
+AI_COUNTER_INVALID = "AI_COUNTER_INVALID"
+AI_RECORD_INVALID = "AI_RECORD_INVALID"
+AI_REFERENCE_BROKEN = "AI_REFERENCE_BROKEN"
+AI_INPUT_TAMPERED = "AI_INPUT_TAMPERED"
 ARTIFACT_REFERENCE_DETACHED = "ARTIFACT_REFERENCE_DETACHED"
 
 # (tier, code, severity, scope, subject, message)
@@ -702,3 +709,232 @@ def validate_execution(
             _text(lock[0]),
             "the VM safety lock is set; verify the VM before 'vm unlock'",
         )
+
+
+_AI_TABLES = ("ai_counters", "ai_analyses", "ai_suggestions")
+_AI_TRIGGERS = (
+    "ai_analyses_immutable",
+    "ai_analyses_no_delete",
+    "ai_suggestions_reviewed_immutable",
+    "ai_suggestions_content_immutable",
+    "ai_suggestions_no_delete",
+)
+_AI_KINDS = {"summary", "hypothesis", "review_item"}
+_AI_STATES = {"pending", "accepted", "rejected"}
+
+
+def _json_object(value: object) -> dict[str, object] | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = json.loads(value)
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def validate_ai(
+    connection: sqlite3.Connection, cases: dict[str, Case], emit: Emit
+) -> None:
+    """Check stored AI analyses and suggestions (ADR-026).
+
+    The stored provider input must still hash to its recorded SHA-256, since
+    that pair is how a reviewer confirms what left the evidence store. Review
+    state must agree with the review fields, and an accepted hypothesis
+    suggestion must point at an existing Detection Hypothesis of the same Case.
+    """
+    scope = ValidationScope.AI
+    if not _schema_ready(
+        connection,
+        emit,
+        marker="ai_schema",
+        version=AI_SCHEMA_VERSION,
+        tables=_AI_TABLES,
+        triggers=_AI_TRIGGERS,
+        scope=scope,
+    ):
+        return
+    error = FindingSeverity.ERROR
+
+    hypotheses: dict[str, object] = {}
+    if "detection_hypotheses" in _objects(connection, "table"):
+        hypotheses = {
+            str(row[0]): row[1]
+            for row in connection.execute(
+                "SELECT display_id, case_id FROM detection_hypotheses"
+            )
+        }
+
+    analysis_cases: dict[str, object] = {}
+    sequences: list[int] = []
+    for row in connection.execute(
+        "SELECT display_id, case_id, input_scope, input_sha256, input_json "
+        "FROM ai_analyses"
+    ):
+        display_id = _text(row["display_id"])
+        sequence = _sequence(display_id, "AIA")
+        if display_id is None or sequence is None:
+            emit(
+                2,
+                AI_RECORD_INVALID,
+                error,
+                scope,
+                display_id,
+                "AI analysis display ID is invalid",
+            )
+            continue
+        sequences.append(sequence)
+        analysis_cases[display_id] = row["case_id"]
+        if row["case_id"] not in cases:
+            emit(
+                2,
+                AI_REFERENCE_BROKEN,
+                error,
+                scope,
+                display_id,
+                "AI analysis references a missing Case",
+            )
+        if row["input_scope"] != DIGEST_SCOPE:
+            emit(
+                2,
+                AI_RECORD_INVALID,
+                error,
+                scope,
+                display_id,
+                "AI analysis input scope is not an approved scope",
+            )
+        payload = row["input_json"]
+        recorded = row["input_sha256"]
+        if (
+            not isinstance(payload, str)
+            or not isinstance(recorded, str)
+            or _SHA256.fullmatch(recorded) is None
+            or hashlib.sha256(payload.encode("utf-8")).hexdigest() != recorded
+        ):
+            emit(
+                2,
+                AI_INPUT_TAMPERED,
+                error,
+                scope,
+                display_id,
+                "stored provider input does not match its recorded SHA-256",
+            )
+        elif _json_object(payload) is None:
+            emit(
+                2,
+                AI_RECORD_INVALID,
+                error,
+                scope,
+                display_id,
+                "stored provider input is not a JSON object",
+            )
+
+    counter = connection.execute(
+        "SELECT next_value FROM ai_counters WHERE name = 'analysis'"
+    ).fetchone()
+    value = None if counter is None else counter[0]
+    if analysis_cases or counter is not None:
+        if type(value) is not int or value < 1:
+            emit(
+                2,
+                AI_COUNTER_INVALID,
+                error,
+                scope,
+                "analysis",
+                "counter is missing or below its minimum value",
+            )
+        elif sequences and value <= max(sequences):
+            emit(
+                2,
+                AI_COUNTER_INVALID,
+                error,
+                scope,
+                "analysis",
+                "counter is behind a persisted display sequence",
+            )
+
+    found: dict[str, list[int]] = {}
+    summaries: dict[str, int] = {}
+    for row in connection.execute(
+        "SELECT analysis_display_id, sequence, kind, content_json, state, "
+        "reviewed_at, hypothesis_display_id FROM ai_suggestions"
+    ):
+        analysis_id = _text(row["analysis_display_id"])
+        subject = f"{analysis_id}#{row['sequence']}"
+        if analysis_id not in analysis_cases or type(row["sequence"]) is not int:
+            emit(
+                2,
+                AI_REFERENCE_BROKEN,
+                error,
+                scope,
+                subject,
+                "AI suggestion references a missing analysis",
+            )
+            continue
+        assert analysis_id is not None
+        found.setdefault(analysis_id, []).append(row["sequence"])
+        kind, state = row["kind"], row["state"]
+        if kind == "summary":
+            summaries[analysis_id] = summaries.get(analysis_id, 0) + 1
+        if kind not in _AI_KINDS or _json_object(row["content_json"]) is None:
+            emit(
+                2,
+                AI_RECORD_INVALID,
+                error,
+                scope,
+                subject,
+                "AI suggestion kind or content is invalid",
+            )
+        linked = row["hypothesis_display_id"]
+        if (
+            state not in _AI_STATES
+            or (state == "pending") != (row["reviewed_at"] is None)
+            or (linked is not None and (state != "accepted" or kind != "hypothesis"))
+        ):
+            emit(
+                2,
+                AI_RECORD_INVALID,
+                error,
+                scope,
+                subject,
+                "AI suggestion review state and review fields disagree",
+            )
+            continue
+        if linked is not None:
+            if linked not in hypotheses:
+                emit(
+                    2,
+                    AI_REFERENCE_BROKEN,
+                    error,
+                    scope,
+                    subject,
+                    "accepted AI suggestion references a missing hypothesis",
+                )
+            elif hypotheses[linked] != analysis_cases[analysis_id]:
+                emit(
+                    2,
+                    AI_REFERENCE_BROKEN,
+                    error,
+                    scope,
+                    subject,
+                    "accepted AI suggestion references a hypothesis of another Case",
+                )
+    for analysis_id, numbers in sorted(found.items()):
+        if sorted(numbers) != list(range(1, len(numbers) + 1)):
+            emit(
+                2,
+                AI_RECORD_INVALID,
+                error,
+                scope,
+                analysis_id,
+                "AI suggestions are not a contiguous sequence starting at 1",
+            )
+        if summaries.get(analysis_id, 0) > 1:
+            emit(
+                2,
+                AI_RECORD_INVALID,
+                error,
+                scope,
+                analysis_id,
+                "AI analysis has more than one summary",
+            )

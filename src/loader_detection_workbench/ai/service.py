@@ -16,6 +16,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from loader_detection_workbench.ai.compare import (
+    Comparison,
+    compare_analyses,
+    latest_per_provider,
+)
 from loader_detection_workbench.ai.digest import (
     DIGEST_SCOPE,
     build_digest,
@@ -149,6 +154,30 @@ class AiAnalysisService:
                 suggestions,
             )
             return repository.get(display_id)
+
+    def compare(
+        self,
+        case_display_id: str,
+        analysis_display_ids: list[str] | None = None,
+    ) -> Comparison:
+        """Compare stored analyses of one input (W8); calls no provider.
+
+        Without explicit IDs the newest analysis of each provider for the
+        Case's most recent input is used.
+        """
+        if analysis_display_ids:
+            chosen = [
+                self._reader.show(require_analysis_id(display_id))
+                for display_id in analysis_display_ids
+            ]
+            if any(a.case_display_id != case_display_id for a in chosen):
+                raise DomainError(
+                    DomainErrorCode.INVALID_AI_REQUEST,
+                    "compared analyses must belong to the given Case",
+                )
+        else:
+            chosen = latest_per_provider(self._reader.list(case_display_id))
+        return compare_analyses(chosen)
 
     def list_analyses(self, case_display_id: str | None = None) -> list[AiAnalysis]:
         return self._reader.list(case_display_id)

@@ -14,6 +14,7 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
+from loader_detection_workbench.ai.compare import Comparison, OpinionGroup
 from loader_detection_workbench.ai.domain import AiAnalysis
 from loader_detection_workbench.ai.service import (
     DEFAULT_PROVIDER,
@@ -421,6 +422,19 @@ def _add_ai_parsers(groups: Any) -> None:
     listing.add_argument("--case", dest="case_display_id", metavar="CASE-NNNN")
     show = commands.add_parser("show")
     show.add_argument("analysis_id", metavar="AIA-NNNN")
+    compare = commands.add_parser(
+        "compare",
+        help="split stored analyses of one input into shared and "
+        "single-provider opinions; calls no provider",
+    )
+    compare.add_argument("case_display_id", metavar="CASE-NNNN")
+    compare.add_argument(
+        "--analysis",
+        dest="analysis_ids",
+        nargs="+",
+        metavar="AIA-NNNN",
+        help="default: newest analysis per provider of the newest input",
+    )
     for name, text in (
         ("accept", "accept a suggestion; a hypothesis candidate becomes a Hypothesis"),
         ("reject", "reject a suggestion"),
@@ -1011,6 +1025,40 @@ def _print_ai_analysis(analysis: AiAnalysis) -> None:
             print(f"    review_note: {single_line(suggestion.review_note)}")
 
 
+def _print_opinion_group(group: OpinionGroup, *, with_provider: bool) -> None:
+    first = group.opinions[0]
+    label = first.title if first.title is not None else first.text
+    who = f" [{', '.join(group.providers)}]" if with_provider else ""
+    print(f"- {group.kind.value}{who} {single_line(label)}")
+    if group.evidence_artifact_ids:
+        print(f"    evidence: {', '.join(group.evidence_artifact_ids)}")
+    for opinion in group.opinions:
+        print(
+            f"    {opinion.analysis_display_id}#{opinion.sequence} "
+            f"{opinion.provider}: {single_line(opinion.text)}"
+        )
+
+
+def _print_comparison(comparison: Comparison) -> None:
+    print(f"case: {comparison.case_display_id}")
+    print(f"input_sha256: {comparison.input_sha256}")
+    for analysis in comparison.analyses:
+        print(f"analysis: {analysis.display_id}\t{analysis.provider}\t{analysis.model}")
+    print(
+        "note: suggestions are inferences, not observed evidence; "
+        "grouping is a wording and citation heuristic"
+    )
+    print(f"shared opinions: {len(comparison.common)}")
+    for group in comparison.common:
+        _print_opinion_group(group, with_provider=True)
+    print(f"single-provider opinions: {len(comparison.individual)}")
+    for group in comparison.individual:
+        _print_opinion_group(group, with_provider=True)
+    print("summaries:")
+    for summary in comparison.summaries:
+        print(f"- {summary.provider}: {single_line(summary.text)}")
+
+
 def _run_ai(arguments: argparse.Namespace, service: AiAnalysisService) -> int:
     command = arguments.ai_command
     if command == "providers":
@@ -1038,6 +1086,10 @@ def _run_ai(arguments: argparse.Namespace, service: AiAnalysisService) -> int:
             )
     elif command == "show":
         _print_ai_analysis(service.show(arguments.analysis_id))
+    elif command == "compare":
+        _print_comparison(
+            service.compare(arguments.case_display_id, arguments.analysis_ids)
+        )
     elif command == "accept":
         _print_ai_analysis(
             service.accept(arguments.analysis_id, arguments.number, arguments.note)

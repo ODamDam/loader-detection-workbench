@@ -27,6 +27,7 @@ from loader_detection_workbench.ai.service import AiAnalysisService
 from loader_detection_workbench.cli import main
 from loader_detection_workbench.detection.service import DetectionService
 from loader_detection_workbench.domain.errors import DomainError, DomainErrorCode
+from loader_detection_workbench.domain.validation import ValidationScope
 from loader_detection_workbench.project.validator import validate_workspace
 from loader_detection_workbench.web import create_app
 
@@ -421,3 +422,54 @@ def test_core_pipeline_is_unchanged_without_ai_records(root: Path) -> None:
     assert error.value.code is DomainErrorCode.AI_ANALYSIS_NOT_FOUND
     assert main(["report", "build", "CASE-0001", "plain.md"]) == 0
     assert "AI-Assisted" not in (root / "plain.md").read_text(encoding="utf-8")
+
+
+def _found(root: Path) -> set[tuple[str, str | None]]:
+    return {(f.code, f.subject) for f in validate_workspace(root).findings}
+
+
+def _mutate(root: Path, *statements: str) -> None:
+    with closing(sqlite3.connect(root / "project.db")) as connection, connection:
+        for statement in statements:
+            connection.execute(statement)
+
+
+def test_project_validate_checks_ai_tables(root: Path) -> None:
+    service = AiAnalysisService(root)
+    analysis = service.analyze("CASE-0001")
+    candidate = next(
+        s for s in analysis.suggestions if s.kind is SuggestionKind.HYPOTHESIS
+    )
+    service.accept("AIA-0001", candidate.sequence)
+    assert validate_workspace(root).findings == ()
+
+    # Tampering needs the guard triggers gone; that is reported as well.
+    _mutate(
+        root,
+        "DROP TRIGGER ai_analyses_immutable",
+        "DROP TRIGGER ai_suggestions_reviewed_immutable",
+        "UPDATE ai_analyses SET input_json = replace(input_json, 'CASE-0001', "
+        "'CASE-0002')",
+        f"UPDATE ai_suggestions SET hypothesis_display_id = 'HYP-0099' "
+        f"WHERE sequence = {candidate.sequence}",
+        "UPDATE ai_suggestions SET state = 'accepted', reviewed_at = NULL "
+        "WHERE sequence = 1",
+        "UPDATE ai_counters SET next_value = 1",
+    )
+    report = validate_workspace(root)
+    assert not report.is_valid
+    assert {f.scope for f in report.findings} == {ValidationScope.AI}
+    assert _found(root) == {
+        ("MODULE_SCHEMA_INCOMPLETE", "ai_analyses_immutable"),
+        ("MODULE_SCHEMA_INCOMPLETE", "ai_suggestions_reviewed_immutable"),
+        ("AI_INPUT_TAMPERED", "AIA-0001"),
+        ("AI_REFERENCE_BROKEN", f"AIA-0001#{candidate.sequence}"),
+        ("AI_RECORD_INVALID", "AIA-0001#1"),
+        ("AI_COUNTER_INVALID", "analysis"),
+    }
+
+
+def test_project_validate_reports_unsupported_ai_schema(root: Path) -> None:
+    AiAnalysisService(root).analyze("CASE-0001")
+    _mutate(root, "UPDATE ai_schema SET version = 9")
+    assert _found(root) == {("MODULE_SCHEMA_UNSUPPORTED", "ai_schema")}

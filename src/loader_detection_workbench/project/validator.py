@@ -32,6 +32,7 @@ from loader_detection_workbench.evidence.domain import (
 )
 from loader_detection_workbench.project.database import connect_database
 from loader_detection_workbench.project.module_validator import (
+    validate_ai,
     validate_detection,
     validate_execution,
 )
@@ -178,9 +179,11 @@ def validate_workspace(root: Path, *, full: bool = False) -> ValidationReport:
         ) -> None:
             collected.append(_finding(tier, code, severity, scope, subject, message))
 
-        # Module-owned tables (ADR-023, ADR-024); skipped when never installed.
+        # Module-owned tables (ADR-023, ADR-024, ADR-026); skipped when never
+        # installed.
         validate_detection(connection, cases, artifacts, emit)
         validate_execution(connection, cases, artifacts, emit)
+        validate_ai(connection, cases, emit)
         if full:
             _validate_content(workspace, artifacts, collected)
     except sqlite3.Error:

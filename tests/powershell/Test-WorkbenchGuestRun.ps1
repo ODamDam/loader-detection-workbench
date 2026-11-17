@@ -61,6 +61,18 @@ function Get-WinEvent {
     throw 'unexpected query'
 }
 
+# wevtutil export: write UTF-16 like `wevtutil qe /e:Events /uni:true`, oldest first.
+$script:exportFails = $false
+$script:exportExtra = ''
+function Invoke-WorkbenchLogExport {
+    param([long]$Baseline, [string]$Path)
+    if ($script:exportFails) { throw 'SYSMON_LOG_UNREADABLE: export tool failed' }
+    $script:queries += "export>$Baseline"
+    $body = @($script:records | Where-Object { $_.RecordId -gt $Baseline } | Sort-Object RecordId | ForEach-Object { $_.Xml })
+    $text = "<Events>`r`n" + (($body + @($script:exportExtra)) -join "`r`n") + "`r`n</Events>`r`n"
+    [IO.File]::WriteAllText($Path, $text, [Text.Encoding]::Unicode)
+}
+
 $sha = ('a' * 64)
 # -- argument validation ------------------------------------------------------
 Assert-WorkbenchArguments -Work 'C:\WorkbenchRun\VMR-0001' -Run 'VMR-0001' -RunMode Scenario -Name 'registry-probe' -Timeout 60 -Settle 5
@@ -141,6 +153,31 @@ try {
     [void](Invoke-WorkbenchGuestRun -Work $work2 -Run 'VMR-0002' -RunMode Scenario -Name 'dns-invalid' -Timeout 10 -Settle 0)
     $manifest = Get-Content -LiteralPath (Join-Path $work2 'out\run-manifest.json') -Raw | ConvertFrom-Json
     Assert-True ($manifest.process_outcome -eq 'timeout_killed') 'timeout outcome'
+    # -- export edge cases --------------------------------------------------------
+    $script:exitEarly = $true
+    $script:records = @((New-Record 101 1))
+    $script:records[0].Xml = $script:records[0].Xml.Replace('notepad.exe', ([string][char]0xD55C) + '.exe')
+    $work3 = Join-Path $temp 'run3'
+    [void][IO.Directory]::CreateDirectory($work3)
+    [void](Invoke-WorkbenchGuestRun -Work $work3 -Run 'VMR-0003' -RunMode Scenario -Name 'file-write' -Timeout 10 -Settle 0)
+    $text3 = [IO.File]::ReadAllText((Join-Path $work3 'out\events.xml'), [Text.Encoding]::UTF8)
+    Assert-True ($text3.Contains(([string][char]0xD55C) + '.exe')) 'non-ASCII text survives export'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $work3 'out\events.export.tmp'))) 'raw export removed'
+    $script:records = @()
+    $work4 = Join-Path $temp 'run4'
+    [void][IO.Directory]::CreateDirectory($work4)
+    $result4 = Invoke-WorkbenchGuestRun -Work $work4 -Run 'VMR-0004' -RunMode Scenario -Name 'file-write' -Timeout 10 -Settle 0
+    Assert-True ($result4 -eq 'collection: complete (0 events)') 'empty export'
+    $script:exportExtra = '<!DOCTYPE x>'
+    $work5 = Join-Path $temp 'run5'
+    [void][IO.Directory]::CreateDirectory($work5)
+    Assert-Failure { Invoke-WorkbenchGuestRun -Work $work5 -Run 'VMR-0005' -RunMode Scenario -Name 'file-write' -Timeout 10 -Settle 0 } 'EXPORT_FAILED'
+    $script:exportExtra = ''
+    $script:exportFails = $true
+    $work6 = Join-Path $temp 'run6'
+    [void][IO.Directory]::CreateDirectory($work6)
+    Assert-Failure { Invoke-WorkbenchGuestRun -Work $work6 -Run 'VMR-0006' -RunMode Scenario -Name 'file-write' -Timeout 10 -Settle 0 } 'SYSMON_LOG_UNREADABLE'
+    $script:exportFails = $false
 } finally {
     Remove-Item -LiteralPath $temp -Recurse -Force
 }

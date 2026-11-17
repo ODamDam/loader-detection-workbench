@@ -319,6 +319,7 @@ workbench ai list [--case CASE-NNNN]
 workbench ai show AIA-NNNN
 workbench ai accept AIA-NNNN N [--note TEXT]
 workbench ai reject AIA-NNNN N [--note TEXT]
+workbench ai compare CASE-NNNN [--analysis AIA-NNNN ...]
 ```
 
 - 현재 디렉터리를 Project root로 쓴다. 성공 exit 0, 오류 exit 2와
@@ -330,4 +331,10 @@ workbench ai reject AIA-NNNN N [--note TEXT]
 - 오류 코드: `AI_PROVIDER_UNAVAILABLE`(모르는 Provider, 외부 전송이 필요한 Provider),
   `AI_PROVIDER_FAILED`, `AI_OUTPUT_INVALID`, `AI_ANALYSIS_NOT_FOUND`,
   `AI_SUGGESTION_ALREADY_REVIEWED`, `INVALID_AI_REQUEST`, `AI_PERSISTENCE_FAILED`.
+- `compare`(W8, ADR-027)는 저장된 분석만 읽는다. 같은 Case, 같은 입력 SHA-256,
+  Provider당 하나여야 하며 아니면 `INVALID_AI_REQUEST`다. 기본값은 가장 최근 입력의
+  Provider별 최신 분석이다. 출력은 공통 의견(두 Provider 이상)과 개별 의견, Provider별
+  요약이며 묶음의 구성원을 모두 보여준다.
+- `project validate`는 AI 테이블도 검사한다(scope `ai`): 저장된 입력과 SHA-256 불일치
+  (`AI_INPUT_TAMPERED`), 검토 상태와 검토 필드 불일치, 없는 가설·분석 참조, 카운터.
 - UI는 저장된 제안을 읽기 전용으로만 보여준다. 검토는 CLI에서만 한다.

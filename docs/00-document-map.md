@@ -36,6 +36,7 @@
 - `25-vm-execution-runbook.md`: W4 VM 실행 런(`workbench vm`) 사용·실패·잠금 해제 절차
 - `adr/ADR-025-case-analysis-report-and-views.md`: W5 보고서, 모듈 테이블 검증, W6 읽기 전용 UI
 - `adr/ADR-026-ai-assisted-analysis-skeleton.md`: W7 AI 분석 보조의 오프라인 골격과 남은 결정
+- `adr/ADR-027-multi-provider-comparison.md`: W8 다중 Provider 분석 비교
 
 ## 4. 현재 활성 작업을 읽는 순서
 

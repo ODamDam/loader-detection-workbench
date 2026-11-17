@@ -413,6 +413,7 @@ workbench ai show AIA-0001
 workbench ai accept AIA-0001 2 --note "부모 프로세스 확인"
 workbench ai reject AIA-0001 1
 workbench ai list --case CASE-0001
+workbench ai compare CASE-0001         # 같은 입력의 Provider별 분석 비교(W8)
 ```
 
 - Provider 입력은 구조 요약(`structural`)뿐이다. 개수, 종류, API·파일 **이름**, 표시
@@ -425,3 +426,6 @@ workbench ai list --case CASE-0001
   계속 사람이 한다.
 - Case에 없는 Artifact를 인용하는 등 계약을 벗어난 Provider 출력은 전체를 거부하고
   저장하지 않는다.
+- `ai compare`는 같은 입력(SHA-256)을 받은 Provider별 분석을 공통 의견과 개별 의견으로
+  나눈다. Provider를 호출하지 않는다. 같은 의견인지는 인용 Artifact와 문구 유사도로 정하는
+  휴리스틱이다(ADR-027). 보고서에도 같은 비교 표가 붙는다.

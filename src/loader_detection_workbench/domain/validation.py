@@ -17,6 +17,7 @@ class ValidationScope(StrEnum):
     FILESYSTEM = "filesystem"
     DETECTION = "detection"
     EXECUTION = "execution"
+    AI = "ai"
 
 
 @dataclass(frozen=True, slots=True)

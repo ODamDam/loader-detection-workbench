@@ -13,6 +13,7 @@ import json
 from datetime import datetime
 from typing import Any
 
+from loader_detection_workbench.ai.compare import compare_analyses, latest_per_provider
 from loader_detection_workbench.case.timeline import CaseTimeline
 from loader_detection_workbench.detection.domain import (
     DetectionRule,
@@ -611,6 +612,47 @@ def _validation(analysis: CaseAnalysis) -> list[Block]:
     return blocks
 
 
+def _ai_comparison(analysis: CaseAnalysis) -> list[Block]:
+    selected = latest_per_provider(analysis.ai_analyses)
+    if len(selected) < 2:
+        return []
+    comparison = compare_analyses(selected)
+    rows = tuple(
+        (
+            trusted("shared" if group.shared else "single provider"),
+            untrusted(", ".join(group.providers)),
+            trusted(group.kind.value),
+            untrusted(
+                "; ".join(
+                    f"{o.analysis_display_id}#{o.sequence} "
+                    + (o.text if o.title is None else f"{o.title}: {o.text}")
+                    for o in group.opinions
+                )
+            ),
+            untrusted(", ".join(group.evidence_artifact_ids) or "—"),
+        )
+        for group in (*comparison.common, *comparison.individual)
+    )
+    return [
+        Heading(3, trusted("Provider Comparison")),
+        Paragraph(
+            trusted(
+                f"{len(comparison.analyses)} providers analyzed the same input "
+                f"(SHA-256 {comparison.input_sha256}). {len(comparison.common)} "
+                f"opinion(s) are shared by two or more providers and "
+                f"{len(comparison.individual)} come from a single provider. "
+                "Grouping compares cited evidence and wording; it is a "
+                "heuristic, not a judgment of meaning."
+            )
+        ),
+        Table(
+            ("Agreement", "Providers", "Kind", "Opinions", "Cited Evidence"),
+            rows,
+            frozenset(),
+        ),
+    ]
+
+
 def _ai(analysis: CaseAnalysis) -> list[Block]:
     blocks: list[Block] = [
         Heading(2, trusted("AI-Assisted Analysis (inference, not observed evidence)")),
@@ -670,6 +712,7 @@ def _ai(analysis: CaseAnalysis) -> list[Block]:
                 ),
             ]
         )
+    blocks.extend(_ai_comparison(analysis))
     return blocks
 
 

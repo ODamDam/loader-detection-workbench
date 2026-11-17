@@ -81,3 +81,5 @@ guestcontrol 채널, 클린 스냅샷 복원, 안전 잠금)는 그대로다. �
 - VBoxManage 실패 시 오류에는 VirtualBox 상태 이름만 싣는다. 출력 본문은 여전히 버린다.
 - Sysmon v2 설정의 수집 범위에서 레지스트리 CreateKey와 Sysmon 자신의 레지스트리 이벤트를
   제외한다. 값 쓰기(13), 키 삭제(12 DeleteKey), 이름 변경(14)은 유지한다.
+- 게스트 내보내기는 `wevtutil qe`(UTF-16 출력을 UTF-8로 다시 씀)를 쓴다. `Get-WinEvent`는
+  초당 약 150건이라 이벤트가 많은 실행에서 시간 제한을 넘겼다.
