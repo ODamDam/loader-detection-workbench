@@ -5,7 +5,7 @@
 
 ## 2026-11-17 후속: 실제 데이터 리허설·wevtutil 내보내기·AI 검증·W8 비교
 
-Status: `completed` — 로컬 검증 완료. 바뀐 게스트 스크립트의 실제 VM 실행과 외부 Provider는 미실행
+Status: `completed` — 로컬 검증과 바뀐 게스트 스크립트의 실제 VM 실행(VMR-0010 성공) 완료. 외부 Provider는 미사용
 
 사용자 지시("전체 프로젝트의 빠른 구현을 목표로 최대한 진행")로 수행했다. 새 의존성과
 스키마 변경은 없다.
@@ -20,7 +20,8 @@ Status: `completed` — 로컬 검증 완료. 바뀐 게스트 스크립트의 �
   카운터, 스키마·trigger(scope `ai`).
 - **W8 (ADR-027):** `ai compare`와 보고서 "Provider Comparison" 표. 저장된 같은 입력의
   분석만 비교하고 Provider를 호출하지 않는다.
-- 남은 작업: 바뀐 게스트 스크립트로 실제 VM 1회(승인 필요), sample 경로 실제 검증(benign
+- 실제 VM: 사용자 승인 후 VMR-0010 성공(이벤트 2,487건, 실행 단계 3분 43초).
+- 남은 작업: sample 경로 실제 검증(benign
   simulator 필요), 외부 Provider 어댑터(데이터 범위 결정 후), 실제 악성 Case 6건과 Unseen 평가.
 
 ## 2026-11-17 W4 실제 VM 검증
