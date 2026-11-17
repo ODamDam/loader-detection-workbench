@@ -6,10 +6,17 @@
   Event IDs: 1 process create, 2 file time change, 3 network connect,
   5 process terminate, 6 driver load, 7 image load (unsigned only),
   8 CreateRemoteThread, 10 process access (non-default access only),
-  11 file create, 12/13/14 registry, 15 stream hash, 17/18 pipes,
+  11 file create, 12/13/14 registry (no CreateKey, none by Sysmon itself),
+  15 stream hash, 17/18 pipes,
   19/20/21 WMI, 22 DNS query, 23 file delete (archived off: logged as 26),
   25 process tampering.
   Not included: 4/16 status (always logged), 9 raw access, 24 clipboard.
+
+  2026-11-17: registry CreateKey (also raised when an existing key is only
+  opened) and Sysmon's own registry activity are excluded. Without this the
+  idle analysis VM logged 2,000-36,000 events per minute, over 85% Event ID
+  12 CreateKey, and a 180-second run could not be exported in time. Value
+  writes (13), key deletes (12 DeleteKey) and renames (14) are still logged.
 
   If an older Sysmon binary rejects schemaversion 4.90, lower it to the
   version printed by `sysmon64 -s` and remove unsupported event elements.
@@ -36,7 +43,11 @@
       <DnsQuery onmatch="exclude" />
     </RuleGroup>
     <RuleGroup name="registry" groupRelation="or">
-      <RegistryEvent onmatch="exclude" />
+      <RegistryEvent onmatch="exclude">
+        <EventType condition="is">CreateKey</EventType>
+        <Image condition="end with">\sysmon.exe</Image>
+        <Image condition="end with">\sysmon64.exe</Image>
+      </RegistryEvent>
     </RuleGroup>
     <RuleGroup name="image" groupRelation="or">
       <ImageLoad onmatch="include">

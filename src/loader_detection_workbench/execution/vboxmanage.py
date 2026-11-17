@@ -3,14 +3,16 @@
 Commands are argument lists (never a shell). The guest password is written to a
 short-lived temporary file passed with ``--passwordfile`` and removed right
 after the call, so it never appears on a command line, in a record or in an
-error message. Errors carry only the operation name and exit status, never
-VBoxManage output, which may contain host paths.
+error message. Errors carry the operation name, the exit status and the
+VirtualBox status identifiers (``VERR_...``, ``VBOX_E_...``) found in the error
+output, never the output text itself, which may contain host paths.
 """
 
 from __future__ import annotations
 
 import contextlib
 import os
+import re
 import subprocess
 import tempfile
 from collections.abc import Iterator, Sequence
@@ -33,6 +35,7 @@ CONTROL_TIMEOUT_SECONDS = 120
 RESTORE_TIMEOUT_SECONDS = 600
 COPY_TIMEOUT_SECONDS = 600
 RUN_MARGIN_SECONDS = 120
+GUEST_SEPARATOR = "\\"  # the guest is Windows
 PASSWORD_FILE_PLACEHOLDER = "<password-file>"
 
 
@@ -40,6 +43,24 @@ PASSWORD_FILE_PLACEHOLDER = "<password-file>"
 class CommandResult:
     returncode: int
     stdout: str
+    stderr: str = ""
+
+
+_STATUS_IDENTIFIER = re.compile(r"\b(?:VERR|VWRN|VBOX_E|E)_[A-Z0-9_]{2,60}\b")
+MAX_STATUS_IDENTIFIERS = 4
+
+
+def status_identifiers(output: str) -> tuple[str, ...]:
+    """VirtualBox status names in ``output``, in order, without duplicates.
+
+    Only fixed identifiers are kept. Paths, user names and message text are
+    dropped, so the result is safe to store in a run record.
+    """
+    found: list[str] = []
+    for match in _STATUS_IDENTIFIER.finditer(output):
+        if match.group() not in found:
+            found.append(match.group())
+    return tuple(found[:MAX_STATUS_IDENTIFIERS])
 
 
 class CommandRunner(Protocol):
@@ -71,7 +92,9 @@ class SubprocessRunner:
                 DomainErrorCode.HYPERVISOR_COMMAND_FAILED,
                 "VBoxManage could not be started",
             ) from exc
-        return CommandResult(completed.returncode, completed.stdout)
+        return CommandResult(
+            completed.returncode, completed.stdout, completed.stderr or ""
+        )
 
 
 def default_executable() -> Path:
@@ -218,6 +241,35 @@ def mkdir_command(
     )
 
 
+_GUEST_EXIT_LINE = re.compile(r"^workbench-exit: ([0-9]{1,3})\s*$", re.MULTILINE)
+
+
+def guest_exit_code(result: CommandResult) -> int:
+    """Exit code of the guest process behind a ``guestcontrol run`` result.
+
+    VBoxManage 7.2 reports every non-zero guest exit as its own status 33, so
+    the guest script also prints ``workbench-exit: N``. Only that fixed line is
+    read from the output; without it the VBoxManage status is returned.
+    """
+    if result.returncode == 0:
+        return 0
+    lines = _GUEST_EXIT_LINE.findall(result.stdout)
+    if lines and int(lines[-1]) != 0:
+        return int(lines[-1])
+    return result.returncode
+
+
+def as_directory(path: str, separator: str) -> str:
+    """``path`` ending in a separator, which is how VBoxManage tells a
+    destination directory from a destination file name.
+
+    VirtualBox 7.2 rejects ``--target-directory=C:\\dir`` with "already exists
+    and is a directory" (``VBOX_E_IPRT_ERROR``) in both copy directions; the
+    same path with a trailing separator copies into the directory.
+    """
+    return path if path.endswith(("\\", "/")) else path + separator
+
+
 def copyto_command(
     executable: Path,
     vm_name: str,
@@ -232,7 +284,7 @@ def copyto_command(
         vm_name,
         "copyto",
         *_guest_common(user, password_file),
-        f"--target-directory={guest_directory}",
+        f"--target-directory={as_directory(guest_directory, GUEST_SEPARATOR)}",
         *host_files,
     )
 
@@ -254,7 +306,7 @@ def run_command(
         *_guest_common(user, password_file),
         f"--exe={program}",
         f"--timeout={timeout_seconds * 1000}",
-        "--no-wait-stdout",
+        "--wait-stdout",
         "--",
         program,
         *arguments,
@@ -275,7 +327,7 @@ def copyfrom_command(
         vm_name,
         "copyfrom",
         *_guest_common(user, password_file),
-        f"--target-directory={host_directory}",
+        f"--target-directory={as_directory(host_directory, os.sep)}",
         *guest_files,
     )
 
@@ -292,9 +344,12 @@ class VBoxManageHypervisor:
     ) -> CommandResult:
         result = self._runner.run(arguments, timeout)
         if result.returncode != 0:
+            names = status_identifiers(result.stderr)
+            detail = f" ({', '.join(names)})" if names else ""
             raise DomainError(
                 DomainErrorCode.HYPERVISOR_COMMAND_FAILED,
-                f"VBoxManage {operation} failed with exit status {result.returncode}",
+                f"VBoxManage {operation} failed with exit status "
+                f"{result.returncode}{detail}",
             )
         return result
 
@@ -394,7 +449,7 @@ class VBoxManageHypervisor:
                 ),
                 timeout_seconds + RUN_MARGIN_SECONDS,
             )
-        return GuestProcessResult(result.returncode)
+        return GuestProcessResult(guest_exit_code(result))
 
     def copy_from_guest(
         self,

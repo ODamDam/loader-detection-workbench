@@ -18,7 +18,7 @@ EventRecordID greater than the pre-run baseline is exported to
 <WorkDirectory>\out\events.xml with run-manifest.json (SHA-256, counts).
 Exit codes: 0 ok, 10 invalid arguments, 11 Sysmon not running, 12 log
 unreadable, 13 sample hash mismatch, 14 start failed, 15 output exists,
-16 export failed, 1 other.
+16 export failed, 1 other. A failing run also prints "workbench-exit: N".
 #>
 [CmdletBinding()]
 param(
@@ -229,6 +229,9 @@ if ($MyInvocation.InvocationName -ne '.') {
         exit 0
     } catch {
         # Never echo event XML, command lines or paths; the host maps exit codes.
-        exit (Get-WorkbenchExitCode $_.Exception.Message)
+        # VBoxManage reports any non-zero exit as 33, so the code is also printed.
+        $code = Get-WorkbenchExitCode $_.Exception.Message
+        Write-Output "workbench-exit: $code"
+        exit $code
     }
 }

@@ -15,6 +15,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import secrets
+import shutil
 import sqlite3
 import tempfile
 import time
@@ -98,6 +101,25 @@ def _case_selector(display_id: str) -> str:
 def _artifact_selector(display_id: str) -> str:
     ArtifactId("00000000000000000000000000", display_id)
     return display_id
+
+
+@contextmanager
+def host_exchange_directory(prefix: str) -> Iterator[Path]:
+    """Host directory the hypervisor's VM process reads from or writes into.
+
+    ``guestcontrol copyto``/``copyfrom`` open host files from the VM process,
+    not from this process. ``tempfile.mkdtemp`` creates an owner-only directory;
+    on Windows that ACL has no entry for the user's normal token, and a real
+    VirtualBox 7.2 run failed with ``VERR_ACCESS_DENIED`` on the copy source.
+    A plain ``os.mkdir`` inherits the ACL of the user's temporary directory
+    instead. The name is random and creation fails if it already exists.
+    """
+    path = Path(tempfile.gettempdir()) / f"{prefix}{secrets.token_hex(8)}"
+    os.mkdir(path)
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 def guest_script_bytes() -> bytes:
@@ -579,8 +601,7 @@ class _Run:
         self._step(StepName.GUEST_READY, self._wait_ready)
         self._step(StepName.TRANSFER_IN, self._transfer)
         self._step(StepName.EXECUTE, self._run_guest)
-        with tempfile.TemporaryDirectory(prefix="wb-run-") as temporary:
-            host_dir = Path(temporary)
+        with host_exchange_directory("wb-run-") as host_dir:
             self._step(StepName.COLLECT, lambda: self._collect(host_dir))
             collected: list[_Collected] = []
 
@@ -668,8 +689,8 @@ class _Run:
             self.service._sleep(READY_POLL_SECONDS)
 
     def _transfer(self) -> str:
-        with tempfile.TemporaryDirectory(prefix="wb-guest-script-") as temporary:
-            script = Path(temporary) / GUEST_SCRIPT_NAME
+        with host_exchange_directory("wb-guest-script-") as temporary:
+            script = temporary / GUEST_SCRIPT_NAME
             script.write_bytes(guest_script_bytes())
             files = [script]
             if self.sample_path is not None:

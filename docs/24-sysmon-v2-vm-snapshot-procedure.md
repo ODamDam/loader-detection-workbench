@@ -26,8 +26,12 @@
 ```powershell
 # 공유 폴더 경로는 Guest Additions 자동 마운트 문자(예: Z:) 또는 \\VBoxSvr\WorkbenchVMExchange
 $config = '\\VBoxSvr\WorkbenchVMExchange\sysmon-config-workbench-v2.xml'
-sysmon64 -c $config
-sysmon64 -c            # 적용된 규칙 출력 확인
+# 실행 파일 이름은 설치 방식에 따라 sysmon.exe 또는 sysmon64.exe이고 PATH에 없을 수
+# 있으므로, 설치된 서비스에서 경로를 찾는다(2026-11-17 실제 VM은 Sysmon / sysmon.exe).
+$sysmon = (Get-CimInstance Win32_Service -Filter "Name like 'Sysmon%'" |
+    Select-Object -First 1).PathName.Trim('"')
+& $sysmon -c $config
+& $sysmon -c           # 적용된 규칙 출력 확인
 ```
 
 ## 2. 이벤트 생성 확인 (무해한 동작만)
@@ -40,7 +44,12 @@ Get-WinEvent -LogName Microsoft-Windows-Sysmon/Operational -MaxEvents 30 |
     Group-Object Id | Select-Object Name, Count
 ```
 
-Event ID 12·13·22가 보이면 적용된 것이다.
+Event ID 13·12가 보이면 적용된 것이다. 2026-11-17부터 레지스트리 CreateKey는 기록하지
+않으므로 `reg add`는 13, `reg delete`는 12(DeleteKey)만 남긴다. 다른 이벤트에 밀려
+최근 30건에 안 보이면 `-FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; Id=12,13,22}`로
+따로 조회한다. 2026-11-17 설정 수정 전 실제 VM에서는 12·13이 기록됐고, 네트워크 케이블을
+분리한 상태의 `Resolve-DnsName example.invalid`는 22번을 남기지 않았다. 다만 같은 날 성공한
+실행(VMR-0009)에는 다른 프로세스의 22번이 20건 있었다.
 
 ## 3. Windows Update 정리
 
@@ -75,6 +84,15 @@ $vb = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
 - 게스트에 **비밀번호가 있는 로컬 계정**을 준비해 둔다. 자동 실행은 이 계정으로
   `VBoxManage guestcontrol`에 로그온한다(빈 비밀번호 불가). 계정 정보는 실행 세션의 환경
   변수로만 전달한다(`docs/25-vm-execution-runbook.md`).
+- 그 계정을 VM 안 관리자 PowerShell에서 Event Log Readers에 넣고 **재부팅**한다.
+  `guestcontrol` 세션은 관리자 권한이 빠진 토큰이라 이 그룹이 없으면 Sysmon 로그를
+  읽지 못한다(2026-11-17 실제 실행에서 확인).
+  `Add-LocalGroupMember -SID S-1-5-32-573 -Member <게스트 계정>`
+- 이 PC(4코어 노트북, Hyper-V 경유 NEM)에서는 4 vCPU VM이 반복해서 멈췄다. VM의 CPU를
+  2개로 두고 스냅샷을 찍는다(`VBoxManage modifyvm WIN11-ANALYSIS --cpus 2`). CPU 수는
+  스냅샷에 함께 저장된다.
+- VM 창을 처음 열 때 "스케일 모드로 전환" 확인 대화상자가 뜨면 부팅이 시작되지 않는다.
+  **취소**를 눌러 창 모드를 유지한다.
 
 ## 6. 스냅샷 생성 (Host, VM이 poweroff인 상태)
 

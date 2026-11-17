@@ -185,13 +185,21 @@ class FakeVBoxManage:
             target = self._option(argv, "target-directory")
             for source in argv[argv.index(f"--target-directory={target}") + 1 :]:
                 path = Path(source)
-                self.guest_files[f"{target}\\{path.name}"] = path.read_bytes()
+                if not target.endswith("\\"):  # real VBoxManage 7.2 refuses
+                    return CommandResult(1, "", "VBOX_E_IPRT_ERROR")
+                self.guest_files[f"{target}{path.name}"] = path.read_bytes()
             return CommandResult(0, "")
         if op == "guest-run":
-            return CommandResult(self._guest_run(argv), "")
+            code = self._guest_run(argv)
+            if code == 0:
+                return CommandResult(0, "")
+            # Real VBoxManage 7.2 collapses every non-zero guest exit to 33.
+            return CommandResult(33, f"workbench-exit: {code}\r\n")
         if op == "guest-copyfrom":
             host_dir = self._option(argv, "target-directory")
             for source in argv[argv.index(f"--target-directory={host_dir}") + 1 :]:
+                if not host_dir.endswith(("\\", "/")):
+                    return CommandResult(1, "", "VBOX_E_IPRT_ERROR")
                 if source not in self.guest_files:
                     return CommandResult(1, "")
                 name = source.rpartition("\\")[2]
@@ -783,3 +791,108 @@ def test_failed_cleanup_restore_outranks_guest_failure(root: Path) -> None:
     assert ("execute", "failed") in _steps(run)
     assert ("restore_after", "failed") in _steps(run)
     assert ExecutionService(root).lock_status().lock is not None
+
+
+def test_host_exchange_directory_is_readable_by_other_processes() -> None:
+    """Regression: a real VirtualBox run could not read an owner-only mkdtemp dir."""
+    import os
+    import subprocess
+    import sys
+    import tempfile
+
+    from loader_detection_workbench.execution.service import host_exchange_directory
+
+    with host_exchange_directory("wb-test-") as directory:
+        assert directory.is_dir() and directory.parent == Path(tempfile.gettempdir())
+        assert directory.name.startswith("wb-test-") and len(directory.name) == 24
+        (directory / "probe.txt").write_text("ok", encoding="utf-8")
+        if os.name == "nt":
+            acl = subprocess.run(
+                ["icacls", str(directory)], capture_output=True, text=True, check=True
+            ).stdout
+            # Inherited entries (I) from the user's temp directory, unlike the
+            # explicit owner-only ACL that tempfile.mkdtemp applies.
+            assert "(I)" in acl
+        child = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; print(open(sys.argv[1]).read())",
+                str(directory / "probe.txt"),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert child.stdout.strip() == "ok"
+        kept = directory
+    assert not kept.exists()
+    with (
+        host_exchange_directory("wb-test-") as first,
+        host_exchange_directory("wb-test-") as second,
+    ):
+        assert first != second
+
+
+def test_failed_command_reports_status_identifiers_without_output_text() -> None:
+    from loader_detection_workbench.execution.vboxmanage import (
+        CommandResult,
+        VBoxManageHypervisor,
+        status_identifiers,
+    )
+
+    stderr = (
+        "VBoxManage.exe: error: Unable to query type for source "
+        "'C:\\Users\\someone\\AppData\\x.ps1' (VERR_ACCESS_DENIED)\n"
+        "VBoxManage.exe: error: Details: code VBOX_E_IPRT_ERROR (0x80bb0005), "
+        "VERR_ACCESS_DENIED again\n"
+    )
+    assert status_identifiers(stderr) == ("VERR_ACCESS_DENIED", "VBOX_E_IPRT_ERROR")
+    assert status_identifiers("plain failure text") == ()
+
+    class Runner:
+        def run(self, arguments: object, timeout_seconds: float) -> CommandResult:
+            return CommandResult(1, "", stderr)
+
+    hypervisor = VBoxManageHypervisor(runner=Runner())
+    with pytest.raises(DomainError) as caught:
+        hypervisor.power_off("VM")
+    message = str(caught.value)
+    assert "VERR_ACCESS_DENIED, VBOX_E_IPRT_ERROR" in message
+    assert "someone" not in message
+    assert "AppData" not in message
+
+
+def test_copy_commands_mark_the_destination_as_a_directory() -> None:
+    import os
+
+    from loader_detection_workbench.execution.vboxmanage import (
+        as_directory,
+        copyfrom_command,
+        copyto_command,
+    )
+
+    exe = Path("VBoxManage")
+    to_guest = copyto_command(exe, "VM", "u", "pw", ["a.ps1"], "C:\\work\\run")
+    assert "--target-directory=C:\\work\\run\\" in to_guest
+    from_guest = copyfrom_command(exe, "VM", "u", "pw", ["C:\\g\\e.xml"], "hostdir")
+    assert f"--target-directory=hostdir{os.sep}" in from_guest
+    assert as_directory("C:/work/", "\\") == "C:/work/"
+    assert as_directory("C:\\work\\", "\\") == "C:\\work\\"
+
+
+def test_guest_exit_code_is_read_from_the_fixed_output_line() -> None:
+    from loader_detection_workbench.execution.vboxmanage import (
+        CommandResult,
+        guest_exit_code,
+        run_command,
+    )
+
+    assert guest_exit_code(CommandResult(0, "workbench-exit: 12\n")) == 0
+    assert guest_exit_code(CommandResult(33, "noise\r\nworkbench-exit: 12\r\n")) == 12
+    assert guest_exit_code(CommandResult(33, "")) == 33
+    assert guest_exit_code(CommandResult(33, "x workbench-exit: 12")) == 33
+    assert guest_exit_code(CommandResult(33, "workbench-exit: 0\n")) == 33
+    command = run_command(Path("VBoxManage"), "VM", "u", "pw", "p.exe", ["-a"], 30)
+    assert "--wait-stdout" in command
+    assert "--no-wait-stdout" not in command

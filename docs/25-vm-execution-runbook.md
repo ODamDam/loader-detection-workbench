@@ -15,6 +15,10 @@
 2. 게스트에 비밀번호가 있는 로컬 계정이 있어야 한다(`guestcontrol`은 빈 비밀번호로
    로그온할 수 없다). 실행할 PowerShell 세션에서만 환경 변수를 설정한다. 파일이나
    저장소에 기록하지 않는다.
+3. 그 계정은 **Event Log Readers** 그룹(`S-1-5-32-573`)에 있어야 한다. `guestcontrol`
+   세션은 UAC로 관리자 권한이 빠진 토큰으로 돌기 때문에, 관리자 그룹만으로는 Sysmon
+   로그를 읽지 못하고 게스트 스크립트가 종료 코드 12로 끝난다. 그룹 추가는 다음
+   로그온부터 적용되므로 재부팅한 뒤 스냅샷을 찍는다(`docs/24` 5절).
 
 ```powershell
 $env:WORKBENCH_GUEST_USER = '<게스트 계정>'
@@ -84,8 +88,32 @@ uv run workbench vm unlock --note "poweroff + SYSMON-V2-CLEAN restored and verif
 | 15 | 출력 디렉터리가 이미 있음 |
 | 16 | 내보내기 실패 |
 
+VBoxManage 7.2는 게스트 프로세스의 0이 아닌 종료 코드를 모두 자신의 종료 코드 33으로
+바꿔 돌려준다. 그래서 게스트 스크립트는 실패할 때 `workbench-exit: N` 한 줄을 출력하고,
+Workbench는 그 줄에서 위 코드를 읽는다. VBoxManage 자체가 실패하면 오류 메시지에
+VirtualBox 상태 이름(예: `VBOX_E_IPRT_ERROR`)만 붙고 경로나 메시지 본문은 남기지 않는다.
+
 ## 6. 검증 상태
 
 - 2026-11-12: 모의 VBoxManage 기반 pytest와 PowerShell mock(`tests/powershell/Test-WorkbenchGuestRun.ps1`)만
   통과했다. **실제 VM 실행은 아직 하지 않았다.** `SYSMON-V2-CLEAN` 생성 후 사용자 승인을
   받아 정상 시나리오 1회로 실제 경로를 검증한다.
+- 2026-11-17: 사용자 승인 후 실제 VM(VirtualBox 7.2.4, Hyper-V 경유 NEM)에서
+  `registry-probe`를 실행해 **VMR-0009가 14단계 모두 `ok`로 성공**했다. 이벤트 4,347건
+  (약 8MB)이 등록됐고 시나리오의 레지스트리 값 쓰기(13)와 키 삭제(12 DeleteKey)가
+  포함됐다. 실행 후 VM은 poweroff, `SYSMON-V2-CLEAN`으로 복원됐다. 전체 소요 약 5분.
+  그 전 실행 VMR-0001~0008은 아래 문제로 실패했고, 모두 정리 단계(전원 끄기·복원)는
+  정상 동작해 안전 잠금은 걸리지 않았다.
+  - 호스트 임시 폴더가 소유자 전용 권한이라 VM 프로세스가 반입 파일을 읽지 못함
+    (`VERR_ACCESS_DENIED`) → 사용자 임시 폴더 권한을 물려받는 폴더로 변경.
+  - `--target-directory`가 구분자로 끝나지 않으면 VirtualBox 7.2가 폴더로 보지 않음
+    (`VBOX_E_IPRT_ERROR`, 반입·회수 모두) → 끝에 구분자를 붙임.
+  - 게스트 종료 코드가 33으로 뭉개짐 → `workbench-exit: N` 출력으로 전달.
+  - 게스트 계정이 Sysmon 로그를 읽지 못함 → Event Log Readers 추가(1절 3).
+  - 4 vCPU VM이 실행 중 반복해서 멈춤 → 2 vCPU로 변경(원인 미확정).
+  - Sysmon 설정이 레지스트리 CreateKey를 모두 기록해 유휴 상태에서도 분당
+    2,000~36,000건이 쌓이고 내보내기가 제한 시간을 넘김 → CreateKey와 Sysmon 자신의
+    레지스트리 이벤트를 제외(적용 후 유휴 분당 약 330건).
+- 아직 실제 VM에서 확인하지 않은 것: sample 실행 경로(`vm run`), 다른 시나리오,
+  실패 시 게스트 종료 코드가 사람이 읽을 수 있는 이유로 바뀌는 경로(코드 12는 확인).
+  `dns-invalid`는 네트워크 분리 상태에서 DNS 이벤트가 남지 않을 수 있다(`docs/24`).

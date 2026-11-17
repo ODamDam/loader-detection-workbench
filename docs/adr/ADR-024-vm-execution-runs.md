@@ -67,3 +67,17 @@ ADR-022는 실제 샘플을 네트워크를 차단한 분석 VM에서만 실행�
   않는다. 대신 모든 런은 시작 전에 복원과 확인을 다시 수행한다.
 - `sysmon` Artifact 등록 뒤 메타데이터 등록이 실패하면 `sysmon` Artifact는 남고 런은
   `failed`로 기록된다.
+
+## 2026-11-17 실제 VM 검증 후 보완 (사용자 승인)
+
+실제 VirtualBox 7.2.4에서 정상 시나리오를 실행하며 다음을 바꿨다. 결정의 구조(승인,
+guestcontrol 채널, 클린 스냅샷 복원, 안전 잠금)는 그대로다. 경위는
+`docs/25-vm-execution-runbook.md` 6절.
+
+- 게스트 계정은 Event Log Readers 그룹에 있어야 한다. guestcontrol 세션은 UAC로 관리자
+  권한이 빠진 토큰을 쓴다. 계정에 관리자 권한을 다시 주는 방식(UAC 끄기)은 쓰지 않는다.
+- 게스트 종료 코드는 VBoxManage 종료 코드가 아니라 게스트 스크립트가 출력하는 고정 줄
+  `workbench-exit: N`으로 전달한다(VBoxManage 7.2는 0이 아닌 코드를 모두 33으로 돌려준다).
+- VBoxManage 실패 시 오류에는 VirtualBox 상태 이름만 싣는다. 출력 본문은 여전히 버린다.
+- Sysmon v2 설정의 수집 범위에서 레지스트리 CreateKey와 Sysmon 자신의 레지스트리 이벤트를
+  제외한다. 값 쓰기(13), 키 삭제(12 DeleteKey), 이름 변경(14)은 유지한다.

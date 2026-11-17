@@ -3,6 +3,24 @@
 > 11월 기준선: Notion「11월 최종 구현 계획 v1 — 2026-11-11~11-22」, ADR-022.
 > 기능 동결 2026-11-22, 11/23–29는 Unseen 평가·버그 수정·문서화만 수행한다.
 
+## 2026-11-17 W4 실제 VM 검증
+
+Status: `completed` — 정상 시나리오 1회 실제 VM 성공(VMR-0009). sample 실행은 미검증
+
+사용자 승인 후 실제 VM에서 `registry-probe`를 반복 실행하며 문제를 고쳤다. 상세 경위는
+`docs/25-vm-execution-runbook.md` 6절.
+
+- 코드: 호스트 교환 폴더 권한(`execution.service.host_exchange_directory`), VBoxManage
+  `--target-directory` 끝 구분자, 실패 시 VirtualBox 상태 이름만 오류에 기록, 게스트 종료
+  코드를 `workbench-exit: N` 출력으로 전달(`guestcontrol run`은 `--wait-stdout`).
+- VM: 게스트 계정을 Event Log Readers에 추가, 2 vCPU, Sysmon v2 설정에서 레지스트리
+  CreateKey와 Sysmon 자신의 레지스트리 이벤트 제외(사용자 승인, ADR-022 수집 범위 조정).
+  스냅샷 `SYSMON-V2-CLEAN`을 다시 만들고 이전 상태는 이름을 바꿔 보존했다.
+- 결과: 14단계 모두 `ok`, 이벤트 4,347건, 실행 후 poweroff와 클린 스냅샷 복원 확인,
+  `project validate` 통과.
+- 남은 위험: 4 vCPU 멈춤의 원인 미확정, 게스트 내보내기(`Get-WinEvent`)가 초당 약 150건이라
+  이벤트가 많은 샘플은 제한 시간을 넘길 수 있음(`wevtutil` 전환 후보), sample 경로 미검증.
+
 ## 2026-11-17 W5 보고서·validator 확장·W6 읽기 전용 UI·W7 오프라인 골격
 
 Status: `completed` — 로컬 구현·합성 fixture 검증 완료. 실제 VM·샘플·외부 AI Provider 미사용
