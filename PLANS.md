@@ -3,6 +3,23 @@
 > 11월 기준선: Notion「11월 최종 구현 계획 v1 — 2026-11-11~11-22」, ADR-022.
 > 기능 동결 2026-11-22, 11/23–29는 Unseen 평가·버그 수정·문서화만 수행한다.
 
+## 2026-11-17 M5 무해한 시뮬레이터와 sample 경로 실제 검증
+
+Status: `completed` — 시뮬레이터 Case가 실제 VM 실행부터 보고서·UI까지 완주
+
+사용자 승인(Windows 내장 C# 컴파일러로 빌드, 실제 VM sample 실행 1회)으로 수행했다.
+새 패키지 의존성은 없다.
+
+- `tools/simulator/WorkbenchSimulator.cs`(C# 5), `scripts/simulator/Build-WorkbenchSimulator.ps1`,
+  리허설 룰 `tools/simulator/rules/`, ADR-028.
+- 실제 VM: VMR-0011 sample 경로 성공(이벤트 2,453건). 프로세스·파일·Run 값·자식 프로세스·
+  DNS 조회가 기록됐고 TEST-NET 연결(3)은 네트워크 분리로 기록되지 않았다.
+- 파이프라인: 가설 HYP-0002 → Sigma(Run 값)·YARA(마커) 룰 동결 → 동결 벤치마크(dev 1,
+  benign_common 1) → 검증 Sigma TP 1/1·TN 1/1, YARA TP 1/1(정상 Case는 파일이 없어
+  not_evaluable) → 보고서(1.5초) → UI 7개 화면.
+- 테스트: 소스 무해성 검사, 컴파일만 하는 빌드 검사(x64 PE, 마커, YARA 매치).
+- 남은 작업: JSON 설정 엔진 전환, 정상 YARA 비교용 Windows 시스템 바이너리 Case.
+
 ## 2026-11-17 후속: 실제 데이터 리허설·wevtutil 내보내기·AI 검증·W8 비교
 
 Status: `completed` — 로컬 검증과 바뀐 게스트 스크립트의 실제 VM 실행(VMR-0010 성공) 완료. 외부 Provider는 미사용

@@ -429,3 +429,21 @@ workbench ai compare CASE-0001         # 같은 입력의 Provider별 분석 비
 - `ai compare`는 같은 입력(SHA-256)을 받은 Provider별 분석을 공통 의견과 개별 의견으로
   나눈다. Provider를 호출하지 않는다. 같은 의견인지는 인용 Artifact와 문구 유사도로 정하는
   휴리스틱이다(ADR-027). 보고서에도 같은 비교 표가 붙는다.
+
+## 14. 무해한 시뮬레이터 (ADR-028)
+
+sample 실행 경로를 실제 악성 샘플 없이 확인하기 위한 무해한 실행 파일이다. 소스는
+`tools/simulator/WorkbenchSimulator.cs`이고, Windows에 기본으로 있는 .NET Framework 4.x
+C# 컴파일러로 빌드한다. 실행 파일은 `build/simulator/`에 생기며 커밋하지 않는다.
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\simulator\Build-WorkbenchSimulator.ps1
+uv run workbench case create --name "simulator" --kind simulator
+uv run workbench case artifact add --kind sample CASE-0002 build\simulator\workbench-simulator.exe
+uv run workbench vm run CASE-0002 --sample ART-NNNNNN --approve
+```
+
+- 기본 프로필 `loader-like`: `%TEMP%` 파일 드롭, HKCU Run 값 쓰기, 자식 `cmd.exe`,
+  `.invalid` 이름 조회, TEST-NET-1(192.0.2.1) 연결 시도. 종료 전에 모두 되돌린다.
+- **호스트에서 실행하지 않는다.** 분석 VM에서 승인 후 `vm run`으로만 실행한다.
+- 리허설용 YARA·Sigma 룰은 `tools/simulator/rules/`에 있다(최종 채택 룰 아님).

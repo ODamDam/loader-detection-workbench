@@ -37,6 +37,7 @@
 - `adr/ADR-025-case-analysis-report-and-views.md`: W5 보고서, 모듈 테이블 검증, W6 읽기 전용 UI
 - `adr/ADR-026-ai-assisted-analysis-skeleton.md`: W7 AI 분석 보조의 오프라인 골격과 남은 결정
 - `adr/ADR-027-multi-provider-comparison.md`: W8 다중 Provider 분석 비교
+- `adr/ADR-028-benign-simulator.md`: M5 무해한 시뮬레이터 실행 파일과 빌드 방식
 
 ## 4. 현재 활성 작업을 읽는 순서
 
