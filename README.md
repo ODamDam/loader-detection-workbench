@@ -377,6 +377,10 @@ uv run workbench validate show RUN-0001
 - Sigma는 `product: windows`와 Sysmon 대응 category 또는 `service: sysmon`만 지원한다.
   지원하지 않는 수정자·값 유형은 `UNSUPPORTED_SIGMA_FEATURE`로 실패한다.
 - `yara-python`은 Python 3.14용 휠이 없으면 소스 빌드되므로 C 빌드 도구가 필요할 수 있다.
+- YARA 정상 비교 파일: `uv run workbench case benign-files CASE-NNNN`이 고정 목록
+  `windows-system32-v1`(시스템 바이너리 28개, LOLBin 포함)을 이 PC의 `System32`에서 benign
+  Case의 `sample` Artifact로 복사한다. `--list`는 목록만 보여준다. 이미 같은 내용이 있으면
+  건너뛰고, 실행하지 않는다. 평가 단위가 Case이므로 이 Case는 FP 분모에 1로 들어간다.
 
 ## 12. VM 실행 런과 클린 스냅샷 복원 (ADR-024)
 

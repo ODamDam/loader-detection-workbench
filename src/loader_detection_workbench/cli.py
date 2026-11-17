@@ -33,6 +33,10 @@ from loader_detection_workbench.config import (
     load_config,
     normalize_log_level,
 )
+from loader_detection_workbench.detection.benign_files import (
+    SYSTEM_BINARY_SET,
+    BenignFileService,
+)
 from loader_detection_workbench.detection.domain import (
     Benchmark,
     DetectionRule,
@@ -179,6 +183,15 @@ def build_parser() -> argparse.ArgumentParser:
             artifact_command.add_argument("--kind", required=True)
         elif command == "detach":
             artifact_command.add_argument("artifact_display_id", metavar="ART-NNNNNN")
+    benign_files = case_commands.add_parser(
+        "benign-files",
+        help="add the fixed Windows system binary set to a benign Case "
+        "(YARA comparison files)",
+    )
+    benign_files.add_argument("case_display_id", metavar="CASE-NNNN")
+    benign_files.add_argument(
+        "--list", action="store_true", help="show the set and exit; adds nothing"
+    )
     evidence = case_commands.add_parser(
         "evidence", help="add, list or show analyst-supplied evidence"
     )
@@ -724,6 +737,27 @@ def _run_case(arguments: argparse.Namespace, service: CaseService) -> int:
     return 0
 
 
+def _run_benign_files(arguments: argparse.Namespace, service: BenignFileService) -> int:
+    print(f"set: {SYSTEM_BINARY_SET}")
+    if arguments.list:
+        for name, available in service.plan():
+            print(f"{name}	{'available' if available else 'missing'}")
+        return 0
+    results = service.add_system_binaries(arguments.case_display_id)
+    for result in results:
+        print(
+            f"{result.name}	{result.status}	{result.artifact_display_id or '-'}	"
+            f"{result.sha256 or '-'}"
+        )
+    added = sum(1 for result in results if result.status == "added")
+    missing = sum(1 for result in results if result.status == "missing")
+    print(
+        f"added: {added}, already present: {len(results) - added - missing}, "
+        f"missing: {missing}"
+    )
+    return 0
+
+
 def _run_artifact(arguments: argparse.Namespace, service: ArtifactService) -> int:
     if arguments.artifact_command == "add":
         artifacts = [
@@ -1254,6 +1288,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 timeline = CaseTimelineQuery(Path.cwd()).query(arguments.display_id)
                 print(render_timeline(timeline), end="")
                 return 0
+            if arguments.case_command == "benign-files":
+                return _run_benign_files(arguments, BenignFileService(Path.cwd()))
             if arguments.case_command == "artifact":
                 return _run_artifact(arguments, ArtifactService(Path.cwd()))
             if arguments.case_command == "evidence":

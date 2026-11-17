@@ -3,6 +3,17 @@
 > 11월 기준선: Notion「11월 최종 구현 계획 v1 — 2026-11-11~11-22」, ADR-022.
 > 기능 동결 2026-11-22, 11/23–29는 Unseen 평가·버그 수정·문서화만 수행한다.
 
+## 2026-11-17 YARA 정상 비교 파일 세트
+
+Status: `completed`
+
+- `workbench case benign-files CASE-NNNN [--list]`: 고정 목록 `windows-system32-v1`(28개)을
+  benign Case에 `sample` Artifact로 등록한다(`detection.benign_files`). 내용 해시로 중복을
+  건너뛰고 benign Case가 아니면 `INVALID_CASE_KIND`로 거부한다.
+- 검증용 Project: CASE-0003(시스템 바이너리 28개) + 시뮬레이터 Case로 동결 벤치마크를 만들어
+  시뮬레이터 YARA 룰이 TP 1/1, TN 1/1임을 확인했다.
+- 남은 제약: 평가 단위가 Case라 28개 파일 묶음이 FP 분모 1이다.
+
 ## 2026-11-17 M5 무해한 시뮬레이터와 sample 경로 실제 검증
 
 Status: `completed` — 시뮬레이터 Case가 실제 VM 실행부터 보고서·UI까지 완주
