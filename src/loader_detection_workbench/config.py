@@ -75,8 +75,9 @@ def load_config(path: Path | None) -> WorkbenchConfig:
         return WorkbenchConfig()
 
     try:
-        with path.open("rb") as config_file:
-            document = tomllib.load(config_file)
+        # Windows PowerShell 5.1 writes UTF-8 with a BOM, which TOML rejects.
+        raw = path.read_bytes().removeprefix(b"\xef\xbb\xbf")
+        document = tomllib.loads(raw.decode("utf-8"))
     except FileNotFoundError as exc:
         raise ConfigFileNotFoundError("configuration file was not found") from exc
     except tomllib.TOMLDecodeError as exc:

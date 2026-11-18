@@ -24,7 +24,19 @@ Status: `in_progress` — 1단계(확정 사항 + 확정 기반 보고서) 완�
   요약에서 샘플 프로세스가 잘리던 문제 수정(샘플 트리 우선).
 - 같은 의견 기준 개정(ADR-027 개정): 겹치는 인용 + 행위 주제 일치, 모든 구성원과 일치해야
   묶음. 실제 3사 결과에서 공통 0개 → 9개.
-- 남은 것: 설정 파일 BOM 허용.
+- 설정 파일 BOM 허용(PowerShell 5.1 `Set-Content -Encoding utf8`) 완료.
+- Sigma 초안 5개(평가 Project, 동결 전): dev VM 행위에서 작성.
+  - RULE-0003 사용자 폴더 프로그램의 `C:\Windows\Tasks\*.job`(Amadey CASE-0002)
+  - RULE-0004 비시스템 부모의 Bypass + 인코딩 PowerShell(PureCrypter CASE-0003)
+  - RULE-0005 Windows 밖 `msvcp_win.dll`(HijackLoader CASE-0006)
+  - RULE-0006 `%TEMP%\<16진 10자리>\*.exe` 실행(Amadey CASE-0001)
+  - RULE-0007 `%APPDATA%` 바로 아래 exe 작성(CASE-0002, 0003)
+  - BMK-0002(dev 6 + 정상 VM 시나리오 5): 모두 FP 0/5. dev 커버리지 4/6(CASE-0004는 60초
+    안 행위 없음, CASE-0005는 단독 실행 시 충돌).
+  - 정상 시나리오 5종(CASE-0009~0013) 실행. 180초 실행 3건은 게스트 작업이 360초 여유도
+    넘겨 실패, 60초로 재실행해 성공. 게스트 측 지연 원인은 미확인(게스트 출력이 남지 않음).
+- 남은 것: 게스트 지연 진단(실패 시 게스트 출력 일부 기록), 룰 최종 채택(사용자 승인),
+  확정 사항 작성과 dev Case 보고서.
 - 실제 샘플: dev 6건 Case 등록·정적 분석·YARA 초안 2개(Amadey, PureCrypter) 완료.
   - VM: 게스트 비밀번호 만료(11/17 19:04)로 로그인 거부 → 시계를 되돌려 부팅하고 사용자가
     "만료 없음"으로 고친 뒤 `SYSMON-V2-CLEAN` 재생성(이전은 `SYSMON-V2-CLEAN-pwexpired`).
