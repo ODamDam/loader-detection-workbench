@@ -154,7 +154,8 @@ def test_cli_and_report_show_the_comparison(
     service.analyze("CASE-0001")
     service.analyze("CASE-0001", "second")
     monkeypatch.setattr(
-        "loader_detection_workbench.cli.AiAnalysisService", lambda _root: service
+        "loader_detection_workbench.cli.AiAnalysisService",
+        lambda _root, **_kwargs: service,
     )
     capsys.readouterr()
     assert main(["ai", "compare", "CASE-0001"]) == 0

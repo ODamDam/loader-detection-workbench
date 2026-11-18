@@ -22,6 +22,7 @@ from loader_detection_workbench.ai.compare import (
     latest_per_provider,
 )
 from loader_detection_workbench.ai.digest import (
+    APPROVED_SCOPES,
     build_digest,
     digest_sha256,
     serialize_digest,
@@ -36,10 +37,12 @@ from loader_detection_workbench.ai.domain import (
     require_analysis_id,
     validate_output,
 )
+from loader_detection_workbench.ai.external import KEY_ENV, api_key, external_providers
 from loader_detection_workbench.ai.provider import AnalysisProvider, default_providers
 from loader_detection_workbench.ai.store import AiAnalysisReader, ai_repository
 from loader_detection_workbench.case.relations import CaseProcessRelationsQuery
 from loader_detection_workbench.case.timeline import CaseTimelineQuery
+from loader_detection_workbench.config import AiConfig
 from loader_detection_workbench.detection.service import DetectionService
 from loader_detection_workbench.domain.errors import DomainError, DomainErrorCode
 from loader_detection_workbench.domain.time import utc_now
@@ -56,6 +59,8 @@ class ProviderInfo:
     model: str
     requires_network: bool
     enabled: bool
+    # Why an external provider cannot be called now, or ``None``.
+    blocked_by: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,37 +76,69 @@ class InputPreview:
 
 
 class AiAnalysisService:
+    """External providers run only when both gates are open (ADR-031).
+
+    ``ai_config.allow_network`` comes from the configuration file and
+    ``allow_network`` of each ``analyze`` call from the command line; either
+    one alone refuses the call before any input leaves this machine.
+    """
+
     def __init__(
-        self, root: Path, providers: dict[str, AnalysisProvider] | None = None
+        self,
+        root: Path,
+        providers: dict[str, AnalysisProvider] | None = None,
+        *,
+        ai_config: AiConfig | None = None,
     ) -> None:
         self._root = root
-        self._providers = default_providers() if providers is None else providers
+        self._config = AiConfig() if ai_config is None else ai_config
+        if providers is None:
+            providers = {
+                **default_providers(),
+                **external_providers(self._config.models),
+            }
+        self._providers = providers
         self._reader = AiAnalysisReader(root)
 
     # -- providers ------------------------------------------------------------
 
-    def providers(self) -> list[ProviderInfo]:
-        return [
-            ProviderInfo(
-                provider.name,
-                provider.model,
-                provider.requires_network,
-                enabled=not provider.requires_network,
-            )
-            for _, provider in sorted(self._providers.items())
-        ]
+    def _blocked(self, provider: AnalysisProvider, allow_network: bool) -> str | None:
+        if not provider.requires_network:
+            return None
+        if not self._config.allow_network:
+            return "network use is off in the configuration ([ai] allow_network)"
+        if provider.name in KEY_ENV and api_key(provider.name) is None:
+            return f"{KEY_ENV[provider.name]} is not set"
+        if not allow_network:
+            return "this command did not allow network use (--allow-network)"
+        return None
 
-    def _provider(self, name: str) -> AnalysisProvider:
+    def providers(self) -> list[ProviderInfo]:
+        infos = []
+        for _, provider in sorted(self._providers.items()):
+            reason = self._blocked(provider, allow_network=True)
+            infos.append(
+                ProviderInfo(
+                    provider.name,
+                    provider.model,
+                    provider.requires_network,
+                    enabled=reason is None,
+                    blocked_by=reason,
+                )
+            )
+        return infos
+
+    def _provider(self, name: str, allow_network: bool = False) -> AnalysisProvider:
         provider = self._providers.get(name)
         if provider is None:
             raise DomainError(
                 DomainErrorCode.AI_PROVIDER_UNAVAILABLE, "unknown analysis provider"
             )
-        if provider.requires_network:
+        reason = self._blocked(provider, allow_network)
+        if reason is not None:
             raise DomainError(
                 DomainErrorCode.AI_PROVIDER_UNAVAILABLE,
-                "external providers are not enabled: sending evidence off this "
-                "machine needs an approved data scope (ADR-026)",
+                f"external provider {name} is not enabled: {reason}",
             )
         return provider
 
@@ -144,10 +181,16 @@ class AiAnalysisService:
         case_display_id: str,
         provider_name: str = DEFAULT_PROVIDER,
         stage: str | None = None,
+        *,
+        allow_network: bool = False,
     ) -> AiAnalysis:
         """Ask one provider; without ``stage`` the ADR-026 kinds are produced."""
-        provider = self._provider(provider_name)
+        provider = self._provider(provider_name, allow_network)
         preview = self.preview(case_display_id, stage)
+        if preview.scope not in APPROVED_SCOPES:  # never send anything wider
+            raise DomainError(
+                DomainErrorCode.INVALID_AI_REQUEST, "input scope is not approved"
+            )
         allowed = frozenset(
             [str(item["id"]) for item in preview.digest["artifacts"]]
             + [str(item["id"]) for item in preview.digest.get("findings", [])]

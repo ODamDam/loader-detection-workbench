@@ -120,7 +120,10 @@ def test_digest_is_structural_and_holds_no_sensitive_value(root: Path) -> None:
 def test_offline_provider_analysis_is_stored_as_pending(root: Path) -> None:
     service = AiAnalysisService(root)
     assert [(p.name, p.requires_network, p.enabled) for p in service.providers()] == [
-        ("offline-template", False, True)
+        ("deepseek", True, False),
+        ("gemini", True, False),
+        ("offline-template", False, True),
+        ("openai", True, False),
     ]
     analysis = service.analyze("CASE-0001")
 
@@ -314,7 +317,7 @@ def test_stored_analysis_and_reviews_are_immutable(root: Path) -> None:
 
 def test_cli_flow(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["ai", "providers"]) == 0
-    assert capsys.readouterr().out == "offline-template\ttemplate-v1\tenabled\n"
+    assert "offline-template\ttemplate-v1\tenabled\n" in capsys.readouterr().out
     assert main(["ai", "preview", "CASE-0001"]) == 0
     output = capsys.readouterr().out
     assert "input_scope: structural" in output and '"digest_version": 1' in output

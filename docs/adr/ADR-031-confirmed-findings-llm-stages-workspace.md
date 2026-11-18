@@ -91,6 +91,22 @@ ADR-025(블록 문서 보고서), ADR-026(AI 골격), ADR-027(다중 Provider �
 - 호출 기록: Provider, 모델, 입력 SHA-256, 시각, 토큰 수, 소요 시간. 원문 응답은 검증을
   통과한 경우에만 기존처럼 저장한다.
 - 테스트는 가짜 HTTP 서버로만 한다. 실제 호출은 사용자가 승인한 시점에 한 번 확인한다.
+- **사용자 결정(2026-11-18):** Provider는 **OpenAI(GPT), DeepSeek, Gemini** 세 곳이다(Claude
+  대신 DeepSeek). 기준은 최소 성능을 보장하는 저가·무료 모델이고, 모델 이름은 설정으로 바꿀 수
+  있다(기본값: OpenAI mini 계열, `deepseek-flash`, Gemini Flash 계열 무료 등급). 보낼 데이터는
+  **(가) 구조 요약**이다. `collection`은 `structural`, `synthesis`는 여기에 분석가가 쓴 확정
+  사항 문장을 더한 `structural+findings`다. 명령줄, 전체 경로, 사용자·호스트 이름, 해시, 추출
+  문자열, 샘플, 원본 로그는 보내지 않는다. 키는 사용자가 이 연구용으로 새로 발급해 환경
+  변수(`OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`)로 설정한다.
+  - Gemini 무료 등급은 보낸 내용을 Google이 제품 개선에 쓰거나 사람이 검토할 수 있다.
+    DeepSeek은 중국 서버에서 처리한다. 위 범위만 보내므로 개인정보·샘플은 나가지 않는다.
+  - 외부 전송 활성화(실제 호출)는 키 설정 후 사용자가 다시 승인한다.
+- **구현(2026-11-18):** `ai.external`. OpenAI는 Chat Completions + strict JSON Schema,
+  DeepSeek은 같은 형식의 JSON 모드(스키마는 시스템 프롬프트로), Gemini는 `generateContent` +
+  `responseSchema`. 표준 라이브러리 HTTPS, 고정 호스트 3개, 응답 1 MiB 제한, 120초 시간 제한.
+  호출 조건은 설정 `[ai] allow_network`, API 키, 명령 `--allow-network` 셋 모두다. 외부
+  Provider는 단계 요청만 받는다. 토큰 수·소요 시간은 저장하지 않는다(테이블 변경을 피함).
+  테스트는 가짜 전송과 `urlopen` 대체로만 했고 실제 호출은 아직 하지 않았다.
 
 ### 6. Case 작업 공간 UI
 

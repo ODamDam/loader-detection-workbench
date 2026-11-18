@@ -447,6 +447,36 @@ workbench finding adopt AIA-0002 1                    # 제안을 draft 확정 �
   만든다.
 - 가설형 제안과 `mechanism`은 `finding adopt`로 draft 확정 사항이 되고, 분석가가 고쳐
   확정해야 보고서 본문에 들어간다. 증거 연결과 추가 분석 지점은 참고 의견이다.
+
+### 외부 Provider: OpenAI, DeepSeek, Gemini (ADR-031)
+
+외부 호출은 기본으로 꺼져 있다. 다음 세 가지가 모두 있어야 호출한다.
+
+1. 설정 파일(`--config`)의 `[ai] allow_network = true`
+2. 환경 변수의 API 키: `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`
+3. 명령의 `--allow-network`
+
+```toml
+# workbench.toml (저장소에 넣지 않는다)
+[ai]
+allow_network = true
+[ai.models]          # 선택. 기본값: gpt-5-mini, deepseek-flash, gemini-2.5-flash
+openai = "gpt-5-mini"
+```
+
+```text
+uv run workbench --config workbench.toml ai providers
+uv run workbench ai preview CASE-0001 --stage collection        # 보낼 입력 확인
+uv run workbench --config workbench.toml ai analyze CASE-0001 --stage collection --provider openai,deepseek,gemini --allow-network
+```
+
+- 보내는 것은 `ai preview`가 보여주는 구조 요약뿐이다(`synthesis`는 확정 사항 문장 포함).
+  명령줄·경로·사용자 이름·해시·추출 문자열·샘플·원본 로그는 보내지 않는다.
+- 접속 대상은 세 API 호스트로 고정된 HTTPS다. 키는 환경 변수에서만 읽고 저장·출력하지 않는다.
+- 응답은 단계별 JSON 형식으로 받고 오프라인 Provider와 같은 검증을 거친다. 형식이 틀리거나
+  없는 ID를 인용하면 아무것도 저장하지 않는다. 외부 Provider는 `--stage`가 있어야 한다.
+- Gemini 무료 등급은 보낸 내용이 Google 제품 개선에 쓰일 수 있고, DeepSeek은 중국에서
+  처리된다.
 - Case에 없는 Artifact를 인용하는 등 계약을 벗어난 Provider 출력은 전체를 거부하고
   저장하지 않는다.
 - `ai compare`는 같은 입력(SHA-256)을 받은 Provider별 분석을 공통 의견과 개별 의견으로

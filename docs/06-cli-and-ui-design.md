@@ -338,6 +338,11 @@ workbench ai compare CASE-NNNN [--analysis AIA-NNNN ...]
   비교 대상이 섞이지 않는다. `list`와 `show`는 단계를 출력한다(이전 기록은 `legacy`).
 - `--provider a,b`는 같은 입력으로 Provider마다 분석을 하나씩 저장한다. 같은 이름을 두 번
   쓰면 거부한다.
+- 외부 Provider(`openai`, `deepseek`, `gemini`)는 `--config`의 `[ai] allow_network = true`, 해당
+  API 키 환경 변수, 명령의 `--allow-network`가 모두 있을 때만 호출한다. 하나라도 없으면
+  `AI_PROVIDER_UNAVAILABLE`과 빠진 조건을 출력하고 아무것도 보내지 않는다. `ai providers`는
+  Provider마다 모델과 막힌 이유를 보여준다. HTTP 오류는 상태 코드만 출력한다.
+- 설정: `[ai.models]`로 모델 이름을 바꾼다(허용 키 `openai`·`deepseek`·`gemini`, 평문 이름만).
 - AI 테이블 스키마는 v2다. v1(ADR-026)은 그대로 읽히고, 첫 쓰기에서 제안 종류 제약만 넓히는
   방식으로 이전한다.
 - `preview`는 Provider를 호출하지 않고 입력 범위, SHA-256, 크기, 구조 요약 JSON을

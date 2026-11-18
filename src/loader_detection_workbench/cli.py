@@ -538,6 +538,12 @@ def _add_ai_parsers(groups: Any) -> None:
     analyze.add_argument(
         "--stage", choices=("collection", "synthesis"), help=stage_help
     )
+    analyze.add_argument(
+        "--allow-network",
+        action="store_true",
+        help="allow sending the previewed input to an external provider; "
+        "also needs [ai] allow_network = true in --config (ADR-031)",
+    )
     listing = commands.add_parser("list")
     listing.add_argument("--case", dest="case_display_id", metavar="CASE-NNNN")
     show = commands.add_parser("show")
@@ -1315,7 +1321,12 @@ def _run_ai(arguments: argparse.Namespace, service: AiAnalysisService) -> int:
     command = arguments.ai_command
     if command == "providers":
         for provider in service.providers():
-            state = "enabled" if provider.enabled else "disabled (external)"
+            if not provider.enabled:
+                state = f"disabled: {provider.blocked_by}"
+            elif provider.requires_network:
+                state = "enabled (external: needs --allow-network)"
+            else:
+                state = "enabled"
             print(f"{provider.name}\t{provider.model}\t{state}")
     elif command == "preview":
         preview = service.preview(arguments.case_display_id, arguments.stage)
@@ -1333,7 +1344,12 @@ def _run_ai(arguments: argparse.Namespace, service: AiAnalysisService) -> int:
             )
         for name in names:
             _print_ai_analysis(
-                service.analyze(arguments.case_display_id, name, arguments.stage)
+                service.analyze(
+                    arguments.case_display_id,
+                    name,
+                    arguments.stage,
+                    allow_network=arguments.allow_network,
+                )
             )
     elif command == "list":
         for analysis in service.list_analyses(arguments.case_display_id):
@@ -1591,7 +1607,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
     if arguments.group == "ai":
         try:
-            return _run_ai(arguments, AiAnalysisService(Path.cwd()))
+            return _run_ai(
+                arguments, AiAnalysisService(Path.cwd(), ai_config=config.ai)
+            )
         except DomainError as exc:
             print(f"error: {exc.code.value}: {exc}", file=sys.stderr)
             return 2
