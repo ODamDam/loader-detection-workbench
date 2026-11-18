@@ -7,11 +7,16 @@ reads stored analyses only: it never calls a provider, so it works the same
 with offline providers, with external ones once they are approved, or with a
 mix of both.
 
-Two suggestions count as the same opinion when they have the same kind, cite
-the same evidence Artifacts and their wording overlaps enough (token Jaccard
-similarity of the hypothesis title, or of the text for review items). This is a
-transparent heuristic, not a semantic judgment; the report shows every member
-of a group so a person can check the grouping.
+Two suggestions count as the same opinion when they come from different
+providers, have the same kind, share at least one cited ID and describe the
+same behavior. Behavior is read from the hypothesis title (or the text of
+other kinds) as a set of fixed themes such as network, execution or registry;
+theme sets that overlap by half or more match. Without any theme the wording
+itself must overlap by half (token Jaccard). Real model answers word the same
+idea very differently, so plain word overlap missed every shared opinion in
+the first real comparison (ADR-031). This is a transparent heuristic, not a
+semantic judgment; the report shows every member of a group so a person can
+check the grouping.
 """
 
 from __future__ import annotations
@@ -84,6 +89,28 @@ class Comparison:
     individual: tuple[OpinionGroup, ...]
 
 
+# Behavior themes and the words that signal them (lowercase regular expressions).
+THEMES: dict[str, str] = {
+    "network": r"wininet|winsock|ws2_32|socket|https?\b|dns|network|internet"
+    r"|connect|outbound|download|\burl\b|\bc2\b",
+    "execution": r"createprocess|shellexecute|spawn|child|launch|\bdrop|payload"
+    r"|secondary executable|writes? (?:and starts|executable)",
+    "registry": r"registry|regsetvalue|regcreatekey|run key|persisten|autorun",
+    "script": r"powershell|\.ps1|\bscript|wscript|mshta|cmd\.exe",
+    "screen": r"screen|bitblt|\bgdi|gdiplus",
+    "anti_analysis": r"debugger|anti-debug|sandbox|evasi|obfusc|\bpack|entropy",
+    "injection": r"inject|virtualalloc|writeprocessmemory|remotethread|hollow",
+    "credentials": r"credential|password|cookie|stealer|wallet",
+}
+_THEMES = {name: re.compile(pattern) for name, pattern in THEMES.items()}
+THEME_THRESHOLD = 0.5
+
+
+def themes(value: str) -> frozenset[str]:
+    lowered = value.lower()
+    return frozenset(name for name, rx in _THEMES.items() if rx.search(lowered))
+
+
 def tokens(value: str) -> frozenset[str]:
     return frozenset(
         token
@@ -134,36 +161,43 @@ def _opinion(analysis: AiAnalysis, index: int) -> Opinion:
     )
 
 
+def _basis(opinion: Opinion) -> str:
+    if opinion.kind in TITLED_KINDS and opinion.title:
+        return opinion.title
+    return opinion.text
+
+
 def _same(left: Opinion, right: Opinion) -> bool:
     if left.kind is not right.kind or left.provider == right.provider:
         return False
-    if left.evidence_artifact_ids != right.evidence_artifact_ids:
+    if left.evidence_artifact_ids and right.evidence_artifact_ids:
+        if not set(left.evidence_artifact_ids) & set(right.evidence_artifact_ids):
+            return False
+    elif left.evidence_artifact_ids != right.evidence_artifact_ids:
         return False
-    if left.kind in TITLED_KINDS:
-        return similarity(left.title or "", right.title or "") >= SIMILARITY_THRESHOLD
-    return similarity(left.text, right.text) >= SIMILARITY_THRESHOLD
+    a, b = themes(_basis(left)), themes(_basis(right))
+    if a and b:
+        return len(a & b) / len(a | b) >= THEME_THRESHOLD
+    return similarity(_basis(left), _basis(right)) >= SIMILARITY_THRESHOLD
 
 
 def _group(opinions: Sequence[Opinion]) -> list[OpinionGroup]:
-    parent = list(range(len(opinions)))
+    """Join an opinion to the first group whose *every* member it matches.
 
-    def find(index: int) -> int:
-        while parent[index] != index:
-            parent[index] = parent[parent[index]]
-            index = parent[index]
-        return index
-
-    for i in range(len(opinions)):
-        for j in range(i + 1, len(opinions)):
-            if _same(opinions[i], opinions[j]):
-                parent[find(j)] = find(i)
-    members: dict[int, list[Opinion]] = {}
-    for index, opinion in enumerate(opinions):
-        members.setdefault(find(index), []).append(opinion)
-    return [
-        OpinionGroup(group[0].kind, tuple(group))
-        for _, group in sorted(members.items())
-    ]
+    Requiring a match with all members (not just one) stops chains such as
+    registry ~ registry+network ~ network from merging unrelated opinions.
+    Input order is stable (analysis ID, then suggestion order), so the result
+    is deterministic.
+    """
+    groups: list[list[Opinion]] = []
+    for opinion in opinions:
+        for group in groups:
+            if all(_same(member, opinion) for member in group):
+                group.append(opinion)
+                break
+        else:
+            groups.append([opinion])
+    return [OpinionGroup(group[0].kind, tuple(group)) for group in groups]
 
 
 def compare_analyses(analyses: Sequence[AiAnalysis]) -> Comparison:

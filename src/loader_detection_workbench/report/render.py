@@ -643,7 +643,7 @@ def _ai_comparison(analysis: CaseAnalysis) -> list[Block]:
                 f"(SHA-256 {comparison.input_sha256}). {len(comparison.common)} "
                 f"opinion(s) are shared by two or more providers and "
                 f"{len(comparison.individual)} come from a single provider. "
-                "Grouping compares cited evidence and wording; it is a "
+                "Grouping compares cited evidence and behavior themes; it is a "
                 "heuristic, not a judgment of meaning."
             )
         ),

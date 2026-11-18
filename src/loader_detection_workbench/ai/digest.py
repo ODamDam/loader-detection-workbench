@@ -18,7 +18,10 @@ from typing import Any
 
 from loader_detection_workbench.case.timeline import CaseTimeline
 from loader_detection_workbench.report.analysis import CaseAnalysis
-from loader_detection_workbench.sysmon.relations import ProcessRelations
+from loader_detection_workbench.sysmon.relations import (
+    ProcessRelations,
+    prioritized_processes,
+)
 
 DIGEST_VERSION = 1
 DIGEST_SCOPE = "structural"
@@ -145,14 +148,11 @@ def build_digest(
             }
         )
 
-    keys = [process.key for process in relations.processes]
+    selected = prioritized_processes(relations.processes)[:MAX_PROCESSES]
+    keys = [process.key for process in selected]
     processes: list[dict[str, Any]] = []
-    for index, process in enumerate(relations.processes[:MAX_PROCESSES]):
-        parent = (
-            keys.index(process.parent_key)
-            if process.parent_key in keys[:MAX_PROCESSES]
-            else None
-        )
+    for index, process in enumerate(selected):
+        parent = keys.index(process.parent_key) if process.parent_key in keys else None
         processes.append(
             {
                 "index": index,

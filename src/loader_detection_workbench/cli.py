@@ -1218,7 +1218,7 @@ def _print_comparison(comparison: Comparison) -> None:
         print(f"analysis: {analysis.display_id}\t{analysis.provider}\t{analysis.model}")
     print(
         "note: suggestions are inferences, not observed evidence; "
-        "grouping is a wording and citation heuristic"
+        "grouping is a citation and behavior-theme heuristic"
     )
     print(f"shared opinions: {len(comparison.common)}")
     for group in comparison.common:

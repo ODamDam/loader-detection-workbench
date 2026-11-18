@@ -11,6 +11,8 @@ except as opaque node keys.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -94,6 +96,36 @@ def _pid(value: str | None) -> str | None:
     return value if value is not None and value.isdigit() else None
 
 
+# The guest runner starts a sample as ``target-<sha256[:12]>.exe`` (ADR-024).
+_TARGET = re.compile(r"target-[0-9a-f]{12}\.exe", re.IGNORECASE | re.ASCII)
+
+
+def prioritized_processes(processes: Sequence[ProcessNode]) -> list[ProcessNode]:
+    """Sample-related processes first, then the rest in time order.
+
+    A real VM run records many Windows background processes before the sample
+    starts, so a plain time-ordered cut would keep only noise. Related means:
+    the started target and its descendants, and any process whose image name
+    is a file that this tree wrote (a dropped copy started later). Order inside
+    each group stays as recorded.
+    """
+    related: set[str] = {p.key for p in processes if _TARGET.fullmatch(p.image_name)}
+    changed = bool(related)
+    while changed:
+        changed = False
+        written = {
+            f.name.lower() for p in processes if p.key in related for f in p.files
+        }
+        for process in processes:
+            if process.key in related:
+                continue
+            if process.parent_key in related or process.image_name.lower() in written:
+                related.add(process.key)
+                changed = True
+    first = [p for p in processes if p.key in related]
+    return first + [p for p in processes if p.key not in related]
+
+
 def build_process_relations(records: list[SysmonRecord]) -> ProcessRelations:
     nodes: dict[str, ProcessNode] = {}
 
@@ -152,5 +184,6 @@ def build_process_relations(records: list[SysmonRecord]) -> ProcessRelations:
             else:
                 label = ACTIVITY_LABELS.get(record.event_id, f"event {record.event_id}")
                 node.activity[label] = node.activity.get(label, 0) + 1
-    processes = tuple(nodes.values())
+    # Keep the sample's own tree inside the cap (real runs are mostly noise).
+    processes = tuple(prioritized_processes(list(nodes.values())))
     return ProcessRelations(processes[:MAX_PROCESSES], len(processes), len(records))

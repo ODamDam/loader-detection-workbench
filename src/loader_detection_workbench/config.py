@@ -38,7 +38,7 @@ AI_PROVIDERS = ("openai", "deepseek", "gemini")
 DEFAULT_AI_MODELS = {
     "openai": "gpt-5-mini",
     "deepseek": "deepseek-flash",
-    "gemini": "gemini-2.5-flash",
+    "gemini": "gemini-3.8-flash",
 }
 _MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,79}", re.ASCII)
 

@@ -460,7 +460,7 @@ workbench finding adopt AIA-0002 1                    # 제안을 draft 확정 �
 # workbench.toml (저장소에 넣지 않는다)
 [ai]
 allow_network = true
-[ai.models]          # 선택. 기본값: gpt-5-mini, deepseek-flash, gemini-2.5-flash
+[ai.models]          # 선택. 기본값: gpt-5-mini, deepseek-flash, gemini-3.8-flash
 openai = "gpt-5-mini"
 ```
 
@@ -480,8 +480,8 @@ uv run workbench --config workbench.toml ai analyze CASE-0001 --stage collection
 - Case에 없는 Artifact를 인용하는 등 계약을 벗어난 Provider 출력은 전체를 거부하고
   저장하지 않는다.
 - `ai compare`는 같은 입력(SHA-256)을 받은 Provider별 분석을 공통 의견과 개별 의견으로
-  나눈다. Provider를 호출하지 않는다. 같은 의견인지는 인용 Artifact와 문구 유사도로 정하는
-  휴리스틱이다(ADR-027). 보고서에도 같은 비교 표가 붙는다.
+  나눈다. Provider를 호출하지 않는다. 같은 의견인지는 겹치는 인용과 행위 주제(네트워크,
+  실행·드롭, 레지스트리 등)로 정하는 휴리스틱이다(ADR-027). 보고서에도 같은 비교 표가 붙는다.
 
 ## 14. 무해한 시뮬레이터 (ADR-028)
 

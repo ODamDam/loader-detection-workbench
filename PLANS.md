@@ -19,8 +19,12 @@ Status: `in_progress` — 1단계(확정 사항 + 확정 기반 보고서) 완�
 - 4단계 완료(실제 호출 전): Provider 어댑터 3종 — 사용자 결정: OpenAI·DeepSeek·Gemini, 저가·무료
   모델(설정 가능), 데이터 범위 (가) 구조 요약. `ai.external`, `[ai]` 설정, `--allow-network`,
   가짜 전송 테스트.
-- 남은 것: 사용자가 이 연구용 API 키 3개를 새로 발급해 환경 변수에 설정한 뒤, 외부 전송을
-  승인하면 Provider마다 실제 호출 1회로 확인한다.
+- 실제 호출 확인 완료(사용자 승인): CASE-0001 `collection`, OpenAI·DeepSeek·Gemini 각 1회 성공
+  (AIA-0001~0003, 같은 입력). Gemini 기본 모델을 `gemini-3.8-flash`로 변경(2.5는 신규 사용자 404).
+  요약에서 샘플 프로세스가 잘리던 문제 수정(샘플 트리 우선).
+- 같은 의견 기준 개정(ADR-027 개정): 겹치는 인용 + 행위 주제 일치, 모든 구성원과 일치해야
+  묶음. 실제 3사 결과에서 공통 0개 → 9개.
+- 남은 것: 설정 파일 BOM 허용.
 - 실제 샘플: dev 6건 Case 등록·정적 분석·YARA 초안 2개(Amadey, PureCrypter) 완료.
   - VM: 게스트 비밀번호 만료(11/17 19:04)로 로그인 거부 → 시계를 되돌려 부팅하고 사용자가
     "만료 없음"으로 고친 뒤 `SYSMON-V2-CLEAN` 재생성(이전은 `SYSMON-V2-CLEAN-pwexpired`).
