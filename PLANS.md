@@ -35,8 +35,17 @@ Status: `in_progress` — 1단계(확정 사항 + 확정 기반 보고서) 완�
     안 행위 없음, CASE-0005는 단독 실행 시 충돌).
   - 정상 시나리오 5종(CASE-0009~0013) 실행. 180초 실행 3건은 게스트 작업이 360초 여유도
     넘겨 실패, 60초로 재실행해 성공. 게스트 측 지연 원인은 미확인(게스트 출력이 남지 않음).
-- 남은 것: 게스트 지연 진단(실패 시 게스트 출력 일부 기록), 룰 최종 채택(사용자 승인),
-  확정 사항 작성과 dev Case 보고서.
+- 룰 최종 채택(2026-11-18 사용자 승인, 동결): YARA RULE-0001 v1(Amadey), RULE-0002 v2
+  (PureCrypter), Sigma RULE-0003 v1, RULE-0004 v1, RULE-0005 v1, RULE-0006 v2(태그를
+  `attack.defense_evasion`으로 고침, 검증 결과 v1과 같음), RULE-0007 v1. 정량 목표 현황: YARA
+  동결 2/6, Sigma 동결 5/6.
+- dev 6건 확정 사항 초안 FND-0001~0032(모두 draft, 분석가 확정 대기)와 AI collection 의견:
+  DeepSeek 5/5, Gemini 5/5(3건은 인용 부족으로 거절 후 1회 재호출로 성공), OpenAI 0/5
+  (HTTP 429, 사용자 계정 확인 필요). AI 의견에서 빠진 점 3개를 초안에 반영(FND-0010
+  위장 이름, FND-0015 IPv4 문자열, FND-0025 덤프 미수집).
+- AI 입력 품질 수정: 게스트 실행기 PowerShell과 그 자식을 `workbench` 프로세스로 표시하고
+  요약에서 제외(개수만 기록). `wevtutil`은 확인해 보니 Defender가 띄운 정상 동작이었다.
+- 남은 것: 확정(사용자) → 보고서·synthesis, 게스트 지연 진단, HijackLoader YARA, eval 평가.
 - 실제 샘플: dev 6건 Case 등록·정적 분석·YARA 초안 2개(Amadey, PureCrypter) 완료.
   - VM: 게스트 비밀번호 만료(11/17 19:04)로 로그인 거부 → 시계를 되돌려 부팅하고 사용자가
     "만료 없음"으로 고친 뒤 `SYSMON-V2-CLEAN` 재생성(이전은 `SYSMON-V2-CLEAN-pwexpired`).

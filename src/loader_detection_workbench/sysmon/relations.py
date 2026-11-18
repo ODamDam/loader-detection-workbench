@@ -62,6 +62,8 @@ class ProcessNode:
     activity: dict[str, int] = field(default_factory=dict)
     files: list[FileNode] = field(default_factory=list)
     file_total: int = 0
+    # Started by the Workbench guest runner itself (not by the sample).
+    workbench: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +77,8 @@ class ProcessRelations:
     processes: tuple[ProcessNode, ...]
     process_total: int
     record_total: int
+    # Workbench guest processes among all processes, before the cap.
+    workbench_total: int = 0
 
     @property
     def truncated(self) -> bool:
@@ -123,7 +127,36 @@ def prioritized_processes(processes: Sequence[ProcessNode]) -> list[ProcessNode]
                 related.add(process.key)
                 changed = True
     first = [p for p in processes if p.key in related]
-    return first + [p for p in processes if p.key not in related]
+    rest = [p for p in processes if p.key not in related]
+    # Workbench's own guest processes go last: they are never sample behavior.
+    return (
+        first + [p for p in rest if not p.workbench] + [p for p in rest if p.workbench]
+    )
+
+
+# The guest runner (ADR-024) is a PowerShell process running this script.
+_GUEST_RUNNER = "invoke-workbenchguestrun.ps1"
+
+
+def mark_workbench_processes(nodes: Sequence[ProcessNode]) -> None:
+    """Mark the runner and what it started, except the sample's own tree.
+
+    The runner starts the target and, after the run window, ``wevtutil`` to
+    export events; the target and its descendants stay unmarked.
+    """
+    marked = {node.key for node in nodes if node.workbench}
+    changed = bool(marked)
+    while changed:
+        changed = False
+        for node in nodes:
+            if (
+                not node.workbench
+                and node.parent_key in marked
+                and _TARGET.fullmatch(node.image_name) is None
+            ):
+                node.workbench = True
+                marked.add(node.key)
+                changed = True
 
 
 def build_process_relations(records: list[SysmonRecord]) -> ProcessRelations:
@@ -160,13 +193,21 @@ def build_process_relations(records: list[SysmonRecord]) -> ProcessRelations:
                     file_total=0 if node is None else node.file_total,
                 )
                 nodes[guid] = node
+            command = (record.fields.get("CommandLine") or "").lower()
+            if _GUEST_RUNNER in command:
+                node.workbench = True
             parent = record.fields.get("ParentProcessGuid")
             if parent and parent != guid:
-                placeholder(
+                parent_node = placeholder(
                     parent,
                     record.fields.get("ParentImage"),
                     record.fields.get("ParentProcessId"),
                 )
+                # The runner starts before the capture baseline, so it is often
+                # known only from its children's ParentCommandLine.
+                parent_command = (record.fields.get("ParentCommandLine") or "").lower()
+                if _GUEST_RUNNER in parent_command:
+                    parent_node.workbench = True
                 node.parent_key = parent
         elif guid:
             node = placeholder(
@@ -184,6 +225,12 @@ def build_process_relations(records: list[SysmonRecord]) -> ProcessRelations:
             else:
                 label = ACTIVITY_LABELS.get(record.event_id, f"event {record.event_id}")
                 node.activity[label] = node.activity.get(label, 0) + 1
+    mark_workbench_processes(list(nodes.values()))
     # Keep the sample's own tree inside the cap (real runs are mostly noise).
     processes = tuple(prioritized_processes(list(nodes.values())))
-    return ProcessRelations(processes[:MAX_PROCESSES], len(processes), len(records))
+    return ProcessRelations(
+        processes[:MAX_PROCESSES],
+        len(processes),
+        len(records),
+        sum(1 for process in processes if process.workbench),
+    )

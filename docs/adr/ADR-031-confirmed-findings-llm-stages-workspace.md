@@ -117,6 +117,12 @@ ADR-025(블록 문서 보고서), ADR-026(AI 골격), ADR-027(다중 Provider �
     파일 이름으로 실행된 프로세스를 먼저 두도록 고쳤다.
   - 비교 한계: 세 Provider가 같은 내용(실행 파일 드롭·자식 실행, 네트워크 기능, 레지스트리)을
     냈지만 같은 의견 기준(인용 집합 동일 + 제목 단어 겹침 0.5)으로는 공통 의견이 0개였다.
+  - Workbench 자체 프로세스 제외(2026-11-19): 모델들이 게스트 실행기 PowerShell을 보고 "샘플이
+    PowerShell에서 실행됨"이라는 의견을 냈다. 실행기(`Invoke-WorkbenchGuestRun.ps1`를 실행하는
+    PowerShell, 대개 캡처 시작 전에 떠 있어 자식의 `ParentCommandLine`으로 식별)와 그것이 띄운
+    프로세스(샘플 트리 제외)를 프로세스 관계에서 `workbench`로 표시하고, 요약에서는 빼고 개수
+    (`workbench_processes_excluded`)만 남긴다. 실제 기록의 `wevtutil`은 Defender(MsMpEng)가 띄운
+    것이라 정상 Windows 동작이며 그대로 둔다.
 
 ### 6. Case 작업 공간 UI
 

@@ -148,7 +148,11 @@ def build_digest(
             }
         )
 
-    selected = prioritized_processes(relations.processes)[:MAX_PROCESSES]
+    # Workbench's own guest processes (runner, event export) are not evidence
+    # about the sample; models mistook them for sample behavior (ADR-031).
+    candidates = prioritized_processes(relations.processes)
+    excluded = relations.workbench_total
+    selected = [p for p in candidates if not p.workbench][:MAX_PROCESSES]
     keys = [process.key for process in selected]
     processes: list[dict[str, Any]] = []
     for index, process in enumerate(selected):
@@ -189,6 +193,7 @@ def build_digest(
                 sorted(event_counts.items(), key=lambda i: int(i[0]))
             ),
             "process_total": relations.process_total,
+            "workbench_processes_excluded": excluded,
             "processes": processes,
         },
         "vm_runs": [
