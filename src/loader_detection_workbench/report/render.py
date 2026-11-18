@@ -1,10 +1,10 @@
 """Pure rendering of a Case report from the shared query results.
 
-The Timeline part consumes the same ``CaseTimeline`` as the CLI. When a
-``CaseAnalysis`` is supplied, static PE evidence, VM execution runs, Detection
-Hypotheses, Rules and Validation results are added. Sections without recorded
-data are omitted, so a Case with only Sysmon Artifacts renders exactly as it
-did before those sections existed.
+The report body is built from analyst-confirmed findings only (ADR-031).
+Everything the Workbench recorded or computed (evidence summary, static PE
+evidence, timeline, VM runs, working hypotheses, rules and validation) follows
+in "Appendix A", and AI suggestions in "Appendix B"; neither is a conclusion.
+Sections without recorded data are omitted.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from loader_detection_workbench.detection.domain import (
 from loader_detection_workbench.domain.events import ProcessCreateEvent
 from loader_detection_workbench.domain.time import format_utc
 from loader_detection_workbench.execution.domain import ExecutionRun
+from loader_detection_workbench.findings.domain import AnalystFinding, FindingKind
 from loader_detection_workbench.report import document as doc
 from loader_detection_workbench.report.analysis import CaseAnalysis
 from loader_detection_workbench.report.document import (
@@ -34,6 +35,7 @@ from loader_detection_workbench.report.document import (
     Code,
     Document,
     Heading,
+    Item,
     Paragraph,
     Table,
     item,
@@ -678,6 +680,7 @@ def _ai(analysis: CaseAnalysis) -> list[Block]:
                         item(
                             "Created At", format_utc(record.created_at), is_trusted=True
                         ),
+                        item("Stage", record.stage.value, is_trusted=True),
                         item("Input Scope", record.input_scope),
                         item("Input SHA-256", record.input_sha256, is_trusted=True),
                     )
@@ -716,12 +719,137 @@ def _ai(analysis: CaseAnalysis) -> list[Block]:
     return blocks
 
 
+def _lines(text: str) -> list[Block]:
+    return [Paragraph(untrusted(line)) for line in text.splitlines() if line.strip()]
+
+
+def _cites(finding: AnalystFinding) -> str:
+    content = finding.content
+    cited = [str(ref) for ref in content.evidence] + list(content.finding_refs)
+    return ", ".join(cited) or "none"
+
+
+def _findings(analysis: CaseAnalysis | None) -> list[Block]:
+    """Report body: confirmed analyst findings only (ADR-031)."""
+    blocks: list[Block] = [
+        Heading(2, trusted("Confirmed Findings")),
+        Paragraph(
+            trusted(
+                "This section contains only statements an analyst confirmed in the "
+                "Workbench. Recorded data and AI suggestions are in the appendices "
+                "and are not conclusions."
+            )
+        ),
+    ]
+    findings = () if analysis is None else analysis.findings
+    if not findings:
+        blocks.append(
+            Paragraph(trusted("No finding has been confirmed for this Case."))
+        )
+        return blocks
+    by_id = {item.display_id: item for item in findings}
+    hypotheses = [f for f in findings if f.kind is FindingKind.HYPOTHESIS]
+    evidence = [f for f in findings if f.kind is FindingKind.EVIDENCE]
+    links = [f for f in findings if f.kind is FindingKind.LINK]
+    mechanism = [f for f in findings if f.kind is FindingKind.MECHANISM]
+
+    def header(finding: AnalystFinding) -> Bullets:
+        content = finding.content
+        items = []
+        if content.verdict is not None:
+            items.append(item("Verdict", content.verdict.value, is_trusted=True))
+        if content.hypothesis_display_id is not None:
+            items.append(
+                item(
+                    "Detection Hypothesis",
+                    content.hypothesis_display_id,
+                    is_trusted=True,
+                )
+            )
+        items.append(item("Cites", _cites(finding), is_trusted=True))
+        items.append(item("Source", finding.source, is_trusted=True))
+        confirmed = finding.confirmed_at
+        if confirmed is not None:
+            items.append(
+                item(
+                    "Confirmed At",
+                    f"{format_utc(confirmed)} (r{finding.revision})",
+                    is_trusted=True,
+                )
+            )
+        return Bullets(tuple(items))
+
+    if hypotheses:
+        blocks.append(Heading(3, trusted("Hypotheses and Verdicts")))
+    for hypothesis in hypotheses:
+        blocks.append(
+            Heading(
+                4,
+                untrusted(hypothesis.content.title or ""),
+                f"{hypothesis.display_id} — ",
+            )
+        )
+        blocks.append(header(hypothesis))
+        blocks.extend(_lines(hypothesis.content.text))
+        support = [
+            link for link in links if hypothesis.display_id in link.content.finding_refs
+        ]
+        if support:
+            blocks.append(Paragraph(trusted("Supporting reasoning:")))
+            blocks.append(
+                Bullets(
+                    tuple(
+                        Item(
+                            f"{link.display_id} (cites "
+                            + ", ".join(
+                                ref
+                                for ref in link.content.finding_refs
+                                if ref in by_id
+                                and by_id[ref].kind is FindingKind.EVIDENCE
+                            )
+                            + ")",
+                            untrusted(" ".join(link.content.text.split())),
+                        )
+                        for link in support
+                    )
+                )
+            )
+    if evidence:
+        blocks.append(Heading(3, trusted("Confirmed Evidence")))
+        blocks.append(
+            Table(
+                ("Finding", "Cites", "What It Shows"),
+                tuple(
+                    (
+                        trusted(finding.display_id),
+                        trusted(_cites(finding)),
+                        untrusted(" ".join(finding.content.text.split())),
+                    )
+                    for finding in evidence
+                ),
+            )
+        )
+    if mechanism:
+        blocks.append(Heading(3, trusted("How It Works")))
+        for step in mechanism:
+            title = step.content.title or "Step"
+            blocks.append(Heading(4, untrusted(title), f"{step.display_id} — "))
+            blocks.append(header(step))
+            blocks.extend(_lines(step.content.text))
+    return blocks
+
+
+def _appendix(title: str, note: str) -> list[Block]:
+    return [Heading(2, trusted(title)), Paragraph(trusted(note))]
+
+
 def _limits(analysis: CaseAnalysis | None) -> list[Block]:
     lines = [
         "Only attached Sysmon XML Artifacts are queried.",
         "Supported events are Event ID 1 and Event ID 11.",
         "Results are normalized in memory; timestamps use second-precision UTC.",
-        "No maliciousness verdict is produced.",
+        "The report body contains analyst-confirmed findings only; the "
+        "Workbench itself produces no maliciousness verdict.",
         "The report does not independently attest how the source telemetry "
         "was collected.",
         "This demo report is a subset of the full analysis report template.",
@@ -757,6 +885,12 @@ def build_document(
 ) -> Document:
     blocks: list[Block] = [
         *_overview(timeline, generated_at),
+        *_findings(analysis),
+        *_appendix(
+            "Appendix A — Recorded Data",
+            "Collected and computed records, shown for traceability. They are not "
+            "analyst conclusions unless cited by a confirmed finding above.",
+        ),
         *_summary(timeline, analysis),
     ]
     if analysis is not None and analysis.static_results:
@@ -774,6 +908,14 @@ def build_document(
         if analysis.validation_runs:
             blocks.extend(_validation(analysis))
         if analysis.ai_analyses:
+            blocks.extend(
+                _appendix(
+                    "Appendix B — AI-Assisted Analysis (inference, not confirmed)",
+                    "Suggestions from language-model providers. Nothing here is "
+                    "confirmed; adopted suggestions appear above only as findings an "
+                    "analyst confirmed.",
+                )
+            )
             blocks.extend(_ai(analysis))
     blocks.extend(_limits(analysis))
     return Document(f"Case Report — {timeline.case.case_id.display_id}", tuple(blocks))

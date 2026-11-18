@@ -9,7 +9,16 @@
 출력 이름이 `.html`·`.htm`이면 HTML, 그 밖에는 Markdown이며 `--format`이 우선한다.
 
 보고서는 한 번 만든 블록 문서(`report.document`)를 두 형식으로 렌더링한다. 따라서
-두 형식의 내용은 항상 같다. 섹션 순서는 다음과 같고, 기록이 없는 섹션은 생략한다.
+두 형식의 내용은 항상 같다.
+
+**본문은 분석가가 확정한 내용만으로 만든다(ADR-031).** `Confirmed Findings` 섹션에는
+`workbench finding`으로 확정한 가설(판정 포함)과 그 연결 근거, 확정 증거 표, 작동 원리
+단계만 들어간다. 확정 사항이 없으면 "No finding has been confirmed for this Case."만 쓴다.
+초안·취소된 항목과 AI 제안은 본문에 들어가지 않는다.
+
+그 아래 "Appendix A — Recorded Data"에 도구가 기록·계산한 내용이 아래 순서로 이어지고,
+AI 분석이 있으면 "Appendix B — AI-Assisted Analysis (inference, not confirmed)"가 붙는다.
+기록이 없는 섹션은 생략한다.
 
 1. Case Overview
 2. Evidence Summary — Artifact 종류별 수, 기록 수, Benchmark 소속과 동결 여부
@@ -26,7 +35,8 @@
    Artifact#EventRecordID)를 덧붙인다.
 9. Collection / Analysis Limits
 
-Sysmon Artifact만 있는 Case는 기존 4개 섹션 보고서와 바이트 단위로 같다. Generated
+Sysmon Artifact만 있는 Case는 개요, 확정 사항, Appendix A의 요약·타임라인, 한계만
+나온다. Generated
 At은 renderer 인자로 전달해 테스트할 수 있다. 조회 중 하나라도 실패하면(손상된 정적
 결과 등) 보고서 파일을 만들지 않는다.
 

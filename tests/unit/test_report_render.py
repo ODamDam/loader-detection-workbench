@@ -58,6 +58,8 @@ def test_markdown_and_terminal_untrusted_values_are_inert() -> None:
     assert "`x`" not in markdown and "\\`x\\`" in markdown
     assert [line for line in markdown.splitlines() if line.startswith("## ")] == [
         "## Case Overview",
+        "## Confirmed Findings",
+        "## Appendix A — Recorded Data",
         "## Evidence Summary",
         "## Timeline",
         "## Collection / Analysis Limits",

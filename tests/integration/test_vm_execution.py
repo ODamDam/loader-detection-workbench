@@ -388,7 +388,7 @@ def test_sample_run_transfers_verified_artifact(root: Path) -> None:
     # The sample is sealed on the host and in transit; only the guest unseals.
     assert sum(data.startswith(MAGIC) for data in fake.copied) == 1
     run_cmd = next(c for c in fake.commands if c[1] == "guestcontrol" and c[3] == "run")
-    assert "--timeout=240000" in run_cmd  # 120 s + guest overhead
+    assert "--timeout=480000" in run_cmd  # 120 s + 360 s guest overhead
     assert run_cmd[-6:] == (
         "-Mode",
         "Sample",

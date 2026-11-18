@@ -22,6 +22,10 @@ from loader_detection_workbench.sysmon.relations import ProcessRelations
 
 DIGEST_VERSION = 1
 DIGEST_SCOPE = "structural"
+# Synthesis (ADR-031) adds the analyst's confirmed findings to the same digest.
+SYNTHESIS_SCOPE = "structural+findings"
+APPROVED_SCOPES = frozenset({DIGEST_SCOPE, SYNTHESIS_SCOPE})
+MAX_FINDINGS = 60
 MAX_IMPORT_DLLS = 32
 MAX_IMPORT_FUNCTIONS = 40
 MAX_SECTIONS = 32
@@ -59,9 +63,36 @@ def _number(value: object) -> float | int | None:
     )
 
 
+def _findings(analysis: CaseAnalysis) -> list[dict[str, Any]]:
+    """Confirmed findings in the analyst's own words (synthesis input)."""
+    items: list[dict[str, Any]] = []
+    for finding in analysis.findings[:MAX_FINDINGS]:
+        content = finding.content
+        items.append(
+            {
+                "id": finding.display_id,
+                "kind": content.kind.value,
+                "title": content.title,
+                "text": content.text,
+                "verdict": None if content.verdict is None else content.verdict.value,
+                "evidence": [str(ref) for ref in content.evidence],
+                "findings": list(content.finding_refs),
+            }
+        )
+    return items
+
+
 def build_digest(
-    timeline: CaseTimeline, analysis: CaseAnalysis, relations: ProcessRelations
+    timeline: CaseTimeline,
+    analysis: CaseAnalysis,
+    relations: ProcessRelations,
+    stage: str | None = None,
 ) -> dict[str, Any]:
+    """Build the provider input; ``stage`` is ``collection`` or ``synthesis``.
+
+    Without a stage the ADR-026 digest is produced unchanged. The synthesis
+    digest additionally carries the Case's confirmed findings.
+    """
     event_counts: dict[str, int] = {}
     for event in timeline.observations:
         key = str(event.event_id)
@@ -139,7 +170,7 @@ def build_digest(
             }
         )
 
-    return {
+    digest: dict[str, Any] = {
         "digest_version": DIGEST_VERSION,
         "scope": DIGEST_SCOPE,
         "case": {
@@ -175,6 +206,12 @@ def build_digest(
             "validation_runs": len(analysis.validation_runs),
         },
     }
+    if stage is not None:
+        digest["stage"] = stage
+    if stage == "synthesis":
+        digest["scope"] = SYNTHESIS_SCOPE
+        digest["findings"] = _findings(analysis)
+    return digest
 
 
 def serialize_digest(digest: dict[str, Any]) -> str:

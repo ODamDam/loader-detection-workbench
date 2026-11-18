@@ -74,6 +74,8 @@ def test_markdown_report_contains_all_sections_with_denominators(root: Path) -> 
 
     assert _headings(content) == [
         "## Case Overview",
+        "## Confirmed Findings",
+        "## Appendix A — Recorded Data",
         "## Evidence Summary",
         "## Static Evidence",
         "## Timeline",
@@ -127,7 +129,7 @@ def test_markdown_report_contains_all_sections_with_denominators(root: Path) -> 
     assert "ART\\-000001 rule synthetic\\_loader\\_marker" in content
     assert "ART\\-000002\\#11 \\(EventID 1\\)" in content
     assert "Tuning runs are recorded separately" in content
-    assert "No maliciousness verdict is produced." in content
+    assert "Workbench itself produces no maliciousness verdict." in content
 
 
 def test_untrusted_text_is_inert_in_markdown_and_html(root: Path) -> None:
@@ -238,6 +240,8 @@ def test_sysmon_only_case_keeps_the_original_report_shape(root: Path) -> None:
     )
     assert _headings(render_markdown(timeline, GENERATED, analysis)) == [
         "## Case Overview",
+        "## Confirmed Findings",
+        "## Appendix A — Recorded Data",
         "## Evidence Summary",
         "## Timeline",
         "## Collection / Analysis Limits",

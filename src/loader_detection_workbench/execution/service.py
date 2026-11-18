@@ -75,7 +75,10 @@ from loader_detection_workbench.sysmon.records import (
 MAX_SAMPLE_BYTES = 64 * 1024 * 1024
 MAX_MANIFEST_BYTES = 64 * 1024
 GUEST_POWERSHELL = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
-GUEST_RUN_OVERHEAD_SECONDS = 120
+# Guest-side work outside the run window: Sysmon baseline, process-tree stop,
+# settle and export. Real samples (2026-11-18, VMR-0002..0010) needed more than
+# 120 s, so the guestcontrol limit cut runs that had finished their window.
+GUEST_RUN_OVERHEAD_SECONDS = 360
 READY_POLL_SECONDS = 5.0
 METADATA_FORMAT = "workbench-execution-run"
 _PROCESS_OUTCOMES = frozenset({"exited", "timeout_killed"})

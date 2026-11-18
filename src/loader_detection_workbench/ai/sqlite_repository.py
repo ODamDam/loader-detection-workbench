@@ -27,7 +27,30 @@ from loader_detection_workbench.domain.time import format_utc, parse_utc, utc_no
 from loader_detection_workbench.project.database import connect_database
 from loader_detection_workbench.project.service import ProjectWorkspace
 
-AI_SCHEMA_VERSION = 1
+AI_SCHEMA_VERSION = 2
+# v1 (ADR-026) is still readable; the first write migrates it to v2, which only
+# widens the suggestion kinds for the ADR-031 stages.
+READABLE_AI_SCHEMA_VERSIONS = (1, 2)
+_KINDS = ", ".join(f"'{kind.value}'" for kind in SuggestionKind)
+
+_SUGGESTION_TABLE = f"""CREATE TABLE IF NOT EXISTS {{name}} (
+        analysis_display_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL CHECK (sequence >= 1),
+        kind TEXT NOT NULL CHECK (kind IN ({_KINDS})),
+        content_json TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('pending', 'accepted', 'rejected')),
+        reviewed_at TEXT,
+        review_note TEXT,
+        hypothesis_display_id TEXT,
+        PRIMARY KEY (analysis_display_id, sequence),
+        FOREIGN KEY (analysis_display_id) REFERENCES ai_analyses(display_id)
+            ON DELETE RESTRICT
+    )"""
+_SUGGESTION_TRIGGERS = (
+    "ai_suggestions_reviewed_immutable",
+    "ai_suggestions_content_immutable",
+    "ai_suggestions_no_delete",
+)
 
 _SCHEMA = (
     """CREATE TABLE IF NOT EXISTS ai_schema (
@@ -55,19 +78,7 @@ _SCHEMA = (
     """CREATE TRIGGER IF NOT EXISTS ai_analyses_no_delete
         BEFORE DELETE ON ai_analyses
         BEGIN SELECT RAISE(ABORT, 'AI analyses are append-only'); END""",
-    """CREATE TABLE IF NOT EXISTS ai_suggestions (
-        analysis_display_id TEXT NOT NULL,
-        sequence INTEGER NOT NULL CHECK (sequence >= 1),
-        kind TEXT NOT NULL CHECK (kind IN ('summary', 'hypothesis', 'review_item')),
-        content_json TEXT NOT NULL,
-        state TEXT NOT NULL CHECK (state IN ('pending', 'accepted', 'rejected')),
-        reviewed_at TEXT,
-        review_note TEXT,
-        hypothesis_display_id TEXT,
-        PRIMARY KEY (analysis_display_id, sequence),
-        FOREIGN KEY (analysis_display_id) REFERENCES ai_analyses(display_id)
-            ON DELETE RESTRICT
-    )""",
+    _SUGGESTION_TABLE.format(name="ai_suggestions"),
     """CREATE TRIGGER IF NOT EXISTS ai_suggestions_reviewed_immutable
         BEFORE UPDATE ON ai_suggestions
         WHEN OLD.state <> 'pending'
@@ -120,27 +131,53 @@ class SQLiteAiRepository:
             self._connection.rollback()
             raise
 
-    def _installed(self) -> bool:
+    def _version(self) -> int | None:
         row = self._connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ai_schema'"
         ).fetchone()
         if row is None:
-            return False
+            return None
         versions = [
             int(item[0])
             for item in self._connection.execute(
                 "SELECT version FROM ai_schema ORDER BY version"
             )
         ]
-        if versions != [AI_SCHEMA_VERSION]:
+        if len(versions) != 1 or versions[0] not in READABLE_AI_SCHEMA_VERSIONS:
             raise DomainError(
                 DomainErrorCode.UNSUPPORTED_CONTRACT_VERSION,
                 "AI analysis schema version is unsupported",
             )
-        return True
+        return versions[0]
+
+    def _installed(self) -> bool:
+        return self._version() is not None
+
+    def _migrate_v1(self) -> None:
+        """Widen the suggestion kinds; rows and triggers are carried over."""
+        self._connection.execute(_SUGGESTION_TABLE.format(name="ai_suggestions_v2"))
+        self._connection.execute(
+            "INSERT INTO ai_suggestions_v2 SELECT analysis_display_id, sequence, "
+            "kind, content_json, state, reviewed_at, review_note, "
+            "hypothesis_display_id FROM ai_suggestions"
+        )
+        for trigger in _SUGGESTION_TRIGGERS:
+            self._connection.execute(f"DROP TRIGGER IF EXISTS {trigger}")
+        self._connection.execute("DROP TABLE ai_suggestions")
+        self._connection.execute(
+            "ALTER TABLE ai_suggestions_v2 RENAME TO ai_suggestions"
+        )
+        self._connection.execute("DELETE FROM ai_schema")
+        self._connection.execute(
+            "INSERT INTO ai_schema (version, applied_at) VALUES (?, ?)",
+            (AI_SCHEMA_VERSION, format_utc(utc_now())),
+        )
 
     def _bootstrap(self) -> None:
-        installed = self._installed()
+        version = self._version()
+        installed = version is not None
+        if version == 1:
+            self._migrate_v1()
         for statement in _SCHEMA:
             self._connection.execute(statement)
         if not installed:

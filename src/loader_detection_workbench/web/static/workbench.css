@@ -82,3 +82,18 @@ td.digest { word-break: break-all; }
 .review-accepted { background: #dcf6e7; }
 .review-rejected { background: #fbdcdc; }
 .review-pending { background: #fff0d5; }
+/* Case workspace (ADR-031) */
+.tabs { display: flex; gap: .25rem; flex-wrap: wrap; border-bottom: 2px solid #d9dee8; margin: 1rem 0; }
+.tab { padding: .55rem 1rem; text-decoration: none; border-radius: .3rem .3rem 0 0; }
+.tab.active { background: #172033; color: #fff; }
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; }
+.column { background: #fff; border: 1px solid #d9dee8; border-radius: .4rem; padding: 1rem; }
+.opinion { border-top: 1px solid #e9edf3; padding: .5rem 0; }
+form.inline { display: inline; padding: 0; background: none; max-width: none; }
+button.secondary { background: #4f5f78; }
+.state-confirmed { background: #dcf6e7; }
+.state-draft { background: #fff0d5; }
+.state-withdrawn { background: #e9edf3; }
+article.finding.state-withdrawn { opacity: .7; }
+article.finding.state-confirmed, article.finding.state-draft { background: #fff; }
+.report-frame { width: 100%; min-height: 40rem; border: 1px solid #d9dee8; background: #fff; }

@@ -17,19 +17,26 @@ import re
 import sqlite3
 from collections.abc import Callable
 
-from loader_detection_workbench.ai.digest import DIGEST_SCOPE
-from loader_detection_workbench.ai.sqlite_repository import AI_SCHEMA_VERSION
+from loader_detection_workbench.ai.digest import APPROVED_SCOPES
+from loader_detection_workbench.ai.domain import SuggestionKind
+from loader_detection_workbench.ai.sqlite_repository import READABLE_AI_SCHEMA_VERSIONS
 from loader_detection_workbench.detection.sqlite_repository import (
     DETECTION_SCHEMA_VERSION,
 )
 from loader_detection_workbench.domain.artifact import Artifact
 from loader_detection_workbench.domain.case import Case, CaseKind
+from loader_detection_workbench.domain.errors import DomainError
 from loader_detection_workbench.domain.validation import (
     FindingSeverity,
     ValidationScope,
 )
 from loader_detection_workbench.execution.sqlite_repository import (
     EXECUTION_SCHEMA_VERSION,
+)
+from loader_detection_workbench.findings.domain import FindingContent
+from loader_detection_workbench.findings.sqlite_repository import (
+    FINDINGS_SCHEMA_VERSION,
+    parse_content,
 )
 
 MODULE_SCHEMA_UNSUPPORTED = "MODULE_SCHEMA_UNSUPPORTED"
@@ -49,6 +56,10 @@ AI_RECORD_INVALID = "AI_RECORD_INVALID"
 AI_REFERENCE_BROKEN = "AI_REFERENCE_BROKEN"
 AI_INPUT_TAMPERED = "AI_INPUT_TAMPERED"
 ARTIFACT_REFERENCE_DETACHED = "ARTIFACT_REFERENCE_DETACHED"
+FINDING_COUNTER_INVALID = "FINDING_COUNTER_INVALID"
+FINDING_RECORD_INVALID = "FINDING_RECORD_INVALID"
+FINDING_REFERENCE_BROKEN = "FINDING_REFERENCE_BROKEN"
+FINDING_HISTORY_INVALID = "FINDING_HISTORY_INVALID"
 
 # (tier, code, severity, scope, subject, message)
 Emit = Callable[[int, str, FindingSeverity, ValidationScope, str | None, str], None]
@@ -126,7 +137,7 @@ def _schema_ready(
     emit: Emit,
     *,
     marker: str,
-    version: int,
+    version: int | tuple[int, ...],
     tables: tuple[str, ...],
     triggers: tuple[str, ...],
     scope: ValidationScope,
@@ -136,7 +147,8 @@ def _schema_ready(
     if marker not in existing:
         return False
     versions = [row[0] for row in connection.execute(f"SELECT version FROM {marker}")]  # noqa: S608
-    if versions != [version]:
+    allowed = version if isinstance(version, tuple) else (version,)
+    if len(versions) != 1 or versions[0] not in allowed:
         emit(
             1,
             MODULE_SCHEMA_UNSUPPORTED,
@@ -719,7 +731,9 @@ _AI_TRIGGERS = (
     "ai_suggestions_content_immutable",
     "ai_suggestions_no_delete",
 )
-_AI_KINDS = {"summary", "hypothesis", "review_item"}
+_AI_KINDS = {kind.value for kind in SuggestionKind}
+# Kinds whose acceptance creates a Detection Hypothesis (ADR-026, ADR-031).
+_AI_HYPOTHESIS_KINDS = {"hypothesis", "hypothesis_candidate"}
 _AI_STATES = {"pending", "accepted", "rejected"}
 
 
@@ -748,7 +762,7 @@ def validate_ai(
         connection,
         emit,
         marker="ai_schema",
-        version=AI_SCHEMA_VERSION,
+        version=READABLE_AI_SCHEMA_VERSIONS,
         tables=_AI_TABLES,
         triggers=_AI_TRIGGERS,
         scope=scope,
@@ -794,7 +808,7 @@ def validate_ai(
                 display_id,
                 "AI analysis references a missing Case",
             )
-        if row["input_scope"] != DIGEST_SCOPE:
+        if row["input_scope"] not in APPROVED_SCOPES:
             emit(
                 2,
                 AI_RECORD_INVALID,
@@ -889,7 +903,10 @@ def validate_ai(
         if (
             state not in _AI_STATES
             or (state == "pending") != (row["reviewed_at"] is None)
-            or (linked is not None and (state != "accepted" or kind != "hypothesis"))
+            or (
+                linked is not None
+                and (state != "accepted" or kind not in _AI_HYPOTHESIS_KINDS)
+            )
         ):
             emit(
                 2,
@@ -938,3 +955,168 @@ def validate_ai(
                 analysis_id,
                 "AI analysis has more than one summary",
             )
+
+
+_FINDING_TABLES = ("findings_counters", "findings", "finding_revisions")
+_FINDING_TRIGGERS = (
+    "findings_no_delete",
+    "findings_identity_immutable",
+    "finding_revisions_immutable",
+    "finding_revisions_no_delete",
+)
+
+
+def validate_findings(
+    connection: sqlite3.Connection,
+    cases: dict[str, Case],
+    artifacts: list[Artifact],
+    emit: Emit,
+) -> None:
+    """Check analyst findings and their revision log (ADR-031).
+
+    The current row must equal its last revision, revisions must be contiguous,
+    and every confirmed finding may only reference Artifacts attached to its
+    own Case, a Detection Hypothesis of that Case and confirmed findings of
+    that Case, since a report body is built from exactly these.
+    """
+    scope = ValidationScope.FINDINGS
+    if not _schema_ready(
+        connection,
+        emit,
+        marker="findings_schema",
+        version=FINDINGS_SCHEMA_VERSION,
+        tables=_FINDING_TABLES,
+        triggers=_FINDING_TRIGGERS,
+        scope=scope,
+    ):
+        return
+    error = FindingSeverity.ERROR
+
+    def report(code: str, subject: str | None, message: str) -> None:
+        emit(2, code, error, scope, subject, message)
+
+    attached = {
+        artifact.artifact_id.display_id: artifact.case_id for artifact in artifacts
+    }
+    hypotheses: dict[str, object] = {}
+    if "detection_hypotheses" in _objects(connection, "table"):
+        hypotheses = {
+            str(row[0]): row[1]
+            for row in connection.execute(
+                "SELECT display_id, case_id FROM detection_hypotheses"
+            )
+        }
+    revisions: dict[str, list[tuple[object, str, str]]] = {}
+    for row in connection.execute(
+        "SELECT display_id, revision, state, content_json FROM finding_revisions"
+    ):
+        revisions.setdefault(str(row[0]), []).append((row[1], str(row[2]), str(row[3])))
+
+    rows: dict[str, tuple[object, str, FindingContent | None]] = {}
+    sequences: list[int] = []
+    for row in connection.execute(
+        "SELECT display_id, case_id, kind, state, revision, content_json, "
+        "confirmed_at FROM findings"
+    ):
+        display_id = _text(row["display_id"])
+        sequence = _sequence(display_id, "FND")
+        if display_id is None or sequence is None:
+            report(FINDING_RECORD_INVALID, display_id, "finding display ID is invalid")
+            continue
+        sequences.append(sequence)
+        if row["case_id"] not in cases:
+            report(
+                FINDING_REFERENCE_BROKEN,
+                display_id,
+                "finding references a missing Case",
+            )
+        content: FindingContent | None
+        try:
+            content = parse_content(str(row["kind"]), str(row["content_json"]))
+        except (KeyError, TypeError, ValueError, DomainError):
+            content = None
+            report(FINDING_RECORD_INVALID, display_id, "finding content is malformed")
+        state = str(row["state"])
+        rows[display_id] = (row["case_id"], state, content)
+        if state == "confirmed" and row["confirmed_at"] is None:
+            report(
+                FINDING_RECORD_INVALID,
+                display_id,
+                "a confirmed finding has no confirmation time",
+            )
+        if state == "draft" and row["confirmed_at"] is not None:
+            report(
+                FINDING_RECORD_INVALID,
+                display_id,
+                "a draft finding keeps a confirmation time",
+            )
+        history = sorted(
+            revisions.get(display_id, []),
+            key=lambda item: item[0] if type(item[0]) is int else -1,
+        )
+        numbers = [item[0] for item in history]
+        if not history or numbers != list(range(1, len(numbers) + 1)):
+            report(
+                FINDING_HISTORY_INVALID,
+                display_id,
+                "finding revisions are not contiguous from 1",
+            )
+        elif (
+            history[-1][0] != row["revision"]
+            or history[-1][1] != state
+            or history[-1][2] != row["content_json"]
+        ):
+            report(
+                FINDING_HISTORY_INVALID,
+                display_id,
+                "finding does not match its last revision",
+            )
+    for display_id in sorted(set(revisions) - set(rows)):
+        report(
+            FINDING_HISTORY_INVALID,
+            display_id,
+            "revisions exist for a missing finding",
+        )
+
+    for display_id, (case_id, state, content) in sorted(rows.items()):
+        if state != "confirmed" or content is None:
+            continue
+        for ref in content.evidence:
+            if attached.get(ref.artifact_display_id) != case_id:
+                report(
+                    FINDING_REFERENCE_BROKEN,
+                    display_id,
+                    f"confirmed finding cites {ref.artifact_display_id}, "
+                    "which is not attached to its Case",
+                )
+        hypothesis = content.hypothesis_display_id
+        if hypothesis is not None and hypotheses.get(hypothesis) != case_id:
+            report(
+                FINDING_REFERENCE_BROKEN,
+                display_id,
+                f"confirmed finding cites {hypothesis} of another or no Case",
+            )
+        for linked in content.finding_refs:
+            other = rows.get(linked)
+            if other is None or other[0] != case_id or other[1] != "confirmed":
+                report(
+                    FINDING_REFERENCE_BROKEN,
+                    display_id,
+                    f"confirmed finding cites {linked}, which is not a "
+                    "confirmed finding of its Case",
+                )
+
+    counter = connection.execute(
+        "SELECT next_value FROM findings_counters WHERE name = 'finding'"
+    ).fetchone()
+    value = None if counter is None else counter[0]
+    if (rows or counter is not None) and (
+        type(value) is not int
+        or value < 1
+        or (bool(sequences) and value <= max(sequences))
+    ):
+        report(
+            FINDING_COUNTER_INVALID,
+            "finding",
+            "counter is missing or behind a persisted display sequence",
+        )

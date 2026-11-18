@@ -3,6 +3,32 @@
 > 11월 기준선: Notion「11월 최종 구현 계획 v1 — 2026-11-11~11-22」, ADR-022.
 > 기능 동결 2026-11-22, 11/23–29는 Unseen 평가·버그 수정·문서화만 수행한다.
 
+## 2026-11-18 ADR-031 최종 버전 범위 (진행 중)
+
+Status: `in_progress` — 1단계(확정 사항 + 확정 기반 보고서) 완료
+
+- 범위: 확정 사항 모듈, 확정 기반 보고서, LLM 2단계 의견, Provider 3종 어댑터, Case 작업
+  공간 UI. 동결은 최대 2026-11-24.
+- 1단계 완료: `findings` 모듈(모듈 소유 테이블 `findings`·`finding_revisions`), `workbench
+  finding add|edit|confirm|withdraw|list|show|adopt`, `project validate`의 `findings` 범위,
+  보고서 본문을 확정 사항으로만 구성하고 기록·계산 결과는 부록 A, AI는 부록 B로 분리.
+- 2단계 완료: LLM 2단계 의견(`ai analyze --stage collection|synthesis`, 여러 Provider 한 번에,
+  AI 스키마 v2, `finding adopt` 확장, 보고서 AI 부록에 단계 표시). 오프라인 Provider로 동작.
+- 3단계 완료: Case 작업 공간 UI(`/cases/<CASE>/workspace`, 탭 5개, 확정 사항 생성·수정·확정·
+  취소, AI 제안 채택, 확정 기반 보고서 미리보기·내려받기).
+- 남은 것: Provider 어댑터 3종(사용자 결정 필요: 모델, 전송 범위, API 키, 네트워크).
+- 실제 샘플: dev 6건 Case 등록·정적 분석·YARA 초안 2개(Amadey, PureCrypter) 완료.
+  - VM: 게스트 비밀번호 만료(11/17 19:04)로 로그인 거부 → 시계를 되돌려 부팅하고 사용자가
+    "만료 없음"으로 고친 뒤 `SYSMON-V2-CLEAN` 재생성(이전은 `SYSMON-V2-CLEAN-pwexpired`).
+    화면 표시로 켜진 클립보드·드래그앤드롭은 실행 전 점검이 잡아 끄고 다시 만들었다.
+  - 실제 샘플은 실행 창 뒤 게스트 작업(기준선, 정리, 내보내기)이 120초를 넘어 guestcontrol
+    제한에 걸렸다. 여유를 360초로 늘렸다(`GUEST_RUN_OVERHEAD_SECONDS`).
+  - dev 6건 모두 실제 VM 실행 성공(60초): CASE-0001 Amadey VMR-0006(2,385건), CASE-0002
+    Amadey VMR-0012(1,040건), CASE-0003 PureCrypter VMR-0013(3,776건), CASE-0004
+    PureCrypter VMR-0009(1,666건), CASE-0005 HijackLoader VMR-0014(3,152건), CASE-0006
+    HijackLoader VMR-0011(4,012건). 실패한 시도(VMR-0001~0005, 0007, 0008, 0010)는 모두
+    샘플 실행 전후로 정리·복원됐고 안전 잠금은 없었다.
+
 ## 2026-11-17 봉인 샘플 저장과 암호 ZIP 가져오기 (ADR-030)
 
 Status: `completed` — 실제 샘플은 아직 없음(사용자 확보 대기)

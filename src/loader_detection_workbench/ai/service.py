@@ -22,7 +22,6 @@ from loader_detection_workbench.ai.compare import (
     latest_per_provider,
 )
 from loader_detection_workbench.ai.digest import (
-    DIGEST_SCOPE,
     build_digest,
     digest_sha256,
     serialize_digest,
@@ -31,6 +30,7 @@ from loader_detection_workbench.ai.domain import (
     MAX_INPUT_BYTES,
     MAX_TEXT,
     AiAnalysis,
+    AnalysisStage,
     ReviewState,
     SuggestionKind,
     require_analysis_id,
@@ -43,6 +43,7 @@ from loader_detection_workbench.case.timeline import CaseTimelineQuery
 from loader_detection_workbench.detection.service import DetectionService
 from loader_detection_workbench.domain.errors import DomainError, DomainErrorCode
 from loader_detection_workbench.domain.time import utc_now
+from loader_detection_workbench.findings.domain import FindingKind
 from loader_detection_workbench.presentation import single_line
 from loader_detection_workbench.report.analysis import CaseAnalysisQuery
 
@@ -106,11 +107,22 @@ class AiAnalysisService:
 
     # -- analysis -------------------------------------------------------------
 
-    def preview(self, case_display_id: str) -> InputPreview:
+    def preview(self, case_display_id: str, stage: str | None = None) -> InputPreview:
+        """Build the exact provider input; ``stage`` selects ADR-031 opinions."""
+        parsed = None if stage is None else AnalysisStage.parse(stage)
         timeline = CaseTimelineQuery(self._root).query(case_display_id)
         analysis = CaseAnalysisQuery(self._root).query(timeline)
+        if parsed is AnalysisStage.SYNTHESIS and not any(
+            finding.kind is FindingKind.EVIDENCE for finding in analysis.findings
+        ):
+            raise DomainError(
+                DomainErrorCode.INVALID_AI_REQUEST,
+                "synthesis needs at least one confirmed evidence finding",
+            )
         relations = CaseProcessRelationsQuery(self._root).query(timeline)
-        digest = build_digest(timeline, analysis, relations)
+        digest = build_digest(
+            timeline, analysis, relations, None if parsed is None else parsed.value
+        )
         serialized = serialize_digest(digest)
         size = len(serialized.encode("utf-8"))
         if size > MAX_INPUT_BYTES:
@@ -120,7 +132,7 @@ class AiAnalysisService:
             )
         return InputPreview(
             timeline.case.case_id.display_id,
-            DIGEST_SCOPE,
+            str(digest["scope"]),
             digest_sha256(serialized),
             size,
             serialized,
@@ -128,11 +140,19 @@ class AiAnalysisService:
         )
 
     def analyze(
-        self, case_display_id: str, provider_name: str = DEFAULT_PROVIDER
+        self,
+        case_display_id: str,
+        provider_name: str = DEFAULT_PROVIDER,
+        stage: str | None = None,
     ) -> AiAnalysis:
+        """Ask one provider; without ``stage`` the ADR-026 kinds are produced."""
         provider = self._provider(provider_name)
-        preview = self.preview(case_display_id)
-        allowed = frozenset(str(item["id"]) for item in preview.digest["artifacts"])
+        preview = self.preview(case_display_id, stage)
+        allowed = frozenset(
+            [str(item["id"]) for item in preview.digest["artifacts"]]
+            + [str(item["id"]) for item in preview.digest.get("findings", [])]
+        )
+        parsed = AnalysisStage(preview.digest.get("stage", AnalysisStage.LEGACY.value))
         try:
             output = provider.analyze(preview.digest)
         except DomainError:
@@ -142,7 +162,7 @@ class AiAnalysisService:
                 DomainErrorCode.AI_PROVIDER_FAILED,
                 f"analysis provider failed ({type(exc).__name__})",
             ) from exc
-        suggestions = validate_output(output, allowed)
+        suggestions = validate_output(output, allowed, parsed)
         with ai_repository(self._root, write=True) as repository:
             display_id = repository.insert_analysis(
                 preview.case_display_id,
@@ -220,7 +240,10 @@ class AiAnalysisService:
         analysis = self._pending(analysis_display_id, sequence)
         suggestion = analysis.suggestion(sequence)
         hypothesis_id: str | None = None
-        if suggestion.kind is SuggestionKind.HYPOTHESIS:
+        if suggestion.kind in (
+            SuggestionKind.HYPOTHESIS,
+            SuggestionKind.HYPOTHESIS_CANDIDATE,
+        ) and all(item.startswith("ART-") for item in suggestion.evidence_artifact_ids):
             assert suggestion.title is not None
             hypothesis_id = (
                 DetectionService(self._root)

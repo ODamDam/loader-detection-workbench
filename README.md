@@ -428,6 +428,25 @@ workbench ai compare CASE-0001         # 같은 입력의 Provider별 분석 비
 - 제안은 사람이 수락하기 전에는 아무것도 바꾸지 않는다. 가설 후보를 `ai accept`하면
   `proposed` 상태의 Detection Hypothesis가 만들어진다. 가설의 상태 판단과 룰 채택은
   계속 사람이 한다.
+
+### 단계별 의견 (ADR-031)
+
+```text
+workbench ai analyze CASE-0001 --stage collection     # 수집·분석 중
+workbench ai analyze CASE-0001 --stage synthesis      # 확정 증거가 생긴 뒤
+workbench ai analyze CASE-0001 --stage collection --provider a,b,c   # 같은 입력으로 여러 Provider
+workbench finding adopt AIA-0002 1                    # 제안을 draft 확정 사항으로 옮김
+```
+
+- `collection`: 가설 후보(`hypothesis_candidate`), 증거 연결 근거(`evidence_link`, 인용 2개
+  이상), 추가 분석 지점(`next_step`).
+- `synthesis`: 주요 가설과 근거(`key_hypothesis`), 작동 원리(`mechanism`). 입력에 Case의 확정
+  사항이 들어가며(`structural+findings`), 확정 증거가 하나도 없으면 거부한다.
+- 모든 단계 의견은 Workbench ID(Artifact, 확정 사항)를 인용해야 하고, 없는 ID를 인용하거나
+  링크·실행 지시를 담으면 분석 전체를 버린다. `--stage` 없이 실행하면 기존 ADR-026 종류를
+  만든다.
+- 가설형 제안과 `mechanism`은 `finding adopt`로 draft 확정 사항이 되고, 분석가가 고쳐
+  확정해야 보고서 본문에 들어간다. 증거 연결과 추가 분석 지점은 참고 의견이다.
 - Case에 없는 Artifact를 인용하는 등 계약을 벗어난 Provider 출력은 전체를 거부하고
   저장하지 않는다.
 - `ai compare`는 같은 입력(SHA-256)을 받은 Provider별 분석을 공통 의견과 개별 의견으로
@@ -475,3 +494,34 @@ MalwareBazaar 같은 출처의 비밀번호 ZIP(기본 `infected`, AES 지원)�
 XOR)로 저장되므로 원본 바이트가 호스트 디스크에 남지 않는다. 암호화가 아니라 백신 격리와
 실수 실행을 막는 장치다. 해시·검증·YARA·보고서는 원본 기준으로 동작하고, VM 실행 때는 게스트
 스크립트가 VM 안에서 봉인을 푼다. 확보 절차는 `docs/26-sample-acquisition-guide.md`를 본다.
+
+## 17. 확정 사항과 확정 기반 보고서 (ADR-031)
+
+```text
+uv run workbench finding add CASE-0001 --kind evidence --text "무엇을 보여주는가" --evidence ART-000002:11
+uv run workbench finding add CASE-0001 --kind hypothesis --title "가설" --text "서술" --verdict supported
+uv run workbench finding add CASE-0001 --kind link --text "근거" --ref FND-0001 --ref FND-0002
+uv run workbench finding confirm FND-0001 --note "검토함"
+uv run workbench finding list CASE-0001 --state confirmed
+uv run workbench finding adopt AIA-0001 2      # AI 가설 제안으로 초안 시작
+```
+
+보고서 본문은 분석가가 확정한 항목만으로 만든다. 종류는 가설(판정 포함), 증거(Artifact나
+이벤트 인용), 연결 근거(가설 1개와 증거), 작동 원리(증거 인용)다. 고치면 초안으로 돌아가고,
+다른 확정 항목이 인용하는 동안에는 고치거나 취소할 수 없다. 모든 변경은 기록으로 남는다.
+수집 기록과 계산 결과는 보고서 부록 A, AI 의견은 부록 B에만 나온다.
+
+### Case 작업 공간 UI
+
+`workbench ui serve` 후 Case 화면의 "Case workspace"(`/cases/CASE-0001/workspace`)에서
+한 Case를 탭으로 다룬다.
+
+- **Evidence:** 수집 Artifact 목록. 항목에서 바로 증거 확정 사항 초안을 만든다(이벤트 인용 가능).
+- **Hypotheses:** 확정·초안 가설과 작업용 탐지 가설(HYP). 새 가설 초안 작성.
+- **AI opinions:** 단계(`collection`·`synthesis`)별로 Provider마다 최신 분석을 나란히 보여주고
+  공통·개별 의견 수를 표시한다. 가설형 제안과 작동 원리는 "Adopt as draft"로 초안이 된다.
+  AI 호출은 UI에서 하지 않고 CLI로 한다.
+- **Confirmed findings:** 초안 확정, 수정(다시 초안), 취소(사유 필수), 변경 기록.
+- **Report:** 확정 사항 기반 보고서 미리보기와 HTML·Markdown 내려받기.
+
+쓰기 동작은 모두 CSRF 토큰과 같은 출처 검사를 거치고, 닫힌 Case에서는 숨겨진다.

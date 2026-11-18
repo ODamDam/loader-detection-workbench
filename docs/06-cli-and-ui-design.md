@@ -319,8 +319,8 @@ workbench ui serve [ROOT] [--port PORT]
 
 ```text
 workbench ai providers
-workbench ai preview CASE-NNNN
-workbench ai analyze CASE-NNNN [--provider offline-template]
+workbench ai preview CASE-NNNN [--stage collection|synthesis]
+workbench ai analyze CASE-NNNN [--stage collection|synthesis] [--provider NAME[,NAME...]]
 workbench ai list [--case CASE-NNNN]
 workbench ai show AIA-NNNN
 workbench ai accept AIA-NNNN N [--note TEXT]
@@ -330,6 +330,16 @@ workbench ai compare CASE-NNNN [--analysis AIA-NNNN ...]
 
 - 현재 디렉터리를 Project root로 쓴다. 성공 exit 0, 오류 exit 2와
   `error: CODE: safe message` 형식을 따른다.
+- `--stage`(ADR-031): `collection`은 `hypothesis_candidate`·`evidence_link`·`next_step`,
+  `synthesis`는 확정 사항을 입력에 더해 `key_hypothesis`·`mechanism`을 받는다. 단계 출력은
+  최소 인용 수(증거 연결 2, 나머지 1), 단계에 맞는 종류, 링크·실행 지시 없음을 검사하고 하나라도
+  어기면 분석 전체를 버린다(`AI_OUTPUT_INVALID`). `synthesis`는 확정 증거가 없으면
+  `INVALID_AI_REQUEST`. 단계는 저장된 입력에 들어가므로 단계가 다르면 입력 SHA-256도 달라
+  비교 대상이 섞이지 않는다. `list`와 `show`는 단계를 출력한다(이전 기록은 `legacy`).
+- `--provider a,b`는 같은 입력으로 Provider마다 분석을 하나씩 저장한다. 같은 이름을 두 번
+  쓰면 거부한다.
+- AI 테이블 스키마는 v2다. v1(ADR-026)은 그대로 읽히고, 첫 쓰기에서 제안 종류 제약만 넓히는
+  방식으로 이전한다.
 - `preview`는 Provider를 호출하지 않고 입력 범위, SHA-256, 크기, 구조 요약 JSON을
   출력한다. `analyze`가 저장하는 입력과 같다.
 - `analyze`는 제안을 `pending`으로 저장한다. 출력에는 제안이 추론이라는 안내가 항상
@@ -343,7 +353,18 @@ workbench ai compare CASE-NNNN [--analysis AIA-NNNN ...]
   요약이며 묶음의 구성원을 모두 보여준다.
 - `project validate`는 AI 테이블도 검사한다(scope `ai`): 저장된 입력과 SHA-256 불일치
   (`AI_INPUT_TAMPERED`), 검토 상태와 검토 필드 불일치, 없는 가설·분석 참조, 카운터.
-- UI는 저장된 제안을 읽기 전용으로만 보여준다. 검토는 CLI에서만 한다.
+- UI는 저장된 제안을 읽기 전용으로만 보여준다. 검토는 CLI에서만 한다. 예외로 Case 작업
+  공간(ADR-031)은 가설형 제안과 작동 원리를 draft 확정 사항으로 옮기는 "채택"만 제공한다.
+
+### Case 작업 공간 (ADR-031)
+
+- `GET /cases/<CASE>/workspace?tab=evidence|hypotheses|ai|findings|report[&stage=collection|synthesis]`
+- 쓰기(POST, CSRF·Origin 검사): `/cases/<CASE>/findings`(초안 생성),
+  `/cases/<CASE>/findings/<FND>/edit`, `/cases/<CASE>/findings/<FND>/confirm|withdraw`,
+  `/cases/<CASE>/ai/<AIA>/<N>/adopt`. URL의 Case와 대상의 Case가 다르면 404.
+- 보고서: `/cases/<CASE>/workspace/report.html|md`. 미리보기는 `sandbox` iframe으로 띄우고 HTML은
+  CSP `default-src 'none'`를 유지한다.
+- 수정 폼에 없는 참조 필드는 기존 값을 유지한다. 모든 서비스 오류는 기존 오류 화면으로 간다.
 
 ## 9. 정적 보고서 사이트 (ADR-029)
 

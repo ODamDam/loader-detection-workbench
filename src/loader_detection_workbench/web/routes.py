@@ -6,9 +6,20 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import cast
 
-from flask import Blueprint, current_app, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask.typing import ResponseReturnValue
 
+from loader_detection_workbench.ai.compare import latest_per_provider
+from loader_detection_workbench.ai.domain import AnalysisStage, SuggestionKind
+from loader_detection_workbench.ai.service import AiAnalysisService
 from loader_detection_workbench.artifact.service import ArtifactService
 from loader_detection_workbench.case.relations import CaseProcessRelationsQuery
 from loader_detection_workbench.case.service import CaseService
@@ -27,7 +38,14 @@ from loader_detection_workbench.evidence.domain import (
     EvidenceType,
 )
 from loader_detection_workbench.evidence.service import ManualEvidenceService
+from loader_detection_workbench.findings.domain import (
+    FindingKind,
+    FindingState,
+    Verdict,
+)
+from loader_detection_workbench.findings.service import FindingService
 from loader_detection_workbench.report.analysis import CaseAnalysisQuery
+from loader_detection_workbench.report.render import render_html, render_markdown
 from loader_detection_workbench.static_analysis.service import StaticAnalysisService
 from loader_detection_workbench.sysmon.records import record_summary
 from loader_detection_workbench.web.detection_views import (
@@ -331,4 +349,176 @@ def validation_run(run_display_id: str) -> str:
         run=run_view(run),
         rule_sha256=run.rule_sha256,
         results=result_views(run),
+    )
+
+
+# -- Case workspace (ADR-031) ---------------------------------------------------
+
+WORKSPACE_TABS = ("evidence", "hypotheses", "ai", "findings", "report")
+_ADOPTABLE = frozenset(
+    {
+        SuggestionKind.HYPOTHESIS,
+        SuggestionKind.HYPOTHESIS_CANDIDATE,
+        SuggestionKind.KEY_HYPOTHESIS,
+        SuggestionKind.MECHANISM,
+    }
+)
+
+
+def _form(name: str) -> str | None:
+    value = request.form.get(name, "").strip()
+    return value or None
+
+
+def _form_list(name: str) -> list[str]:
+    return [
+        item for item in request.form.get(name, "").replace(",", " ").split() if item
+    ]
+
+
+def _form_refs(name: str) -> list[str] | None:
+    """References from an edit form; a field that was not sent keeps its value."""
+    return _form_list(name) if name in request.form else None
+
+
+def _workspace_ai(case_display_id: str, stage: AnalysisStage) -> dict[str, object]:
+    """Newest analysis per provider for one stage, side by side, plus agreement."""
+    service = AiAnalysisService(_root())
+    staged = [a for a in service.list_analyses(case_display_id) if a.stage is stage]
+    columns = latest_per_provider(staged) if staged else []
+    comparison = None
+    if len(columns) >= 2:
+        try:
+            comparison = service.compare(
+                case_display_id, [analysis.display_id for analysis in columns]
+            )
+        except DomainError:
+            comparison = None  # e.g. providers answered different inputs
+    return {"columns": columns, "comparison": comparison, "adoptable": _ADOPTABLE}
+
+
+@web.get("/cases/<case_display_id>/workspace")
+def workspace(case_display_id: str) -> str:
+    tab = request.args.get("tab", "evidence")
+    if tab not in WORKSPACE_TABS:
+        tab = "evidence"
+    stage_value = request.args.get("stage", AnalysisStage.COLLECTION.value)
+    stage = AnalysisStage.parse(stage_value)
+    timeline = CaseTimelineQuery(_root()).query(case_display_id)
+    analysis = CaseAnalysisQuery(_root()).query(timeline)
+    findings = FindingService(_root()).list_findings(case_display_id)
+    context: dict[str, object] = {
+        "case": timeline.case,
+        "tab": tab,
+        "tabs": WORKSPACE_TABS,
+        "stage": stage.value,
+        "analysis": analysis,
+        "artifacts": analysis.artifacts,
+        "observation_count": len(timeline.observations),
+        "record_count": len(timeline.other_records),
+        "findings": findings,
+        "confirmed_count": sum(
+            1 for f in findings if f.state is FindingState.CONFIRMED
+        ),
+        "draft_count": sum(1 for f in findings if f.state is FindingState.DRAFT),
+        "finding_kinds": tuple(FindingKind),
+        "verdicts": tuple(Verdict),
+        "editable": timeline.case.status is CaseStatus.OPEN,
+        "format_utc": format_utc,
+    }
+    if tab == "ai":
+        context.update(_workspace_ai(case_display_id, stage))
+    return render_template("workspace.html", **context)
+
+
+def _back(case_display_id: str, tab: str = "findings") -> ResponseReturnValue:
+    return redirect(
+        url_for("web.workspace", case_display_id=case_display_id, tab=tab), code=303
+    )
+
+
+@web.post("/cases/<case_display_id>/findings")
+def finding_create(case_display_id: str) -> ResponseReturnValue:
+    FindingService(_root()).create(
+        case_display_id,
+        request.form.get("kind", ""),
+        request.form.get("text", ""),
+        title=_form("title"),
+        verdict=_form("verdict"),
+        evidence=_form_list("evidence"),
+        hypothesis=_form("hypothesis"),
+        findings=_form_list("findings"),
+        note=_form("note"),
+    )
+    return _back(case_display_id)
+
+
+@web.post("/cases/<case_display_id>/findings/<finding_display_id>/edit")
+def finding_edit(case_display_id: str, finding_display_id: str) -> ResponseReturnValue:
+    finding = FindingService(_root()).show(finding_display_id)
+    if finding.case_display_id != case_display_id:
+        raise DomainError(DomainErrorCode.FINDING_NOT_FOUND, "finding was not found")
+    kind = finding.kind
+    FindingService(_root()).edit(
+        finding_display_id,
+        text=_form("text"),
+        title=_form("title"),
+        verdict=_form("verdict") if kind is FindingKind.HYPOTHESIS else None,
+        evidence=_form_refs("evidence") if kind is FindingKind.EVIDENCE else None,
+        findings=(
+            _form_refs("findings")
+            if kind in (FindingKind.LINK, FindingKind.MECHANISM)
+            else None
+        ),
+        note=_form("note"),
+    )
+    return _back(case_display_id)
+
+
+@web.post("/cases/<case_display_id>/findings/<finding_display_id>/<action>")
+def finding_transition(
+    case_display_id: str, finding_display_id: str, action: str
+) -> ResponseReturnValue:
+    service = FindingService(_root())
+    if service.show(finding_display_id).case_display_id != case_display_id:
+        raise DomainError(DomainErrorCode.FINDING_NOT_FOUND, "finding was not found")
+    if action == "confirm":
+        service.confirm(finding_display_id, _form("note"))
+    elif action == "withdraw":
+        service.withdraw(finding_display_id, request.form.get("note", ""))
+    else:
+        raise DomainError(DomainErrorCode.INVALID_FINDING, "unknown finding action")
+    return _back(case_display_id)
+
+
+@web.post("/cases/<case_display_id>/ai/<analysis_display_id>/<int:sequence>/adopt")
+def ai_adopt(
+    case_display_id: str, analysis_display_id: str, sequence: int
+) -> ResponseReturnValue:
+    analysis = AiAnalysisService(_root()).show(analysis_display_id)
+    if analysis.case_display_id != case_display_id:
+        raise DomainError(
+            DomainErrorCode.AI_ANALYSIS_NOT_FOUND, "AI analysis was not found"
+        )
+    FindingService(_root()).adopt(analysis_display_id, sequence, _form("note"))
+    return _back(case_display_id)
+
+
+@web.get("/cases/<case_display_id>/workspace/report.<fmt>")
+def workspace_report(case_display_id: str, fmt: str) -> ResponseReturnValue:
+    if fmt not in ("html", "md"):
+        abort(404)
+    timeline = CaseTimelineQuery(_root()).query(case_display_id)
+    analysis = CaseAnalysisQuery(_root()).query(timeline)
+    if fmt == "html":
+        body = render_html(timeline, utc_now(), analysis)
+        return body, 200, {"Content-Type": "text/html; charset=utf-8"}
+    body = render_markdown(timeline, utc_now(), analysis)
+    return (
+        body,
+        200,
+        {
+            "Content-Type": "text/markdown; charset=utf-8",
+            "Content-Disposition": f'attachment; filename="{case_display_id}.md"',
+        },
     )

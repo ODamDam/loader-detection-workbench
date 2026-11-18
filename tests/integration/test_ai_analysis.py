@@ -339,7 +339,7 @@ def test_cli_flow(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["ai", "show", "AIA-0001"]) == 0
     capsys.readouterr()
     assert main(["ai", "list", "--case", "CASE-0001"]) == 0
-    assert "AIA-0001\tCASE-0001\toffline-template" in capsys.readouterr().out
+    assert "AIA-0001\tCASE-0001\tlegacy\toffline-template" in capsys.readouterr().out
 
     for arguments, code in (
         (["ai", "accept", "AIA-0001", number], "AI_SUGGESTION_ALREADY_REVIEWED"),

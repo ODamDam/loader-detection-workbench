@@ -75,6 +75,13 @@ from loader_detection_workbench.execution.service import (
     PreflightReport,
 )
 from loader_detection_workbench.execution.vboxmanage import VBoxManageHypervisor
+from loader_detection_workbench.findings.domain import (
+    AnalystFinding,
+    FindingKind,
+    FindingState,
+    Verdict,
+)
+from loader_detection_workbench.findings.service import FindingService
 from loader_detection_workbench.logging_config import configure_console_logging
 from loader_detection_workbench.presentation import single_line
 from loader_detection_workbench.project.migration import ProjectMigrationService
@@ -362,6 +369,7 @@ def build_parser() -> argparse.ArgumentParser:
     ui_serve.add_argument("--port", type=_port, default=8080)
     _add_detection_parsers(groups)
     _add_ai_parsers(groups)
+    _add_finding_parsers(groups)
     _add_vm_parsers(groups)
     return parser
 
@@ -442,6 +450,66 @@ def _add_vm_parsers(groups: Any) -> None:
     )
 
 
+def _add_finding_parsers(groups: Any) -> None:
+    finding = groups.add_parser(
+        "finding",
+        help="analyst-confirmed findings that a report is built from (ADR-031)",
+    )
+    commands = finding.add_subparsers(dest="finding_command", required=True)
+    kinds = tuple(item.value for item in FindingKind)
+    verdicts = tuple(item.value for item in Verdict)
+
+    def content_options(parser: argparse.ArgumentParser, *, editing: bool) -> None:
+        parser.add_argument("--text", required=not editing)
+        parser.add_argument("--title")
+        parser.add_argument("--verdict", choices=verdicts)
+        parser.add_argument(
+            "--evidence",
+            action="append",
+            metavar="ART-NNNNNN[:RECORD]",
+            help="cited Artifact, optionally one event (evidence findings)",
+        )
+        parser.add_argument("--hypothesis", metavar="HYP-NNNN")
+        parser.add_argument(
+            "--ref",
+            action="append",
+            metavar="FND-NNNN",
+            help="cited finding (link and mechanism findings)",
+        )
+        parser.add_argument("--note")
+
+    add = commands.add_parser("add", help="create a draft finding")
+    add.add_argument("case_display_id", metavar="CASE-NNNN")
+    add.add_argument("--kind", required=True, choices=kinds)
+    content_options(add, editing=False)
+    edit = commands.add_parser("edit", help="change a finding; it becomes a draft")
+    edit.add_argument("finding_id", metavar="FND-NNNN")
+    content_options(edit, editing=True)
+    edit.add_argument(
+        "--clear",
+        action="append",
+        choices=("title", "verdict", "hypothesis"),
+        default=[],
+    )
+    confirm = commands.add_parser("confirm", help="confirm a draft")
+    confirm.add_argument("finding_id", metavar="FND-NNNN")
+    confirm.add_argument("--note")
+    withdraw = commands.add_parser("withdraw", help="withdraw a finding for good")
+    withdraw.add_argument("finding_id", metavar="FND-NNNN")
+    withdraw.add_argument("--note", required=True)
+    listing = commands.add_parser("list")
+    listing.add_argument("case_display_id", metavar="CASE-NNNN")
+    listing.add_argument("--state", choices=tuple(item.value for item in FindingState))
+    show = commands.add_parser("show", help="show a finding and its revisions")
+    show.add_argument("finding_id", metavar="FND-NNNN")
+    adopt = commands.add_parser(
+        "adopt", help="start a draft from an AI hypothesis suggestion"
+    )
+    adopt.add_argument("analysis_id", metavar="AIA-NNNN")
+    adopt.add_argument("sequence", type=int)
+    adopt.add_argument("--note")
+
+
 def _add_ai_parsers(groups: Any) -> None:
     ai = groups.add_parser(
         "ai", help="optional AI-assisted analysis (offline providers only)"
@@ -452,9 +520,24 @@ def _add_ai_parsers(groups: Any) -> None:
         "preview", help="print the exact provider input; calls no provider"
     )
     preview.add_argument("case_display_id", metavar="CASE-NNNN")
+    stage_help = (
+        "collection: hypothesis candidates, evidence links, next steps; "
+        "synthesis: key hypotheses and mechanism over confirmed findings "
+        "(ADR-031). Without it the ADR-026 summary/hypothesis/review kinds."
+    )
+    preview.add_argument(
+        "--stage", choices=("collection", "synthesis"), help=stage_help
+    )
     analyze = commands.add_parser("analyze", help="store suggestions for review")
     analyze.add_argument("case_display_id", metavar="CASE-NNNN")
-    analyze.add_argument("--provider", default=DEFAULT_PROVIDER)
+    analyze.add_argument(
+        "--provider",
+        default=DEFAULT_PROVIDER,
+        help="provider name, or several separated by commas (same input each)",
+    )
+    analyze.add_argument(
+        "--stage", choices=("collection", "synthesis"), help=stage_help
+    )
     listing = commands.add_parser("list")
     listing.add_argument("--case", dest="case_display_id", metavar="CASE-NNNN")
     show = commands.add_parser("show")
@@ -1085,6 +1168,7 @@ def _run_detection(arguments: argparse.Namespace, service: DetectionService) -> 
 def _print_ai_analysis(analysis: AiAnalysis) -> None:
     print(f"analysis: {analysis.display_id}")
     print(f"case: {analysis.case_display_id}")
+    print(f"stage: {analysis.stage.value}")
     print(f"provider: {analysis.provider}")
     print(f"model: {analysis.model}")
     print(f"input_scope: {analysis.input_scope}")
@@ -1141,6 +1225,92 @@ def _print_comparison(comparison: Comparison) -> None:
         print(f"- {summary.provider}: {single_line(summary.text)}")
 
 
+def _finding_line(finding: AnalystFinding) -> str:
+    content = finding.content
+    label = content.title or content.text
+    return (
+        f"{finding.display_id}\t{finding.kind.value}\t{finding.state.value}\t"
+        f"r{finding.revision}\t{single_line(label)[:80]}"
+    )
+
+
+def _print_finding(finding: AnalystFinding) -> None:
+    content = finding.content
+    print(f"finding: {finding.display_id}")
+    print(f"case: {finding.case_display_id}")
+    print(f"kind: {finding.kind.value}")
+    print(f"state: {finding.state.value}")
+    print(f"revision: {finding.revision}")
+    print(f"source: {finding.source}")
+    if content.title is not None:
+        print(f"title: {single_line(content.title)}")
+    if content.verdict is not None:
+        print(f"verdict: {content.verdict.value}")
+    if content.evidence:
+        print("evidence: " + ", ".join(str(ref) for ref in content.evidence))
+    if content.hypothesis_display_id is not None:
+        print(f"hypothesis: {content.hypothesis_display_id}")
+    if content.finding_refs:
+        print("references: " + ", ".join(content.finding_refs))
+    confirmed = finding.confirmed_at
+    print(f"confirmed_at: {'NULL' if confirmed is None else format_utc(confirmed)}")
+    print("text:")
+    for line in content.text.splitlines():
+        print(f"  {single_line(line)}")
+    for revision in finding.history:
+        note = "" if revision.note is None else f" note={single_line(revision.note)}"
+        print(
+            f"r{revision.revision}\t{revision.action.value}\t{revision.state.value}\t"
+            f"{format_utc(revision.at)}{note}"
+        )
+
+
+def _run_finding(arguments: argparse.Namespace, service: FindingService) -> int:
+    command = arguments.finding_command
+    if command == "list":
+        state = None if arguments.state is None else FindingState(arguments.state)
+        for item in service.list_findings(arguments.case_display_id, state):
+            print(_finding_line(item))
+        return 0
+    if command == "show":
+        _print_finding(service.show(arguments.finding_id))
+        return 0
+    if command == "add":
+        finding = service.create(
+            arguments.case_display_id,
+            arguments.kind,
+            arguments.text,
+            title=arguments.title,
+            verdict=arguments.verdict,
+            evidence=arguments.evidence or (),
+            hypothesis=arguments.hypothesis,
+            findings=arguments.ref or (),
+            note=arguments.note,
+        )
+    elif command == "edit":
+        finding = service.edit(
+            arguments.finding_id,
+            text=arguments.text,
+            title=arguments.title,
+            verdict=arguments.verdict,
+            evidence=arguments.evidence,
+            hypothesis=arguments.hypothesis,
+            findings=arguments.ref,
+            clear=arguments.clear,
+            note=arguments.note,
+        )
+    elif command == "confirm":
+        finding = service.confirm(arguments.finding_id, arguments.note)
+    elif command == "withdraw":
+        finding = service.withdraw(arguments.finding_id, arguments.note)
+    else:
+        finding = service.adopt(
+            arguments.analysis_id, arguments.sequence, arguments.note
+        )
+    print(_finding_line(finding))
+    return 0
+
+
 def _run_ai(arguments: argparse.Namespace, service: AiAnalysisService) -> int:
     command = arguments.ai_command
     if command == "providers":
@@ -1148,22 +1318,30 @@ def _run_ai(arguments: argparse.Namespace, service: AiAnalysisService) -> int:
             state = "enabled" if provider.enabled else "disabled (external)"
             print(f"{provider.name}\t{provider.model}\t{state}")
     elif command == "preview":
-        preview = service.preview(arguments.case_display_id)
+        preview = service.preview(arguments.case_display_id, arguments.stage)
         print(f"case: {preview.case_display_id}")
         print(f"input_scope: {preview.scope}")
         print(f"input_sha256: {preview.sha256}")
         print(f"input_bytes: {preview.size_bytes}")
         print(json.dumps(preview.digest, indent=2, sort_keys=True))
     elif command == "analyze":
-        _print_ai_analysis(
-            service.analyze(arguments.case_display_id, arguments.provider)
-        )
+        names = [name.strip() for name in arguments.provider.split(",")]
+        if not all(names) or len(set(names)) != len(names):
+            raise DomainError(
+                DomainErrorCode.INVALID_AI_REQUEST,
+                "--provider must list distinct provider names",
+            )
+        for name in names:
+            _print_ai_analysis(
+                service.analyze(arguments.case_display_id, name, arguments.stage)
+            )
     elif command == "list":
         for analysis in service.list_analyses(arguments.case_display_id):
             pending = sum(1 for s in analysis.suggestions if s.state.value == "pending")
             print(
                 f"{analysis.display_id}\t{analysis.case_display_id}\t"
-                f"{analysis.provider}\t{len(analysis.suggestions)} suggestions\t"
+                f"{analysis.stage.value}\t{analysis.provider}\t"
+                f"{len(analysis.suggestions)} suggestions\t"
                 f"{pending} pending"
             )
     elif command == "show":
@@ -1404,6 +1582,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "is used",
                     file=sys.stderr,
                 )
+            return 2
+    if arguments.group == "finding":
+        try:
+            return _run_finding(arguments, FindingService(Path.cwd()))
+        except DomainError as exc:
+            print(f"error: {exc.code.value}: {exc}", file=sys.stderr)
             return 2
     if arguments.group == "ai":
         try:

@@ -95,7 +95,7 @@ def test_demo_e2e_shared_query_cli_and_markdown(
         "Source Record: 43",
         markdown_text("benign-demo.exe"),
         markdown_text("synthetic-demo/output.txt"),
-        "No maliciousness verdict is produced.",
+        "Workbench itself produces no maliciousness verdict.",
     ):
         assert value in content
     assert content.index("— Process Create") < content.index("— File Create")

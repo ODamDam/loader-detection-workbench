@@ -35,6 +35,7 @@ from loader_detection_workbench.project.module_validator import (
     validate_ai,
     validate_detection,
     validate_execution,
+    validate_findings,
 )
 from loader_detection_workbench.project.service import ProjectService, ProjectWorkspace
 
@@ -184,6 +185,7 @@ def validate_workspace(root: Path, *, full: bool = False) -> ValidationReport:
         validate_detection(connection, cases, artifacts, emit)
         validate_execution(connection, cases, artifacts, emit)
         validate_ai(connection, cases, emit)
+        validate_findings(connection, cases, artifacts, emit)
         if full:
             _validate_content(workspace, artifacts, collected)
     except sqlite3.Error:

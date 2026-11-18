@@ -18,6 +18,7 @@ class ValidationScope(StrEnum):
     DETECTION = "detection"
     EXECUTION = "execution"
     AI = "ai"
+    FINDINGS = "findings"
 
 
 @dataclass(frozen=True, slots=True)

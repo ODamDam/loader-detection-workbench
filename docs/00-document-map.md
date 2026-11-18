@@ -41,6 +41,7 @@
 - `adr/ADR-028-benign-simulator.md`: M5 무해한 시뮬레이터 실행 파일과 빌드 방식
 - `adr/ADR-029-static-report-site.md`: M4 비식별화한 정적 보고서 사이트
 - `adr/ADR-030-sealed-sample-storage.md`: 봉인 샘플 저장과 암호 ZIP 메모리 가져오기
+- `adr/ADR-031-confirmed-findings-llm-stages-workspace.md`: 확정 사항 기반 보고서, LLM 2단계 의견, Case 작업 공간
 
 ## 4. 현재 활성 작업을 읽는 순서
 

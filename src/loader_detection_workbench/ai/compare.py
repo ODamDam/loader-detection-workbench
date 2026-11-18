@@ -20,7 +20,11 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-from loader_detection_workbench.ai.domain import AiAnalysis, SuggestionKind
+from loader_detection_workbench.ai.domain import (
+    TITLED_KINDS,
+    AiAnalysis,
+    SuggestionKind,
+)
 from loader_detection_workbench.domain.errors import DomainError, DomainErrorCode
 
 SIMILARITY_THRESHOLD = 0.5
@@ -135,7 +139,7 @@ def _same(left: Opinion, right: Opinion) -> bool:
         return False
     if left.evidence_artifact_ids != right.evidence_artifact_ids:
         return False
-    if left.kind is SuggestionKind.HYPOTHESIS:
+    if left.kind in TITLED_KINDS:
         return similarity(left.title or "", right.title or "") >= SIMILARITY_THRESHOLD
     return similarity(left.text, right.text) >= SIMILARITY_THRESHOLD
 

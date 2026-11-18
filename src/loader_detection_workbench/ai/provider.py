@@ -53,6 +53,180 @@ class OfflineTemplateProvider:
     requires_network = False
 
     def analyze(self, digest: Mapping[str, Any]) -> ProviderOutput:
+        stage = digest.get("stage")
+        if stage == "collection":
+            return ProviderOutput(tuple(self._collection(digest)[:16]))
+        if stage == "synthesis":
+            return ProviderOutput(tuple(self._synthesis(digest)[:16]))
+        return self._legacy(digest)
+
+    # -- ADR-031 stages -------------------------------------------------------
+
+    @staticmethod
+    def _collection(digest: Mapping[str, Any]) -> list[ProviderSuggestion]:
+        """Hypothesis candidates, evidence links and next steps from the digest."""
+        static = list(digest.get("static", []))
+        sysmon = dict(digest.get("sysmon", {}))
+        processes = list(sysmon.get("processes", []))
+        artifacts = [dict(item) for item in digest.get("artifacts", [])]
+        samples = [str(a["id"]) for a in artifacts if a.get("kind") == "sample"]
+        sysmon_ids = [str(a["id"]) for a in artifacts if a.get("kind") == "sysmon"]
+        out: list[ProviderSuggestion] = []
+
+        for process in processes:
+            name = str(process.get("image_name", "")).lower()
+            parent = process.get("parent_index")
+            source = process.get("source_artifact")
+            activity = dict(process.get("activity", {}))
+            if not source:
+                continue
+            if name in SCRIPT_HOSTS and parent is not None:
+                parent_name = processes[parent].get("image_name")
+                out.append(
+                    ProviderSuggestion(
+                        SuggestionKind.HYPOTHESIS_CANDIDATE,
+                        f"{parent_name} started {process.get('image_name')}; a loader "
+                        "may hand later stages to a script host or system utility.",
+                        title=f"{parent_name} spawns {process.get('image_name')}",
+                        evidence_artifact_ids=(str(source),),
+                        expected_benign="Installers and administrative scripts also "
+                        "start these utilities.",
+                    )
+                )
+            if int(process.get("files_written", 0) or 0) and ".exe" in process.get(
+                "file_extensions", []
+            ):
+                out.append(
+                    ProviderSuggestion(
+                        SuggestionKind.HYPOTHESIS_CANDIDATE,
+                        f"{process.get('image_name')} wrote an executable file; the "
+                        "sample may stage or copy itself to another location.",
+                        title=f"{process.get('image_name')} drops an executable",
+                        evidence_artifact_ids=(str(source),),
+                        expected_benign="Installers and updaters write executables.",
+                    )
+                )
+            if activity.get("registry"):
+                out.append(
+                    ProviderSuggestion(
+                        SuggestionKind.HYPOTHESIS_CANDIDATE,
+                        f"{process.get('image_name')} changed registry keys or "
+                        "values; persistence may be involved.",
+                        title=f"{process.get('image_name')} registry modification",
+                        evidence_artifact_ids=(str(source),),
+                        expected_benign="First-run configuration writes registry "
+                        "values as well.",
+                    )
+                )
+        for result in static:
+            leads = [str(lead) for lead in result.get("leads", [])]
+            notable = [lead for lead in leads if lead.startswith("notable_imports")]
+            if notable:
+                out.append(
+                    ProviderSuggestion(
+                        SuggestionKind.HYPOTHESIS_CANDIDATE,
+                        "The import table names APIs used for dynamic loading or "
+                        f"process creation ({notable[0]}).",
+                        title="Imports for loading or starting later stages",
+                        evidence_artifact_ids=(str(result["artifact"]),),
+                        expected_benign="Runtimes and installers import the same APIs.",
+                    )
+                )
+            if sysmon_ids:
+                out.append(
+                    ProviderSuggestion(
+                        SuggestionKind.EVIDENCE_LINK,
+                        f"Static result {result['artifact']} and the Sysmon events "
+                        f"in {sysmon_ids[0]} describe the same sample; behavior seen "
+                        "at run time can be checked against the imported APIs.",
+                        evidence_artifact_ids=(str(result["artifact"]), sysmon_ids[0]),
+                    )
+                )
+
+        anchor = samples[:1] or [str(a["id"]) for a in artifacts[:1]]
+        if anchor and not static:
+            out.append(
+                ProviderSuggestion(
+                    SuggestionKind.NEXT_STEP,
+                    f"No static result exists for {anchor[0]}; a static PE analysis "
+                    "would show imports, sections and packing leads.",
+                    evidence_artifact_ids=(anchor[0],),
+                )
+            )
+        if anchor and not sysmon_ids:
+            out.append(
+                ProviderSuggestion(
+                    SuggestionKind.NEXT_STEP,
+                    f"No Sysmon telemetry is attached for {anchor[0]}; an approved "
+                    "VM execution would show its run-time behavior.",
+                    evidence_artifact_ids=(anchor[0],),
+                )
+            )
+        if sysmon_ids and any(not p.get("captured") for p in processes):
+            out.append(
+                ProviderSuggestion(
+                    SuggestionKind.NEXT_STEP,
+                    "Some processes appear only as a parent or actor; a longer "
+                    "run or a wider capture window would complete the tree.",
+                    evidence_artifact_ids=(sysmon_ids[0],),
+                )
+            )
+        if anchor and not dict(digest.get("recorded", {})).get("validation_runs"):
+            out.append(
+                ProviderSuggestion(
+                    SuggestionKind.NEXT_STEP,
+                    "No validation run is recorded; a rule tested against benign "
+                    "comparison data would show whether a candidate is specific.",
+                    evidence_artifact_ids=(anchor[0],),
+                )
+            )
+        return out
+
+    @staticmethod
+    def _synthesis(digest: Mapping[str, Any]) -> list[ProviderSuggestion]:
+        """Key hypotheses with their support, and an ordered mechanism outline."""
+        findings = [dict(item) for item in digest.get("findings", [])]
+        by_id = {str(item["id"]): item for item in findings}
+        out: list[ProviderSuggestion] = []
+        for item in findings:
+            if item.get("kind") != "hypothesis" or item.get("verdict") != "supported":
+                continue
+            support = sorted(
+                {
+                    str(ref)
+                    for link in findings
+                    if link.get("kind") == "link" and item["id"] in link["findings"]
+                    for ref in link["findings"]
+                    if ref != item["id"] and ref in by_id
+                }
+            )
+            out.append(
+                ProviderSuggestion(
+                    SuggestionKind.KEY_HYPOTHESIS,
+                    f"Confirmed hypothesis {item['id']} is supported by "
+                    + (", ".join(support) if support else "no linked evidence yet")
+                    + ".",
+                    title=str(item.get("title") or item["id"])[:200],
+                    evidence_artifact_ids=(str(item["id"]), *support),
+                )
+            )
+        evidence = [item for item in findings if item.get("kind") == "evidence"]
+        if evidence:
+            # IDs only: analyst text is not echoed back into an opinion.
+            cited = [str(item["id"]) for item in evidence[:16]]
+            out.append(
+                ProviderSuggestion(
+                    SuggestionKind.MECHANISM,
+                    "Outline in the order the confirmed evidence was recorded "
+                    "(template, not an interpretation): " + " -> ".join(cited) + ".",
+                    evidence_artifact_ids=tuple(cited),
+                )
+            )
+        return out
+
+    # -- ADR-026 ----------------------------------------------------------------
+
+    def _legacy(self, digest: Mapping[str, Any]) -> ProviderOutput:
         static = list(digest.get("static", []))
         sysmon = dict(digest.get("sysmon", {}))
         processes = list(sysmon.get("processes", []))

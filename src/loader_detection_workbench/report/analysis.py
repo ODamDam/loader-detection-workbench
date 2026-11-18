@@ -28,6 +28,8 @@ from loader_detection_workbench.detection.service import DetectionService
 from loader_detection_workbench.domain.artifact import Artifact, ArtifactKind
 from loader_detection_workbench.execution.domain import ExecutionRun
 from loader_detection_workbench.execution.service import ExecutionService
+from loader_detection_workbench.findings.domain import AnalystFinding
+from loader_detection_workbench.findings.service import FindingService
 from loader_detection_workbench.static_analysis.domain import StaticAnalysis
 from loader_detection_workbench.static_analysis.service import StaticAnalysisService
 
@@ -50,6 +52,8 @@ class CaseAnalysis:
     execution_runs: tuple[ExecutionRun, ...]
     # Inferences, kept apart from every observed record above (ADR-026).
     ai_analyses: tuple[AiAnalysis, ...] = ()
+    # Confirmed analyst findings: the only content of a report body (ADR-031).
+    findings: tuple[AnalystFinding, ...] = ()
 
     @property
     def is_empty(self) -> bool:
@@ -61,6 +65,7 @@ class CaseAnalysis:
             or self.memberships
             or self.execution_runs
             or self.ai_analyses
+            or self.findings
         )
 
     def rule(self, display_id: str) -> DetectionRule | None:
@@ -129,4 +134,5 @@ class CaseAnalysisQuery:
             memberships,
             execution_runs,
             tuple(AiAnalysisReader(self._root).list(case_id)),
+            tuple(FindingService(self._root).confirmed(case_id)),
         )
