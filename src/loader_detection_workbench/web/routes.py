@@ -30,6 +30,7 @@ from loader_detection_workbench.detection.domain import (
     require_display_id,
 )
 from loader_detection_workbench.detection.service import DetectionService
+from loader_detection_workbench.domain.artifact import Artifact, ArtifactKind
 from loader_detection_workbench.domain.case import CaseStatus
 from loader_detection_workbench.domain.errors import DomainError, DomainErrorCode
 from loader_detection_workbench.domain.time import format_utc, utc_now
@@ -38,7 +39,9 @@ from loader_detection_workbench.evidence.domain import (
     EvidenceType,
 )
 from loader_detection_workbench.evidence.service import ManualEvidenceService
+from loader_detection_workbench.execution.domain import ExecutionRun
 from loader_detection_workbench.findings.domain import (
+    AnalystFinding,
     FindingKind,
     FindingState,
     Verdict,
@@ -68,11 +71,6 @@ web = Blueprint("web", __name__)
 
 def _root() -> Path:
     return cast(Path, current_app.config["WORKBENCH_PROJECT_ROOT"])
-
-
-@web.get("/")
-def index() -> ResponseReturnValue:
-    return redirect(url_for("web.cases"))
 
 
 @web.get("/health")
@@ -354,7 +352,7 @@ def validation_run(run_display_id: str) -> str:
 
 # -- Case workspace (ADR-031) ---------------------------------------------------
 
-WORKSPACE_TABS = ("evidence", "hypotheses", "ai", "findings", "report")
+WORKSPACE_TABS = ("overview", "evidence", "process", "ai", "findings", "report")
 _ADOPTABLE = frozenset(
     {
         SuggestionKind.HYPOTHESIS,
@@ -382,10 +380,34 @@ def _form_refs(name: str) -> list[str] | None:
 
 
 def _workspace_ai(case_display_id: str, stage: AnalysisStage) -> dict[str, object]:
-    """Newest analysis per provider for one stage, side by side, plus agreement."""
+    """Opinions of the newest analysis per provider, shared groups first.
+
+    Each item carries the Korean reading translation (ADR-033) when stored; the
+    English text stays the record and is one toggle away.
+    """
     service = AiAnalysisService(_root())
     staged = [a for a in service.list_analyses(case_display_id) if a.stage is stage]
     columns = latest_per_provider(staged) if staged else []
+    korean = {a.display_id: service.translations(a.display_id) for a in columns}
+    suggestions = {
+        (a.display_id, s.sequence): (a, s) for a in columns for s in a.suggestions
+    }
+
+    def item(
+        analysis_id: str, sequence: int, providers: tuple[str, ...]
+    ) -> dict[str, object]:
+        analysis, suggestion = suggestions[(analysis_id, sequence)]
+        ko = korean.get(analysis_id, {}).get(sequence)
+        return {
+            "analysis": analysis,
+            "s": suggestion,
+            "providers": providers,
+            "ko_title": None if ko is None else ko[0],
+            "ko_text": None if ko is None else ko[1],
+            "adoptable": suggestion.kind in _ADOPTABLE,
+        }
+
+    groups: list[tuple[str, list[dict[str, object]]]] = []
     comparison = None
     if len(columns) >= 2:
         try:
@@ -394,26 +416,118 @@ def _workspace_ai(case_display_id: str, stage: AnalysisStage) -> dict[str, objec
             )
         except DomainError:
             comparison = None  # e.g. providers answered different inputs
-    # ADR-033: Korean reading translations, shown on hover; never the source.
-    korean = {a.display_id: service.translations(a.display_id) for a in columns}
+    if comparison is not None:
+        shared = [
+            item(g.opinions[0].analysis_display_id, g.opinions[0].sequence, g.providers)
+            for g in comparison.common
+        ]
+        single = [
+            item(o.analysis_display_id, o.sequence, (o.provider,))
+            for g in comparison.individual
+            for o in g.opinions
+        ]
+        groups = [("공통 의견", shared), ("개별 의견", single)]
+    else:
+        groups = [
+            (
+                f"{a.provider} 의견",
+                [item(a.display_id, s.sequence, (a.provider,)) for s in a.suggestions],
+            )
+            for a in columns
+        ]
     return {
         "columns": columns,
-        "comparison": comparison,
-        "adoptable": _ADOPTABLE,
-        "korean": korean,
+        "ai_groups": [(label, items) for label, items in groups if items],
+        "has_korean": any(korean.values()),
     }
+
+
+_KIND_ORDER = (
+    FindingKind.EVIDENCE,
+    FindingKind.HYPOTHESIS,
+    FindingKind.LINK,
+    FindingKind.MECHANISM,
+)
+KIND_LABELS = {
+    FindingKind.EVIDENCE: "증거",
+    FindingKind.HYPOTHESIS: "가설",
+    FindingKind.LINK: "연결",
+    FindingKind.MECHANISM: "작동 원리",
+}
+
+
+def _review_queue(
+    findings: list[AnalystFinding],
+) -> list[tuple[str, list[dict[str, object]]]]:
+    """Findings by kind in confirmation order; drafts first inside each kind.
+
+    A link or mechanism waits while a finding it cites is not confirmed yet.
+    """
+    state = {f.display_id: f.state for f in findings}
+    queue = []
+    for kind in _KIND_ORDER:
+        items = [f for f in findings if f.kind is kind]
+        items.sort(key=lambda f: (f.state is not FindingState.DRAFT, f.display_id))
+        queue.append(
+            (
+                KIND_LABELS[kind],
+                [
+                    {
+                        "f": f,
+                        "waiting": [
+                            ref
+                            for ref in f.content.finding_refs
+                            if state.get(ref) is not FindingState.CONFIRMED
+                        ],
+                    }
+                    for f in items
+                ],
+            )
+        )
+    return queue
+
+
+def _evidence_groups(
+    artifacts: tuple[Artifact, ...], runs: list[ExecutionRun]
+) -> list[tuple[str, list[tuple[Artifact, str]]]]:
+    by_sysmon = {
+        r.sysmon_artifact_id: r.display_id for r in runs if r.sysmon_artifact_id
+    }
+    samples = [a for a in artifacts if a.kind is ArtifactKind.SAMPLE]
+    groups: dict[str, list[tuple[Artifact, str]]] = {
+        "샘플": [],
+        "정적 분석": [],
+        "VM 실행 (Sysmon)": [],
+        "회수한 파일": [],
+        "기타": [],
+    }
+    for artifact in artifacts:
+        aid = artifact.artifact_id.display_id
+        if artifact.kind is ArtifactKind.SAMPLE:
+            key = "샘플" if artifact is samples[0] else "회수한 파일"
+            groups[key].append((artifact, ""))
+        elif artifact.kind is ArtifactKind.STATIC:
+            groups["정적 분석"].append((artifact, ""))
+        elif artifact.kind is ArtifactKind.SYSMON:
+            groups["VM 실행 (Sysmon)"].append((artifact, by_sysmon.get(aid, "")))
+        else:
+            groups["기타"].append((artifact, ""))
+    return [(label, items) for label, items in groups.items() if items]
 
 
 @web.get("/cases/<case_display_id>/workspace")
 def workspace(case_display_id: str) -> str:
-    tab = request.args.get("tab", "evidence")
+    tab = request.args.get("tab", "overview")
+    tab = {"hypotheses": "findings"}.get(tab, tab)
     if tab not in WORKSPACE_TABS:
-        tab = "evidence"
+        tab = "overview"
     stage_value = request.args.get("stage", AnalysisStage.COLLECTION.value)
     stage = AnalysisStage.parse(stage_value)
     timeline = CaseTimelineQuery(_root()).query(case_display_id)
     analysis = CaseAnalysisQuery(_root()).query(timeline)
     findings = FindingService(_root()).list_findings(case_display_id)
+    live = [f for f in findings if f.state is not FindingState.WITHDRAWN]
+    ai_count = len(AiAnalysisService(_root()).list_analyses(case_display_id))
     context: dict[str, object] = {
         "case": timeline.case,
         "tab": tab,
@@ -424,16 +538,46 @@ def workspace(case_display_id: str) -> str:
         "observation_count": len(timeline.observations),
         "record_count": len(timeline.other_records),
         "findings": findings,
+        "live_count": len(live),
         "confirmed_count": sum(
             1 for f in findings if f.state is FindingState.CONFIRMED
         ),
         "draft_count": sum(1 for f in findings if f.state is FindingState.DRAFT),
-        "finding_kinds": tuple(FindingKind),
+        "ai_count": ai_count,
+        "kind_labels": {k.value: v for k, v in KIND_LABELS.items()},
         "verdicts": tuple(Verdict),
         "editable": timeline.case.status is CaseStatus.OPEN,
         "format_utc": format_utc,
+        "execution_runs": analysis.execution_runs,
     }
-    if tab == "ai":
+    if tab == "overview":
+        context["stages"] = [
+            (
+                "정적 분석",
+                any(a.kind is ArtifactKind.STATIC for a in analysis.artifacts),
+            ),
+            (
+                "동적 분석",
+                any(a.kind is ArtifactKind.SYSMON for a in analysis.artifacts),
+            ),
+            ("AI 의견", ai_count > 0),
+            (
+                "소견 확정",
+                bool(live) and all(f.state is FindingState.CONFIRMED for f in live),
+            ),
+            ("보고서", any(f.state is FindingState.CONFIRMED for f in live)),
+        ]
+    elif tab == "evidence":
+        context["evidence_groups"] = _evidence_groups(
+            analysis.artifacts, list(analysis.execution_runs)
+        )
+    elif tab == "process":
+        relations = CaseProcessRelationsQuery(_root()).query(timeline)
+        context["process_graph"] = process_graph(relations)
+        context["relations"] = relations
+    elif tab == "findings":
+        context["queue"] = _review_queue(findings)
+    elif tab == "ai":
         context.update(_workspace_ai(case_display_id, stage))
     return render_template("workspace.html", **context)
 

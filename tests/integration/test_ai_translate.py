@@ -267,5 +267,5 @@ def test_cli_translates_a_case_and_the_hover_text_renders(
     page = client.get(
         "/cases/CASE-0001/workspace?tab=ai&stage=collection", base_url=BASE_URL
     ).text
-    assert 'class="ko-text"' in page and 'lang="ko"' in page
-    assert "[ko] " in page and "Machine translation for reading only" in page
+    assert 'class="lang-ko" lang="ko"' in page and 'data-show="ko"' in page
+    assert "[ko] " in page and "한국어 (기계 번역)" in page

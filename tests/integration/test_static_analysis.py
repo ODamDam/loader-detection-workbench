@@ -74,7 +74,7 @@ def test_static_analysis_collects_pe_header_sections_and_ui_relation(
         )
     )
     assert response.status_code == 200
-    assert "Static PE result" in response.text
+    assert "정적 PE 결과" in response.text
     assert source.artifact_id.display_id in response.text
     assert "x64" in response.text
     assert ".text" in response.text

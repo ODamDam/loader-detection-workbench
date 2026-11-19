@@ -89,7 +89,10 @@ def test_case_analysis_page_shows_both_graphs(client: FlaskClient, root: Path) -
     # VM run: step names but never step detail.
     assert "VMR-0001" in text and "approval ok, preflight ok" in text
     assert_path_safe(text, root)
-    assert "style=" not in text and "<script" not in text
+    assert "style=" not in text
+    # Only the same-origin UI script; never inline script (CSP).
+    assert text.count("<script") == 1
+    assert '<script src="/static/workbench.js" defer></script>' in text
     assert response.headers["Content-Security-Policy"].startswith("default-src 'self'")
     assert (root / "project.db").read_bytes() == before
 
@@ -97,20 +100,20 @@ def test_case_analysis_page_shows_both_graphs(client: FlaskClient, root: Path) -
 def test_empty_case_analysis_and_non_member(client: FlaskClient) -> None:
     text = get(client, "/cases/CASE-0004/analysis").text
     assert "<svg" not in text
-    assert "No Hypothesis, Rule or Validation run is recorded" in text
-    assert "No process relationship is available" in text
-    assert "No VM execution run is recorded" in text
+    assert "이 Case의 가설, 룰, 검증 런이 없습니다." in text
+    assert "프로세스 관계를 만들 수 없습니다" in text
+    assert "이 Case의 VM 실행 기록이 없습니다." in text
 
     benign = get(client, "/cases/CASE-0002/analysis").text
     assert "<td>benign_common: FP</td>" in benign  # RUN-0002, Sigma v1
     assert "<td>benign_common: TN</td>" in benign
     assert 'class="graph-node run outcome-fp"' in benign
-    assert "No Hypothesis is recorded for this Case." in benign
+    assert "이 Case의 탐지 가설이 없습니다." in benign
 
 
 def test_detection_overview(client: FlaskClient, root: Path) -> None:
     text = get(client, "/detection").text
-    assert '<a class="nav" href="/detection">Detection</a>' in text
+    assert '<a href="/rules" class="on" aria-current="page">탐지 룰</a>' in text
     assert '<a href="/rules/RULE-0001">RULE-0001</a>' in text
     assert "BMK-0001 · synthetic-v1" in text and "frozen</span>" in text
     assert "<td>unseen</td>" in text and "<td>malicious</td>" in text
@@ -154,16 +157,14 @@ def test_rule_version_comparison(client: FlaskClient, root: Path) -> None:
 def test_validation_run_detail(client: FlaskClient, root: Path) -> None:
     evaluation = get(client, "/validation/RUN-0004").text
     assert "RUN-0004 · Evaluation (Unseen)" in evaluation
-    assert "<strong>2/2</strong><span>Detected (TP / malicious)</span>" in evaluation
-    assert (
-        "<strong>0/1</strong><span>False positives (FP / benign)</span>" in evaluation
-    )
-    assert "frozen Rule version and a frozen Benchmark" in evaluation
+    assert "<strong>2/2</strong><span>탐지 (TP / 악성)</span>" in evaluation
+    assert "<strong>0/1</strong><span>오탐 (FP / 정상)</span>" in evaluation
+    assert "동결된 룰 버전과 동결된 벤치마크" in evaluation
     assert "ART-000006#30 (EventID 1)" in evaluation
     assert_path_safe(evaluation, root)
 
     tuning = get(client, "/validation/RUN-0005").text
-    assert "not an Unseen evaluation result" in tuning
+    assert "Unseen 평가 결과가 아닙니다" in tuning
 
     yara = get(client, "/validation/RUN-0001").text
     assert "ART-000001 rule synthetic_loader_marker" in yara
@@ -220,7 +221,7 @@ def test_project_without_detection_records(tmp_path: Path) -> None:
     client = create_app(plain, test_config={"TESTING": True}).test_client()
     overview = get(client, "/detection")
     assert overview.status_code == 200
-    assert "No Rule is registered" in overview.text
-    assert "No Validation run is recorded" in overview.text
+    assert "등록된 룰이 없습니다." in overview.text
+    assert "기록된 검증 런이 없습니다." in overview.text
     assert get(client, "/cases/CASE-0001/analysis").status_code == 200
     assert get(client, "/rules/RULE-0001").status_code == 404

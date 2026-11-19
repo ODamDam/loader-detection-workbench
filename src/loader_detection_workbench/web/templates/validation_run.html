@@ -1,30 +1,30 @@
 {% extends "base.html" %}
-{% block title %}{{ run.display_id }} — Detection Workbench{% endblock %}
+{% block title %}{{ run.display_id }} — 탐지 검증 워크벤치{% endblock %}
 {% block content %}
   <nav><a href="{{ url_for('web.rule_detail', rule_display_id=run.rule_display_id) }}">← {{ run.rule_display_id }}</a></nav>
   <h1>{{ run.display_id }} · {{ run.kind_title }}</h1>
   <dl class="summary">
-    <dt>Rule</dt><dd><a href="{{ url_for('web.rule_detail', rule_display_id=run.rule_display_id) }}">{{ run.rule_display_id }}</a> v{{ run.rule_version }}</dd>
-    <dt>Rule SHA-256</dt><dd class="digest">{{ rule_sha256 }}</dd>
-    <dt>Benchmark</dt><dd>{{ run.benchmark_display_id }}</dd>
-    <dt>Roles</dt><dd>{{ run.roles }}</dd>
-    <dt>Engine</dt><dd>{{ run.engine }}</dd>
-    <dt>Created</dt><dd>{{ run.created_at }}</dd>
+    <dt>룰</dt><dd><a href="{{ url_for('web.rule_detail', rule_display_id=run.rule_display_id) }}">{{ run.rule_display_id }}</a> v{{ run.rule_version }}</dd>
+    <dt>룰 SHA-256</dt><dd class="digest">{{ rule_sha256 }}</dd>
+    <dt>벤치마크</dt><dd>{{ run.benchmark_display_id }}</dd>
+    <dt>역할</dt><dd>{{ run.roles }}</dd>
+    <dt>엔진</dt><dd>{{ run.engine }}</dd>
+    <dt>생성</dt><dd>{{ run.created_at }}</dd>
   </dl>
   <section class="metrics" aria-label="Run metrics with denominators">
-    <div><strong>{{ run.detected }}</strong><span>Detected (TP / malicious)</span></div>
-    <div><strong>{{ run.missed }}</strong><span>Missed (FN)</span></div>
-    <div><strong>{{ run.false_positives }}</strong><span>False positives (FP / benign)</span></div>
-    <div><strong>{{ run.not_evaluable }}</strong><span>Not evaluable</span></div>
+    <div><strong>{{ run.detected }}</strong><span>탐지 (TP / 악성)</span></div>
+    <div><strong>{{ run.missed }}</strong><span>미탐 (FN)</span></div>
+    <div><strong>{{ run.false_positives }}</strong><span>오탐 (FP / 정상)</span></div>
+    <div><strong>{{ run.not_evaluable }}</strong><span>평가 불가</span></div>
   </section>
   {% if run.kind == 'tuning' %}
-    <p class="warning">Tuning run: this Rule was already evaluated on Unseen members. This result is not an Unseen evaluation result.</p>
+    <p class="warning">튜닝 런: 이 룰은 이미 Unseen 구성원으로 평가했습니다. 이 결과는 Unseen 평가 결과가 아닙니다.</p>
   {% elif run.kind == 'evaluation' %}
-    <p class="notice">Evaluation run on a frozen Rule version and a frozen Benchmark, including Unseen members.</p>
+    <p class="notice">동결된 룰 버전과 동결된 벤치마크로 Unseen 구성원까지 평가한 런입니다.</p>
   {% endif %}
-  <h2>Results by Case</h2>
+  <h2>Case별 결과</h2>
   <table>
-    <thead><tr><th>Case</th><th>Role</th><th>Outcome</th><th>Match evidence</th></tr></thead>
+    <thead><tr><th>Case</th><th>역할</th><th>결과</th><th>일치 근거</th></tr></thead>
     <tbody>
       {% for result in results %}
         <tr>
@@ -36,5 +36,5 @@
       {% endfor %}
     </tbody>
   </table>
-  <p class="hint">Match evidence lists Artifact IDs, rule names, string identifiers with offsets, and Sysmon record IDs only. Matched content is not displayed.</p>
+  <p class="hint">일치 근거는 Artifact ID, 룰 이름, 문자열 식별자와 오프셋, Sysmon 레코드 ID만 표시합니다. 일치한 내용은 표시하지 않습니다.</p>
 {% endblock %}

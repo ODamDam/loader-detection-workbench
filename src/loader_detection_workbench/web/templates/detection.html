@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% from "_graph.html" import run_table %}
-{% block title %}Detection — Detection Workbench{% endblock %}
+{% block title %}탐지 룰 전체 — 탐지 검증 워크벤치{% endblock %}
 {% block content %}
-  <h1>Detection rules and validation</h1>
-  <p class="hint">Read-only view. Rules, Benchmarks and Validation runs are created with the CLI.</p>
+  <h1>탐지 룰과 검증 (전체 목록)</h1>
+  <p class="hint">읽기 전용입니다. 룰, 벤치마크, 검증 런은 CLI로 만듭니다.</p>
 
-  <h2>Rules</h2>
+  <h2>룰</h2>
   {% if rules %}
     <table>
-      <thead><tr><th>Rule</th><th>Name</th><th>Format</th><th>Versions</th><th>Latest</th></tr></thead>
+      <thead><tr><th>룰</th><th>이름</th><th>형식</th><th>버전</th><th>최근</th></tr></thead>
       <tbody>
         {% for rule in rules %}
           <tr>
@@ -22,16 +22,16 @@
       </tbody>
     </table>
   {% else %}
-    <p class="empty">No Rule is registered in this Project.</p>
+    <p class="empty">등록된 룰이 없습니다.</p>
   {% endif %}
 
-  <h2>Benchmarks</h2>
+  <h2>벤치마크</h2>
   {% for benchmark in benchmarks %}
     <article class="artifact">
       <h3>{{ benchmark.display_id }} · {{ benchmark.name }} <span class="badge version-{{ 'frozen' if benchmark.is_frozen else 'draft' }}">{{ 'frozen' if benchmark.is_frozen else 'not frozen' }}</span></h3>
       <p>{{ benchmark.description or '—' }}</p>
       <table>
-        <thead><tr><th>Case</th><th>Role</th><th>Expected</th></tr></thead>
+        <thead><tr><th>Case</th><th>역할</th><th>기대</th></tr></thead>
         <tbody>
           {% for member in benchmark.members %}
             <tr>
@@ -44,14 +44,14 @@
       </table>
     </article>
   {% else %}
-    <p class="empty">No Benchmark is registered in this Project.</p>
+    <p class="empty">등록된 벤치마크가 없습니다.</p>
   {% endfor %}
 
-  <h2>Validation runs</h2>
+  <h2>검증 런</h2>
   {% for title, runs in runs_by_kind %}
     <h3>{{ title }}</h3>
     {{ run_table(runs) }}
   {% else %}
-    <p class="empty">No Validation run is recorded in this Project.</p>
+    <p class="empty">기록된 검증 런이 없습니다.</p>
   {% endfor %}
 {% endblock %}

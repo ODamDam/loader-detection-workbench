@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Error {{ status }} — Detection Workbench{% endblock %}
+{% block title %}오류 {{ status }} — 탐지 검증 워크벤치{% endblock %}
 {% block content %}
-  <h1>Request failed</h1>
+  <h1>요청을 처리하지 못했습니다</h1>
   <p class="warning"><strong>{{ code }}</strong>: {{ message }}</p>
-  <p><a href="{{ url_for('web.cases') }}">Return to Cases</a></p>
+  <p><a href="{{ url_for('web.dashboard') }}">대시보드로 돌아가기</a></p>
 {% endblock %}

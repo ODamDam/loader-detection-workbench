@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}탐지 룰 — 탐지 검증 워크벤치{% endblock %}
+{% block content %}
+  <h1>탐지 룰</h1>
+  <p class="lead">룰은 버전으로 관리하고, 동결한 버전만 평가에 씁니다. 동결 버전은 고치거나 지울 수 없습니다. 등록·수정·동결은 CLI(<code>workbench rule</code>)로 합니다.</p>
+
+  <section class="mb14 grid g4" aria-label="룰 지표">
+    <div class="card kpi"><div class="l">YARA</div><div class="v">{{ totals.yara[0] + totals.yara[1] }}</div><div class="s">동결 {{ totals.yara[0] }} · 초안 {{ totals.yara[1] }}</div></div>
+    <div class="card kpi"><div class="l">Sigma</div><div class="v">{{ totals.sigma[0] + totals.sigma[1] }}</div><div class="s">동결 {{ totals.sigma[0] }} · 초안 {{ totals.sigma[1] }}</div></div>
+    <div class="card kpi"><div class="l">탐지된 악성 Case</div><div class="v">{{ detected|length }}<small> / {{ malicious|length }}</small></div><div class="s">한 룰 이상이 TP</div></div>
+    <div class="card kpi"><div class="l">정상 대조군 오탐</div><div class="v{% if not false_positives %} good{% endif %}">{{ false_positives|length }}</div><div class="s">정상 Case {{ benign|length }}개 중</div></div>
+  </section>
+
+  <section class="card">
+    <nav class="subtabs" aria-label="형식으로 거르기">
+      {% for key, label in (('all', '전체'), ('yara', 'YARA'), ('sigma', 'Sigma')) %}
+        <a href="{{ url_for('web.rules', format=key) }}"{% if key == selected %} class="on" aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+      <span class="sp"></span>
+      <a href="{{ url_for('web.frozen_rules_zip') }}">동결 룰 내보내기 (zip)</a>
+    </nav>
+    <table>
+      <thead><tr><th>룰</th><th>이름</th><th>형식</th><th>버전</th><th>ATT&amp;CK</th><th>악성 탐지</th><th>정상 오탐</th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td><a class="id" href="{{ url_for('web.rule_detail', rule_display_id=row.rule.display_id) }}">{{ row.rule.display_id }}</a></td>
+            <td>{{ row.rule.name }}</td>
+            <td>{{ row.rule.format.value|upper }}</td>
+            <td>v{{ row.shown_version }} <span class="pill {{ 'p-ok' if row.frozen else 'p-warn' }}">{{ '동결' if row.frozen else '초안' }}</span></td>
+            <td class="note">{{ row.attack or '—' }}</td>
+            <td title="{{ row.tp_cases|join(', ') }}">{{ row.tp_cases|length }} / {{ row.malicious_cases|length }}</td>
+            <td><span class="{{ 'pill p-bad' if row.fp_cases else '' }}" title="{{ row.fp_cases|join(', ') }}">{{ row.fp_cases|length }} / {{ row.benign_cases|length }}</span></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="empty">등록된 룰이 없습니다.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="mt10 mb0 note">탐지·오탐은 벤치마크마다 가장 최근 검증 런을 합친 Case 수입니다. 평가할 수 없는 Case(예: Sigma 룰과 Sysmon 없는 Case)는 세지 않습니다.</p>
+  </section>
+{% endblock %}

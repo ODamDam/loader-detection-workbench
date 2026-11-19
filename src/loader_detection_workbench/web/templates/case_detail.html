@@ -1,54 +1,54 @@
 {% extends "base.html" %}
-{% block title %}{{ case.case_id.display_id }} — Detection Workbench{% endblock %}
+{% block title %}{{ case.case_id.display_id }} — 탐지 검증 워크벤치{% endblock %}
 {% block content %}
-  <nav><a href="{{ url_for('web.cases') }}">← All Cases</a></nav>
+  <nav><a href="{{ url_for('web.samples') }}">← 샘플 분석</a></nav>
   <h1>{{ case.case_id.display_id }} · {{ case.name }}</h1>
   <dl class="summary">
-    <dt>Kind</dt><dd>{{ case.kind.value }}</dd>
-    <dt>Status</dt><dd>{{ case.status.value }}</dd>
-    <dt>Description</dt><dd>{{ case.description or '—' }}</dd>
-    <dt>Created</dt><dd>{{ case_created_at }}</dd>
-    <dt>Updated</dt><dd>{{ case_updated_at }}</dd>
+    <dt>종류</dt><dd>{{ case.kind.value }}</dd>
+    <dt>상태</dt><dd>{{ case.status.value }}</dd>
+    <dt>설명</dt><dd>{{ case.description or '—' }}</dd>
+    <dt>생성</dt><dd>{{ case_created_at }}</dd>
+    <dt>수정</dt><dd>{{ case_updated_at }}</dd>
   </dl>
   <section class="metrics" aria-label="Case relationship summary">
-    <div><strong>{{ artifact_count }}</strong><span>Artifacts</span></div>
-    <div><strong>{{ evidence_count }}</strong><span>Manual evidence</span></div>
-    <div><strong>{{ observation_count }}</strong><span>Observations</span></div>
+    <div><strong>{{ artifact_count }}</strong><span>Artifact</span></div>
+    <div><strong>{{ evidence_count }}</strong><span>수동 증거</span></div>
+    <div><strong>{{ observation_count }}</strong><span>관측</span></div>
   </section>
   {% if uploaded %}<p class="notice">Evidence {{ uploaded }} was registered.</p>{% endif %}
   {% if migration_required %}
     <p class="warning">This v1 Project is readable, but manual evidence requires an explicit <code>project migrate --to 2</code>.</p>
   {% elif case.status.value == 'closed' %}
-    <p class="warning">This Case is Closed. Existing evidence remains readable, but new evidence cannot be added.</p>
+    <p class="warning">닫힌 Case입니다. 기존 증거는 읽을 수 있지만 새 증거는 추가할 수 없습니다.</p>
   {% endif %}
   <p class="actions">
-    {% if upload_available %}<a class="button" href="{{ url_for('web.evidence_form', case_display_id=case.case_id.display_id) }}">Add manual evidence</a>{% endif %}
-    <a class="button" href="{{ url_for('web.case_analysis', case_display_id=case.case_id.display_id) }}">Evidence and detection analysis</a>
-    <a class="button" href="{{ url_for('web.workspace', case_display_id=case.case_id.display_id) }}">Case workspace</a>
-    <a class="button secondary" href="{{ url_for('web.timeline', case_display_id=case.case_id.display_id) }}">View Sysmon timeline</a>
-    <a class="button secondary" href="{{ url_for('web.report_preview', case_display_id=case.case_id.display_id) }}">Preview report</a>
+    {% if upload_available %}<a class="button" href="{{ url_for('web.evidence_form', case_display_id=case.case_id.display_id) }}">수동 증거 추가</a>{% endif %}
+    <a class="button" href="{{ url_for('web.case_analysis', case_display_id=case.case_id.display_id) }}">증거와 탐지 분석</a>
+    <a class="button" href="{{ url_for('web.workspace', case_display_id=case.case_id.display_id) }}">Case 작업 공간</a>
+    <a class="button secondary" href="{{ url_for('web.timeline', case_display_id=case.case_id.display_id) }}">Sysmon 타임라인 보기</a>
+    <a class="button secondary" href="{{ url_for('web.report_preview', case_display_id=case.case_id.display_id) }}">보고서 미리보기</a>
   </p>
-  <h2>Case → Artifacts</h2>
+  <h2>Case → Artifact</h2>
   {% if artifacts %}
     {% for artifact in artifacts %}
       <article class="artifact">
         <h3><a href="{{ url_for('web.artifact_detail', case_display_id=case.case_id.display_id, artifact_display_id=artifact.display_id) }}">{{ artifact.display_id }}</a> · {{ artifact.classification }}</h3>
         <dl>
-          <dt>Kind</dt><dd>{{ artifact.kind }}</dd>
+          <dt>종류</dt><dd>{{ artifact.kind }}</dd>
           <dt>SHA-256</dt><dd class="digest">{{ artifact.sha256 }}</dd>
-          <dt>Size</dt><dd>{{ artifact.size_bytes }} bytes</dd>
-          <dt>Created</dt><dd>{{ artifact.created_at }}</dd>
-          <dt>Observations</dt><dd>{{ artifact.observation_count }}</dd>
+          <dt>크기</dt><dd>{{ artifact.size_bytes }} bytes</dd>
+          <dt>생성</dt><dd>{{ artifact.created_at }}</dd>
+          <dt>관측</dt><dd>{{ artifact.observation_count }}</dd>
           {% if artifact.original_filename is not none %}
-            <dt>Original filename</dt><dd>{{ artifact.original_filename }}</dd>
-            <dt>Source</dt><dd>{{ artifact.source }}</dd>
-            <dt>Evidence type</dt><dd>{{ artifact.evidence_type }}</dd>
-            <dt>Description</dt><dd>{{ artifact.description or '—' }}</dd>
+            <dt>원래 파일 이름</dt><dd>{{ artifact.original_filename }}</dd>
+            <dt>출처</dt><dd>{{ artifact.source }}</dd>
+            <dt>증거 유형</dt><dd>{{ artifact.evidence_type }}</dd>
+            <dt>설명</dt><dd>{{ artifact.description or '—' }}</dd>
           {% endif %}
         </dl>
       </article>
     {% endfor %}
   {% else %}
-    <p class="empty">No Artifacts are attached to this Case.</p>
+    <p class="empty">이 Case에 첨부된 Artifact가 없습니다.</p>
   {% endif %}
 {% endblock %}

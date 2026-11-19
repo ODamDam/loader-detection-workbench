@@ -330,7 +330,7 @@ provenance를 만들지 않는다. 검증, 오류, 안전 및 rollback 계약은
 workbench ui serve .\workspace --port 8080
 ```
 
-브라우저에서 `http://127.0.0.1:8080/cases`를 연다. UI는 Case 목록·상세,
+브라우저에서 `http://127.0.0.1:8080/`(대시보드)를 연다. UI는 Case 목록·상세,
 Artifact와 Manual Evidence provenance, 수동 Evidence 등록, 안전한 Event ID 1/11
 Timeline을 제공한다. 수동 등록은 Open v2 Case에서만 가능하며 기존 4 MiB와 확장자
 정책을 그대로 사용한다. v1 Project의 조회는 가능하지만 등록 전에 별도 백업 후
@@ -551,17 +551,40 @@ uv run workbench finding adopt AIA-0001 2      # AI 가설 제안으로 초안 �
 수집 기록과 계산 결과는 보고서 부록 A, AI 의견은 부록 B에만 나온다. 부록 A의 Sigma 룰
 항목에는 룰 `tags`의 ATT&CK 전술·기법(`attack.<전술>`, `attack.tNNNN[.NNN]`)이 표시된다.
 
+### 화면 구성 (2026-11-19 개편, 한국어 UI)
+
+왼쪽 메뉴와 상단 ID 검색(`/` 키, `CASE-`·`ART-`·`ART-…#레코드`·`FND-`·`RULE-`·`RUN-`·`BMK-`·
+`VMR-`·`AIA-`·`SMP-`)으로 이동한다. 모든 화면은 읽기 전용 조회이며, 쓰기는 작업 공간의
+소견 양식뿐이다.
+
+| 메뉴 | 주소 | 내용 |
+|---|---|---|
+| 대시보드 | `/` | 진행 지표 6개, dev Case 진행 단계, 다음에 할 일, 최근 활동 |
+| 샘플 분석 | `/samples` | 역할(dev·추가 dev·eval·정상)별 Case 목록과 단계별 상태. eval은 열지 않음 |
+| 탐지 룰 | `/rules` | 형식 필터, 동결 여부, ATT&CK, 악성 탐지·정상 오탐 Case 수, 동결 룰 zip |
+| 검증 | `/validation` | 벤치마크별 룰 × Case 결과 표(최근 런) |
+| 산출물 | `/outputs` | Case 보고서 상태, 동결 룰셋(`/outputs/frozen-rules.zip`), 보고서 사이트 안내 |
+| 환경 구성 | `/environment` | VM·스냅숏·안전 잠금, 수집 설정, AI Provider 키 유무(값은 숨김) |
+
+기존 `/cases`, `/detection`, `/cases/<CASE>/analysis`, 타임라인, Artifact·룰·검증 런 상세 화면은
+그대로 두고 메뉴에서 연결한다. 페이지에는 같은 출처의 `static/workbench.js` 하나만 있고(인라인
+스크립트·인라인 스타일 없음, CSP 그대로), JavaScript가 꺼져 있어도 모든 링크가 동작한다.
+
 ### Case 작업 공간 UI
 
-`workbench ui serve` 후 Case 화면의 "Case workspace"(`/cases/CASE-0001/workspace`)에서
-한 Case를 탭으로 다룬다.
+`/cases/CASE-0001/workspace`는 섹션(왼쪽) · 내용(가운데) · 상세 패널(오른쪽) 3단이다.
+본문의 ID를 누르면 상세 패널에 Sysmon 이벤트(파일 이름만, 명령줄·경로 없음), Artifact 정적
+요약, 소견, 룰, VM 실행이 열리고 "인용한 소견"이 함께 보인다.
 
-- **Evidence:** 수집 Artifact 목록. 항목에서 바로 증거 확정 사항 초안을 만든다(이벤트 인용 가능).
-- **Hypotheses:** 확정·초안 가설과 작업용 탐지 가설(HYP). 새 가설 초안 작성.
-- **AI opinions:** 단계(`collection`·`synthesis`)별로 Provider마다 최신 분석을 나란히 보여주고
-  공통·개별 의견 수를 표시한다. 가설형 제안과 작동 원리는 "Adopt as draft"로 초안이 된다.
-  AI 호출은 UI에서 하지 않고 CLI로 한다.
-- **Confirmed findings:** 초안 확정, 수정(다시 초안), 취소(사유 필수), 변경 기록.
-- **Report:** 확정 사항 기반 보고서 미리보기와 HTML·Markdown 내려받기.
+- **개요:** 진행 단계, VM 실행, 타임라인·분석·Case 정보 바로가기.
+- **증거:** 샘플 / 정적 분석 / VM 실행(Sysmon) / 회수한 파일로 묶은 Artifact. 항목에서 바로 증거
+  소견 초안을 만든다(이벤트 인용 가능).
+- **프로세스 흐름:** Sysmon 프로세스·파일 그래프("same file as" 표시 포함).
+- **AI 의견:** 단계별 Provider 최신 분석을 공통 의견 → 개별 의견 순으로 보여준다. 번역이 있으면
+  한국어가 기본이고 영어 원문은 토글로 본다. 가설형 제안과 작동 원리는 "초안으로 채택".
+- **소견 검토:** 증거 → 가설 → 연결 → 작동 원리 순서의 대기열. 인용한 소견이 아직 확정 전이면
+  "먼저 확정"으로 표시한다. 확정, 수정(다시 초안), 취소(사유 필수), 변경 기록, 새 가설·연결·
+  작동 원리 초안.
+- **보고서:** 확정 소견 기반 보고서 미리보기와 HTML·Markdown 내려받기.
 
 쓰기 동작은 모두 CSRF 토큰과 같은 출처 검사를 거치고, 닫힌 Case에서는 숨겨진다.

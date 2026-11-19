@@ -68,7 +68,7 @@ def test_v2_result_round_trip_cli_and_ui(
     assert "KERNEL32.dll" in page
     assert "VirtualAlloc" in page
     assert "http://example.invalid/stage2" in page
-    assert "not a maliciousness verdict" in page
+    assert "악성 여부 판정이 아닙니다" in page
     assert "someone" not in page  # windows_path values stay out of the UI
 
 

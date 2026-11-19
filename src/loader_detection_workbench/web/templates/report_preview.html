@@ -1,26 +1,26 @@
 {% extends "base.html" %}
 {% block title %}Report preview · {{ case.case_id.display_id }}{% endblock %}
 {% block content %}
-  <nav><a href="{{ url_for('web.case_detail', case_display_id=case.case_id.display_id) }}">← Case details</a></nav>
-  <h1>Case report preview</h1>
+  <nav><a href="{{ url_for('web.workspace', case_display_id=case.case_id.display_id) }}">← Case 작업 공간</a></nav>
+  <h1>Case 보고서 미리보기</h1>
   <p class="hint">Safe browser projection of the existing Case Timeline. Generate the full Markdown file locally with the command below.</p>
   <dl class="summary">
     <dt>Case ID</dt><dd>{{ case.case_id.display_id }}</dd>
-    <dt>Name</dt><dd>{{ case.name }}</dd>
-    <dt>Kind</dt><dd>{{ case.kind.value }}</dd>
-    <dt>Status</dt><dd>{{ case.status.value }}</dd>
-    <dt>Description</dt><dd>{{ case.description or '—' }}</dd>
-    <dt>Generated</dt><dd>{{ generated_at }}</dd>
-    <dt>Sysmon Artifacts</dt><dd>{{ artifact_count }}</dd>
-    <dt>Normalized Observations</dt><dd>{{ events|length }}</dd>
+    <dt>이름</dt><dd>{{ case.name }}</dd>
+    <dt>종류</dt><dd>{{ case.kind.value }}</dd>
+    <dt>상태</dt><dd>{{ case.status.value }}</dd>
+    <dt>설명</dt><dd>{{ case.description or '—' }}</dd>
+    <dt>생성 시각</dt><dd>{{ generated_at }}</dd>
+    <dt>Sysmon Artifact</dt><dd>{{ artifact_count }}</dd>
+    <dt>정규화된 관측</dt><dd>{{ events|length }}</dd>
   </dl>
   <p class="command"><code>workbench report build {{ case.case_id.display_id }} reports/{{ case.case_id.display_id }}.md</code></p>
   <p class="command"><code>workbench report build {{ case.case_id.display_id }} reports/{{ case.case_id.display_id }}.html</code></p>
   <p class="hint">The generated report also contains static evidence, hypotheses, rules, validation results and VM runs. The <a href="{{ url_for('web.case_analysis', case_display_id=case.case_id.display_id) }}">analysis view</a> shows the same records in the browser.</p>
-  <h2>Timeline evidence</h2>
+  <h2>타임라인 증거</h2>
   {% if events %}
     <table>
-      <thead><tr><th>Timestamp</th><th>Event</th><th>PID</th><th>Source Artifact</th><th>Original Record</th></tr></thead>
+      <thead><tr><th>시각</th><th>이벤트</th><th>PID</th><th>원본 Artifact</th><th>원본 기록</th></tr></thead>
       <tbody>
         {% for event in events %}
           <tr><td>{{ event.timestamp }}</td><td>{{ event.event_id }} · {{ event.event_name }}</td><td>{{ event.process_id }}</td><td>{{ event.artifact_id }}</td><td>{{ event.record_id }}</td></tr>
@@ -28,7 +28,7 @@
       </tbody>
     </table>
   {% else %}
-    <p class="empty">No normalized Sysmon observations are available for this report.</p>
+    <p class="empty">이 보고서에 쓸 정규화된 Sysmon 관측이 없습니다.</p>
   {% endif %}
-  <p class="hint">This browser preview omits command lines, executable paths, target paths, Process GUIDs, raw XML, and stored paths.</p>
+  <p class="hint">이 미리보기는 명령줄, 실행 경로, 대상 경로, Process GUID, 원본 XML, 저장 경로를 생략합니다.</p>
 {% endblock %}

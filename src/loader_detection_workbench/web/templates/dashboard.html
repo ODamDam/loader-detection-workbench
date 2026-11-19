@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}대시보드 — 탐지 검증 워크벤치{% endblock %}
+{% block content %}
+  <h1>대시보드</h1>
+  <p class="lead">샘플 분석부터 룰 동결·검증·보고서까지의 진행 상황입니다. 모든 숫자는 이 Project의 현재 기록에서 계산합니다.</p>
+
+  <section class="mb14 grid g6" aria-label="진행 지표">
+    <div class="card kpi"><div class="l">등록 샘플</div><div class="v">{{ samples_total }}</div>
+      <div class="s">dev {{ sample_roles.get('dev', 0) }} · eval {{ sample_roles.get('eval', 0) }} · 미배정 {{ sample_roles.get('extra', 0) }}</div></div>
+    <div class="card kpi"><div class="l">분석 완료 Case</div><div class="v">{{ analysed }}<small> / {{ malicious_total }}</small></div>
+      <div class="s">정적 + 동적, eval 제외</div><progress class="bar" value="{{ analysed }}" max="{{ malicious_total or 1 }}"></progress></div>
+    <div class="card kpi"><div class="l">VM 실행</div><div class="v">{{ vm_ok }}<small> / {{ vm_total }}</small></div>
+      <div class="s">성공 / 전체 시도</div><progress class="bar" value="{{ vm_ok }}" max="{{ vm_total or 1 }}"></progress></div>
+    <div class="card kpi"><div class="l">소견 확정</div><div class="v">{{ findings_confirmed }}<small> / {{ findings_total }}</small></div>
+      <div class="s">dev Case</div><progress class="bar" value="{{ findings_confirmed }}" max="{{ findings_total or 1 }}"></progress></div>
+    <div class="card kpi"><div class="l">동결 룰</div><div class="v">{{ frozen_yara + frozen_sigma }}</div>
+      <div class="s">YARA {{ frozen_yara }} · Sigma {{ frozen_sigma }}</div></div>
+    <div class="card kpi"><div class="l">보고서</div><div class="v">{{ reports_ready }}<small> / {{ dev_total }}</small></div>
+      <div class="s">확정 소견이 있는 dev Case</div><progress class="bar" value="{{ reports_ready }}" max="{{ dev_total or 1 }}"></progress></div>
+  </section>
+
+  <div class="split grid">
+    <section class="card">
+      <div class="row"><h2 class="m0">dev Case 진행 단계</h2><span class="sp"></span><span class="note">정적 · 동적 · AI · 소견 확정 · 보고서</span></div>
+      <table class="mt8">
+        <thead><tr><th>Case</th><th>계열</th><th>단계</th><th>소견 확정</th></tr></thead>
+        <tbody>
+          {% for row in dev_rows %}
+            <tr>
+              <td><a class="id" href="{{ url_for('web.workspace', case_display_id=row.case_id) }}">{{ row.case_id }}</a></td>
+              <td>{{ row.family or '—' }}</td>
+              <td><div class="steps" title="정적 · 동적 · AI · 소견 확정 · 보고서">{% for s in row.stages %}<span class="{{ s }}"></span>{% endfor %}</div></td>
+              <td>{{ row.confirmed }} / {{ row.findings_total }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="empty">dev로 배정된 샘플의 Case가 없습니다.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    <div class="grid">
+      <section class="card">
+        <h2>다음에 할 일</h2>
+        <ul class="feed">
+          {% for tag, text in todo %}<li><span class="pill p-draft">{{ tag }}</span><span>{{ text|ids }}</span></li>{% endfor %}
+        </ul>
+      </section>
+      <section class="card">
+        <h2>최근 활동</h2>
+        <ul class="feed">
+          {% for item in activity %}
+            <li><time>{{ item.when }}</time><span>{% for ref in item.refs %}{{ ref|ids }} {% endfor %}{{ item.text }}</span></li>
+          {% else %}
+            <li class="note">기록된 활동이 없습니다.</li>
+          {% endfor %}
+        </ul>
+      </section>
+    </div>
+  </div>
+
+  <h2>바로가기</h2>
+  <p class="actions">
+    <a class="button secondary" href="{{ url_for('web.samples') }}">샘플 분석</a>
+    <a class="button secondary" href="{{ url_for('web.rules') }}">탐지 룰</a>
+    <a class="button secondary" href="{{ url_for('web.validation') }}">검증</a>
+    <a class="button secondary" href="{{ url_for('web.outputs') }}">산출물</a>
+  </p>
+{% endblock %}

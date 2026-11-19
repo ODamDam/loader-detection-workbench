@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}샘플 분석 — 탐지 검증 워크벤치{% endblock %}
+{% block content %}
+  <h1>샘플 분석</h1>
+  <p class="lead">Case 하나가 샘플 하나의 분석 단위입니다. Case를 누르면 작업 공간으로 들어갑니다. 샘플 등록과 분할은 CLI(<code>workbench sample</code>)로 합니다.</p>
+
+  <section class="mb14 grid g6" aria-label="분석 지표">
+    <div class="card kpi"><div class="l">악성 Case</div><div class="v">{{ malicious|length }}</div><div class="s">eval 제외</div></div>
+    <div class="card kpi"><div class="l">정적 분석</div><div class="v">{{ malicious|selectattr('static_count')|list|length }}<small> / {{ malicious|length }}</small></div><div class="s">회수 파일 {{ malicious|sum(attribute='dropped') }}개 포함</div></div>
+    <div class="card kpi"><div class="l">동적 분석</div><div class="v">{{ malicious|selectattr('sysmon_count')|list|length }}<small> / {{ malicious|length }}</small></div><div class="s">VM 실행 기록 있음</div></div>
+    <div class="card kpi"><div class="l">AI 의견</div><div class="v">{{ malicious|selectattr('ai_count')|list|length }}<small> / {{ malicious|length }}</small></div><div class="s">분석이 1건 이상</div></div>
+    <div class="card kpi"><div class="l">소견 확정</div><div class="v">{{ dev|sum(attribute='confirmed') }}<small> / {{ dev|sum(attribute='findings_total') }}</small></div><div class="s">dev Case</div></div>
+    <div class="card kpi"><div class="l">정상 대조군</div><div class="v">{{ benign|length }}</div><div class="s">benign Case</div></div>
+  </section>
+
+  <section class="card">
+    <nav class="subtabs" aria-label="역할로 거르기">
+      {% for key, label in filters.items() %}
+        <a href="{{ url_for('web.samples', filter=key) }}"{% if key == selected %} class="on" aria-current="page"{% endif %}>{{ label }} {{ counts[key] }}</a>
+      {% endfor %}
+    </nav>
+    <table>
+      <thead><tr><th>Case</th><th>이름</th><th>샘플</th><th>계열</th><th>역할</th><th>정적</th><th>동적</th><th>회수 파일</th><th>AI</th><th>소견</th><th>보고서</th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td><a class="id" href="{{ url_for('web.workspace', case_display_id=row.case_id) }}">{{ row.case_id }}</a></td>
+            <td>{{ row.name }}</td>
+            <td>{% if row.sample_id %}<span class="mono">{{ row.sample_id }}</span>{% else %}—{% endif %}</td>
+            <td>{{ row.family or '—' }}</td>
+            <td><span class="pill {{ 'p-acc' if row.role == 'dev' else ('p-ok' if row.role == 'benign' else '') }}">{{ row.role_label }}</span></td>
+            {% if row.role == 'eval' %}
+              <td colspan="6" class="note">룰 동결 후 평가 런으로만 엽니다.</td>
+            {% else %}
+              <td>{% if row.static_count %}<span class="pill p-ok">{{ row.static_count }}</span>{% else %}—{% endif %}</td>
+              <td>{% if row.last_vm %}<span class="mono">{{ row.last_vm }}</span>{% elif row.sysmon_count %}<span class="pill p-ok">{{ row.sysmon_count }}</span>{% else %}—{% endif %}</td>
+              <td>{{ row.dropped or '—' }}</td>
+              <td>{{ row.ai_count or '—' }}</td>
+              <td>{% if row.findings_total %}{{ row.confirmed }} / {{ row.findings_total }}{% else %}—{% endif %}</td>
+              <td>{% if row.kind == 'malware' %}<span class="pill {{ 'p-ok' if row.report_ready else '' }}">{{ '가능' if row.report_ready else '대기' }}</span>{% else %}—{% endif %}</td>
+            {% endif %}
+          </tr>
+        {% else %}
+          <tr><td colspan="11" class="empty">이 조건의 Case가 없습니다.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if eval_samples and not eval_cases and selected in ('all', 'eval') %}
+      <div class="mt12 lock">eval 샘플 {{ eval_samples|length }}건({{ eval_samples|join(', ') }})은 아직 Case로 열지 않았습니다. 룰을 동결한 뒤 평가 런에서 엽니다.</div>
+    {% endif %}
+  </section>
+{% endblock %}

@@ -90,7 +90,7 @@ def test_case_list_empty_state_and_security_headers(tmp_path: Path) -> None:
     response = _get(client, "/cases")
 
     assert response.status_code == 200
-    assert "No Cases are registered" in response.text
+    assert "이 Project에 Case가 없습니다." in response.text
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["X-Frame-Options"] == "DENY"
     assert response.headers["Referrer-Policy"] == "no-referrer"
@@ -102,11 +102,11 @@ def test_empty_case_detail_shows_relationship_summary(client: FlaskClient) -> No
     response = _get(client, "/cases/CASE-0001")
 
     assert response.status_code == 200
-    assert "Case → Artifacts" in response.text
-    assert "0</strong><span>Artifacts" in response.text
-    assert "0</strong><span>Manual evidence" in response.text
-    assert "0</strong><span>Observations" in response.text
-    assert "No Artifacts are attached" in response.text
+    assert "Case → Artifact" in response.text
+    assert "0</strong><span>Artifact" in response.text
+    assert "0</strong><span>수동 증거" in response.text
+    assert "0</strong><span>관측" in response.text
+    assert "이 Case에 첨부된 Artifact가 없습니다." in response.text
 
 
 def test_case_detail_escapes_text_and_hides_internal_paths(root: Path) -> None:
@@ -249,8 +249,8 @@ def test_collection_and_manual_evidence_share_case_with_safe_timeline(
     timeline = _get(client, "/cases/CASE-0001/timeline")
     report = _get(client, "/cases/CASE-0001/report")
 
-    assert "Manual evidence" in detail.text
-    assert "Preview report" in detail.text
+    assert "수동 증거" in detail.text
+    assert "보고서 미리보기" in detail.text
     assert detail.text.count("Sysmon telemetry") == 2
     assert "Other artifact" in detail.text
     assert "Collection metadata" not in detail.text
@@ -264,7 +264,7 @@ def test_collection_and_manual_evidence_share_case_with_safe_timeline(
     assert "synthetic-demo/output.txt" not in timeline.text
     assert "11111111-2222-4333-8444-555555555555" not in timeline.text
     assert report.status_code == 200
-    assert "Case report preview" in report.text
+    assert "Case 보고서 미리보기" in report.text
     assert "workbench report build CASE-0001 reports/CASE-0001.md" in report.text
     assert "1 · Process Create" in report.text
     assert "11 · File Create" in report.text
@@ -284,9 +284,9 @@ def test_artifact_relationship_pages_separate_provenance_and_observations(
     assert _upload(client, filename="analyst-note.txt").status_code == 303
 
     detail = _get(client, "/cases/CASE-0001")
-    assert "4</strong><span>Artifacts" in detail.text
-    assert "1</strong><span>Manual evidence" in detail.text
-    assert "2</strong><span>Observations" in detail.text
+    assert "4</strong><span>Artifact" in detail.text
+    assert "1</strong><span>수동 증거" in detail.text
+    assert "2</strong><span>관측" in detail.text
 
     artifacts = ArtifactService(root).list_artifacts("CASE-0001")
     process = next(item for item in artifacts if item.kind.value == "sysmon")
@@ -310,7 +310,7 @@ def test_artifact_relationship_pages_separate_provenance_and_observations(
     assert "artifacts/sha256" not in observation_page.text
 
     assert provenance_page.status_code == 200
-    assert "Manual Evidence provenance" in provenance_page.text
+    assert "수동 증거 출처" in provenance_page.text
     assert "analyst-note.txt" in provenance_page.text
     assert "analyst" in provenance_page.text
     assert "sanitized fixture" in provenance_page.text

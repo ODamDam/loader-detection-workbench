@@ -17,6 +17,8 @@ from loader_detection_workbench.domain.errors import (
 )
 from loader_detection_workbench.evidence.domain import MANUAL_EVIDENCE_MAX_BYTES
 from loader_detection_workbench.project.service import ProjectService
+from loader_detection_workbench.web import pages  # noqa: F401  (registers routes)
+from loader_detection_workbench.web.detail import link_ids
 from loader_detection_workbench.web.routes import web
 
 _REQUEST_OVERHEAD_BYTES = 1024 * 1024
@@ -100,6 +102,7 @@ def create_app(
 
     csrf = CSRFProtect()
     app.register_blueprint(web)
+    app.add_template_filter(link_ids, "ids")
 
     @app.before_request
     def enforce_origin() -> ResponseReturnValue | None:

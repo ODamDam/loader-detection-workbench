@@ -1,19 +1,47 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Detection Workbench{% endblock %}</title>
+    <title>{% block title %}탐지 검증 워크벤치{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='workbench.css') }}">
+    <script src="{{ url_for('static', filename='workbench.js') }}" defer></script>
   </head>
   <body>
+    {% set endpoint = request.endpoint or '' %}
+    {% set nav_map = {
+      'web.dashboard': 'dash',
+      'web.samples': 'samples', 'web.cases': 'samples',
+      'web.case_detail': 'samples', 'web.workspace': 'samples', 'web.case_analysis': 'samples',
+      'web.timeline': 'samples', 'web.artifact_detail': 'samples', 'web.evidence_new': 'samples',
+      'web.report_preview': 'samples',
+      'web.rules': 'rules', 'web.detection_overview': 'rules', 'web.rule_detail': 'rules',
+      'web.validation': 'valid', 'web.validation_run': 'valid',
+      'web.outputs': 'out', 'web.environment': 'env'} %}
+    {% set nav = nav_map.get(endpoint, '') %}
     <header class="site-header">
-      <a href="{{ url_for('web.cases') }}">Local Detection Workbench</a>
-      <a class="nav" href="{{ url_for('web.cases') }}">Cases</a>
-      <a class="nav" href="{{ url_for('web.detection_overview') }}">Detection</a>
+      <a class="brand" href="{{ url_for('web.dashboard') }}">탐지 검증 워크벤치 <small>Local Detection Workbench</small></a>
+      <form class="search" method="get" action="{{ url_for('web.go') }}" role="search">
+        <input name="q" placeholder="ID로 이동: CASE-0001, ART-000063, FND-0001, RULE-0005" aria-label="ID로 이동" maxlength="40">
+      </form>
     </header>
-    <main>
-      {% block content %}{% endblock %}
-    </main>
+    <div class="layout">
+      <nav class="side" aria-label="주요 메뉴">
+        <p class="grp">개요</p>
+        <a href="{{ url_for('web.dashboard') }}"{% if nav == 'dash' %} class="on" aria-current="page"{% endif %}>대시보드</a>
+        <p class="grp">분석</p>
+        <a href="{{ url_for('web.samples') }}"{% if nav == 'samples' %} class="on" aria-current="page"{% endif %}>샘플 분석</a>
+        <p class="grp">탐지와 검증</p>
+        <a href="{{ url_for('web.rules') }}"{% if nav == 'rules' %} class="on" aria-current="page"{% endif %}>탐지 룰</a>
+        <a href="{{ url_for('web.validation') }}"{% if nav == 'valid' %} class="on" aria-current="page"{% endif %}>검증</a>
+        <p class="grp">결과</p>
+        <a href="{{ url_for('web.outputs') }}"{% if nav == 'out' %} class="on" aria-current="page"{% endif %}>산출물</a>
+        <p class="grp">설정</p>
+        <a href="{{ url_for('web.environment') }}"{% if nav == 'env' %} class="on" aria-current="page"{% endif %}>환경 구성</a>
+      </nav>
+      <main>
+        {% block content %}{% endblock %}
+      </main>
+    </div>
   </body>
 </html>

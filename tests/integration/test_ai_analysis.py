@@ -408,7 +408,7 @@ def test_report_and_ui_mark_ai_output_as_inference(
     other = client.get(
         "/cases/CASE-0002/analysis", base_url="http://127.0.0.1:8080"
     ).text
-    assert "No AI-assisted analysis is recorded for this Case." in other
+    assert "이 Case의 AI 보조 분석이 없습니다." in other
 
 
 def test_core_pipeline_is_unchanged_without_ai_records(root: Path) -> None:

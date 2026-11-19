@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}산출물 — 탐지 검증 워크벤치{% endblock %}
+{% block content %}
+  <h1>산출물</h1>
+  <p class="lead">모두 이 PC 안에서만 만듭니다. 외부 공개는 하지 않으며, 공개하려면 별도 승인이 필요합니다.</p>
+
+  <section class="mb14 grid g3">
+    <div class="card kpi"><div class="l">Case 보고서</div><div class="v">{{ rows|selectattr('report_ready')|list|length }}<small> / {{ rows|length }}</small></div><div class="s">확정 소견이 있어야 본문이 생깁니다</div></div>
+    <div class="card kpi"><div class="l">동결 룰셋</div><div class="v">{{ frozen|length }}</div><div class="s">YARA·Sigma 동결 버전</div></div>
+    <div class="card kpi"><div class="l">공개 상태</div><div class="v-sm v">미공개</div><div class="s">Publication Bundle 없음</div></div>
+  </section>
+
+  <section class="mb14 card">
+    <h2>Case 보고서</h2>
+    <table>
+      <thead><tr><th>Case</th><th>이름</th><th>확정 소견</th><th>상태</th><th></th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td><a class="id" href="{{ url_for('web.workspace', case_display_id=row.case_id, tab='report') }}">{{ row.case_id }}</a></td>
+            <td>{{ row.name }}</td>
+            <td>{{ row.confirmed }} / {{ row.findings_total }}</td>
+            <td><span class="pill {{ 'p-ok' if row.report_ready else '' }}">{{ '본문 있음' if row.report_ready else '확정 대기' }}</span></td>
+            <td class="actions"><a class="button sm secondary" href="{{ url_for('web.workspace_report', case_display_id=row.case_id, fmt='html') }}">HTML</a><a class="button sm secondary" href="{{ url_for('web.workspace_report', case_display_id=row.case_id, fmt='md') }}">Markdown</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>그 밖의 산출물</h2>
+    <table>
+      <thead><tr><th>산출물</th><th>내용</th><th>만드는 방법</th></tr></thead>
+      <tbody>
+        <tr><td>동결 룰셋</td><td>룰 {{ frozen|length }}개의 동결 버전 파일과 버전·SHA-256 목록</td><td><a class="button sm" href="{{ url_for('web.frozen_rules_zip') }}">zip 내려받기</a></td></tr>
+        <tr><td>보고서 사이트</td><td>모든 Case를 비식별화한 정적 HTML 사이트(새 폴더에만 생성)</td><td><code>workbench report site 폴더</code></td></tr>
+        <tr><td>AI 의견 비교</td><td>Provider별 공통·개별 의견 ({{ ai_cases|length }}개 Case)</td><td>{% for cid in ai_cases %}<a class="id" href="{{ url_for('web.workspace', case_display_id=cid, tab='ai') }}">{{ cid }}</a> {% endfor %}</td></tr>
+        <tr><td>eval 평가 결과</td><td>Unseen 벤치마크 지표</td><td class="note">평가 런 후</td></tr>
+      </tbody>
+    </table>
+  </section>
+{% endblock %}

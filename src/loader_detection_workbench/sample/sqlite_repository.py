@@ -285,3 +285,32 @@ def read_sample_hashes(path: Path) -> dict[str, str]:
     finally:
         connection.close()
     return {str(sha256).lower(): str(sample_id) for sha256, sample_id in rows}
+
+
+def read_sample_registry(path: Path) -> list[dict[str, str | None]]:
+    """Sample ID, SHA-256, dataset role, status and reported family, read-only.
+
+    For overview pages; an absent registry gives ``[]``.
+    """
+    if not path.is_file():
+        return []
+    connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        rows = connection.execute(
+            "SELECT sample_id, sha256, assigned_dataset_role, manifest_status, "
+            "reported_family FROM candidate_samples ORDER BY sample_id"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        connection.close()
+    return [
+        {
+            "sample_id": str(row[0]),
+            "sha256": str(row[1]).lower(),
+            "role": None if row[2] is None else str(row[2]),
+            "status": None if row[3] is None else str(row[3]),
+            "family": None if row[4] is None else str(row[4]),
+        }
+        for row in rows
+    ]

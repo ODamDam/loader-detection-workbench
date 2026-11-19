@@ -32,7 +32,15 @@ validated before Waitress binds to `127.0.0.1`. There is no `--host` option.
 
 | Method | Path | Contract |
 |---|---|---|
-| GET | `/` | Redirect to `/cases` |
+| GET | `/` | Dashboard: progress counts, dev Case stages, next steps, recent activity (read-only) |
+| GET | `/samples` | Cases by dataset role with per-stage status; eval Cases are listed, never opened |
+| GET | `/rules` | Rules with frozen state, ATT&CK tags and detected/false-positive Case counts |
+| GET | `/validation` | Benchmarks and a rule × Case outcome table of the latest run per rule |
+| GET | `/outputs` | Report readiness and other outputs |
+| GET | `/outputs/frozen-rules.zip` | Frozen rule versions and a manifest only (no sample or evidence bytes) |
+| GET | `/environment` | VM names, safety lock, collection settings, provider key presence (never values) |
+| GET | `/go?q=ID` | Redirect to the page of one display ID, or 404 |
+| GET | `/cases/<case-id>/detail?ref=ID` | HTML fragment for the workspace side panel; Sysmon fields as file names only |
 | GET | `/health` | Return only `{"status":"ready"}` |
 | GET | `/cases` | List Cases or show an empty state |
 | GET | `/cases/<case-id>` | Case and path-safe Artifact/provenance detail |
@@ -134,8 +142,11 @@ The server accepts only the configured loopback Host and exact Origin for state
 changing requests. All POST requests require a CSRF token. Jinja autoescaping is
 kept enabled. Responses deny framing, MIME sniffing, referrer forwarding,
 cross-origin resources, objects, external form actions, and caching. Debug mode,
-the reloader, proxy headers, download routes, and raw evidence rendering are not
-enabled.
+the reloader, proxy headers and raw evidence rendering are not enabled. The only
+downloads are generated reports and the frozen ruleset; no route returns sample or
+evidence bytes. Pages load one same-origin script (`static/workbench.js`, the
+workspace side panel and search shortcut); inline script and inline style stay
+blocked by the Content-Security-Policy, and every link works without JavaScript.
 
 The UI has no authentication. Loopback binding is therefore a security boundary,
 not a convenience default. Operators must not expose it with port forwarding,

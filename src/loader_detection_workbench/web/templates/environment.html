@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}환경 구성 — 탐지 검증 워크벤치{% endblock %}
+{% block content %}
+  <h1>환경 구성</h1>
+  <p class="lead">읽기 전용입니다. 바꾸려면 설정 파일이나 CLI를 씁니다. 이 화면은 VM 명령을 실행하지 않고, 키·비밀번호 값은 표시하지 않습니다.</p>
+  <div class="grid g2">
+    <section class="card">
+      <h2>분석 VM</h2>
+      <dl>
+        <dt>VM</dt><dd class="mono">{{ settings.vm_name }}</dd>
+        <dt>클린 스냅숏</dt><dd class="mono">{{ settings.snapshot }}</dd>
+        <dt>안전 잠금</dt><dd>{% if locked %}<span class="pill p-bad">잠김 — VM을 확인한 뒤 vm unlock</span>{% else %}<span class="pill p-ok">없음</span>{% endif %}</dd>
+        <dt>게스트 계정</dt><dd>{% if credentials %}<span class="pill p-ok">환경 변수 설정됨</span>{% else %}<span class="pill p-warn">이 UI 프로세스에 없음</span>{% endif %}</dd>
+        <dt>최근 실행</dt><dd>{% if last_run %}<span class="mono">{{ last_run.display_id }}</span> · {{ last_run.status.value }}{% else %}—{% endif %}</dd>
+      </dl>
+      <p class="note">네트워크 격리, 공유 폴더, 클립보드·드래그는 실행할 때마다 <code>vm preflight</code> 단계에서 확인합니다.</p>
+    </section>
+    <section class="card">
+      <h2>수집</h2>
+      <dl>
+        <dt>실행 시간</dt><dd>명령마다 지정 · 게스트 여유 {{ overhead }}초</dd>
+        <dt>안정화 대기</dt><dd>{{ settings.settle_seconds }}초</dd>
+        <dt>Sysmon</dt><dd>스냅숏에 설치된 설정을 그대로 사용</dd>
+        <dt>드롭 파일 회수</dt><dd><code>--collect-dropped</code> · 최대 32개 · 64 MiB · 게스트에서 봉인</dd>
+      </dl>
+      <p class="note">현재 Sysmon 설정은 이미지 로드(Event 7)를 필터해, DLL 로드는 기록되지 않을 수 있습니다.</p>
+    </section>
+    <section class="card">
+      <h2>AI Provider</h2>
+      <table>
+        <thead><tr><th>Provider</th><th>기본 모델</th><th>키</th></tr></thead>
+        <tbody>
+          {% for name, model, has_key in providers %}
+            <tr><td>{{ name }}</td><td class="mono">{{ model }}</td><td><span class="pill {{ 'p-ok' if has_key else '' }}">{{ '설정됨' if has_key else '없음' }}</span></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="note">외부 호출은 설정 파일의 <code>[ai] allow_network</code>와 명령의 <code>--allow-network</code>가 모두 있어야 합니다. 보내는 범위는 구조 요약과 의견 번역뿐입니다.</p>
+    </section>
+    <section class="card">
+      <h2>저장소</h2>
+      <dl>
+        <dt>샘플 저장</dt><dd>봉인(LDWSEAL1), 원본은 디스크에 쓰지 않음</dd>
+        <dt>무결성 검사</dt><dd><code>workbench project validate</code></dd>
+      </dl>
+    </section>
+  </div>
+{% endblock %}

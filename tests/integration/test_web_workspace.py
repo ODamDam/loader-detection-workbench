@@ -47,14 +47,22 @@ def _post(client: FlaskClient, path: str, data: dict[str, str]):  # type: ignore
 
 
 def test_every_tab_renders_escaped(client: FlaskClient) -> None:
-    for tab in ("evidence", "hypotheses", "ai", "findings", "report"):
+    for tab in (
+        "overview",
+        "evidence",
+        "process",
+        "hypotheses",
+        "ai",
+        "findings",
+        "report",
+    ):
         response = _get(client, f"{WS}?tab={tab}")
         assert response.status_code == 200, tab
-        assert "Case workspace" in response.text
+        assert "CASE-0001 작업 공간" in response.text
         assert UNTRUSTED not in response.text
     assert _get(client, f"{WS}?tab=unknown").status_code == 200  # falls back
     assert _get(client, f"{WS}?tab=ai&stage=legacy").status_code == 422
-    assert _get(client, "/cases/CASE-0001").text.count("Case workspace") == 1
+    assert _get(client, "/cases/CASE-0001").text.count("Case 작업 공간") == 1
 
 
 def test_finding_lifecycle_through_forms(client: FlaskClient, root: Path) -> None:
@@ -82,7 +90,7 @@ def test_finding_lifecycle_through_forms(client: FlaskClient, root: Path) -> Non
     again = service.show(draft.display_id)
     assert again.state is FindingState.DRAFT and "staged" in again.content.text
     page = _get(client, WS + "?tab=findings").text
-    assert draft.display_id in page and "History" in page
+    assert draft.display_id in page and "변경 기록" in page
 
     assert _post(client, f"{path}/withdraw", {"note": ""}).status_code == 400
     assert _post(client, f"{path}/withdraw", {"note": "duplicate"}).status_code == 303
@@ -106,7 +114,7 @@ def test_ai_tab_shows_providers_and_adopts(client: FlaskClient, root: Path) -> N
     analysis = AiAnalysisService(root).analyze("CASE-0001", stage="collection")
     page = _get(client, WS + "?tab=ai&stage=collection").text
     assert "offline-template" in page and "hypothesis_candidate" in page
-    assert "Adopt as draft" in page
+    assert "초안으로 채택" in page
     candidate = next(
         s for s in analysis.suggestions if s.kind.value == "hypothesis_candidate"
     )
@@ -118,7 +126,7 @@ def test_ai_tab_shows_providers_and_adopts(client: FlaskClient, root: Path) -> N
         _post(client, url.replace("CASE-0001", "CASE-0002", 1), {}).status_code == 404
     )
     synthesis = _get(client, WS + "?tab=ai&stage=synthesis").text
-    assert "No synthesis analysis" in synthesis
+    assert "이 단계의 AI 분석이 없습니다." in synthesis
 
 
 def test_report_tab_serves_confirmed_report(client: FlaskClient, root: Path) -> None:
