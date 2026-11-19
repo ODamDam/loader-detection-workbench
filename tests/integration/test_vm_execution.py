@@ -122,6 +122,7 @@ class FakeVBoxManage:
     guest_exit: int = 0
     tamper: Callable[[dict[str, bytes], str], None] | None = None
     baseline: int = 500
+    progress: bytes | None = None
 
     def _info(self) -> str:
         lines = [
@@ -215,6 +216,8 @@ class FakeVBoxManage:
         values = {args[i][1:]: args[i + 1] for i in range(4, len(args) - 1, 2)}
         work = values["WorkDirectory"]
         assert f"{work}\\Invoke-WorkbenchGuestRun.ps1" in self.guest_files
+        if self.progress is not None:
+            self.guest_files[f"{work}\\progress.log"] = self.progress
         if self.guest_exit:
             return self.guest_exit
         manifest: dict[str, object] = {
@@ -904,3 +907,69 @@ def test_guest_exit_code_is_read_from_the_fixed_output_line() -> None:
     command = run_command(Path("VBoxManage"), "VM", "u", "pw", "p.exe", ["-a"], 30)
     assert "--wait-stdout" in command
     assert "--no-wait-stdout" not in command
+
+
+def test_failed_guest_run_records_the_last_guest_phase(root: Path) -> None:
+    fake = FakeVBoxManage(
+        guest_exit=16,
+        progress=(
+            b"01:02:03 arguments-checked\r\n01:02:04 target-started\r\n"
+            b"C:\\Users\\secret\\path leaked\r\n01:05:09 export-started\r\n"
+            b"01:05:40 failed 16\r\n"
+        ),
+    )
+    with pytest.raises(DomainError) as error:
+        _service(root, fake).run(SCENARIO, approved=True)
+    message = str(error.value)
+    assert "guest export failed (exit status 16)" in message
+    assert "last guest phase failed 16 at 01:05:40 UTC (4 phases)" in message
+    assert "secret" not in message
+    run = _last_run(root)
+    detail = next(s.detail for s in run.steps if s.step.value == "execute")
+    assert detail is not None and "last guest phase failed 16" in detail
+    assert _steps(run)[-1] == ("restore_after", "ok")
+
+
+def test_missing_guest_progress_does_not_hide_the_failure(root: Path) -> None:
+    fake = FakeVBoxManage(guest_exit=14)
+    with pytest.raises(DomainError) as error:
+        _service(root, fake).run(SCENARIO, approved=True)
+    assert error.value.code is DomainErrorCode.GUEST_EXECUTION_FAILED
+    assert str(error.value).endswith("; guest progress unavailable")
+
+
+def test_guestcontrol_timeout_keeps_its_code_and_adds_progress(root: Path) -> None:
+    fake = FakeVBoxManage(progress=b"01:02:04 target-started\r\n")
+    original = fake.run
+
+    def stalled(arguments: Sequence[str], timeout: float) -> CommandResult:
+        argv = tuple(arguments)
+        if argv[1] == "guestcontrol" and argv[3] == "run":
+            fake.commands.append(argv)
+            work = argv[argv.index("-WorkDirectory") + 1]
+            fake.guest_files[f"{work}\\progress.log"] = fake.progress or b""
+            raise DomainError(
+                DomainErrorCode.HYPERVISOR_COMMAND_FAILED,
+                "VBoxManage command timed out",
+            )
+        return original(arguments, timeout)
+
+    fake.run = stalled  # type: ignore[method-assign]
+    with pytest.raises(DomainError) as error:
+        _service(root, fake).run(SCENARIO, approved=True)
+    assert error.value.code is DomainErrorCode.HYPERVISOR_COMMAND_FAILED
+    assert str(error.value) == (
+        "VBoxManage command timed out; "
+        "last guest phase target-started at 01:02:04 UTC (1 phases)"
+    )
+
+
+def test_progress_summary_ignores_anything_but_fixed_lines() -> None:
+    from loader_detection_workbench.execution.service import summarize_progress
+
+    assert summarize_progress(b"") == "guest progress empty"
+    assert summarize_progress(b"hi\r\n12:00:00 Bad-Phase\r\n") == "guest progress empty"
+    assert summarize_progress(b"x" * 5000) == "guest progress unreadable (too large)"
+    assert summarize_progress(b"09:00:00 export-done 3565\n") == (
+        "last guest phase export-done 3565 at 09:00:00 UTC (1 phases)"
+    )

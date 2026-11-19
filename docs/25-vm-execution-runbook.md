@@ -93,6 +93,25 @@ VBoxManage 7.2는 게스트 프로세스의 0이 아닌 종료 코드를 모두 
 Workbench는 그 줄에서 위 코드를 읽는다. VBoxManage 자체가 실패하면 오류 메시지에
 VirtualBox 상태 이름(예: `VBOX_E_IPRT_ERROR`)만 붙고 경로나 메시지 본문은 남기지 않는다.
 
+### 게스트 진행 기록(지연·실패 진단)
+
+게스트 스크립트는 단계마다 작업 폴더의 `progress.log`에 `HH:MM:SS 단계 [숫자]` 한 줄을
+덧붙인다(UTC). 단계 이름은 고정이다: `arguments-checked`, `sysmon-checked`, `baseline-read`,
+`target-started`, `window-elapsed`, `tree-stopped`, `export-started`, `export-done N`(이벤트 수),
+`failed N`(종료 코드). 경로·명령줄·이벤트 내용은 쓰지 않는다.
+
+`execute` 단계가 실패하면(게스트 종료 코드 또는 guestcontrol 시간 초과) 호스트가 이 파일만
+회수해 마지막 단계를 오류와 `vm show`의 `execute` 기록에 붙인다. 예:
+
+```text
+09	execute	failed	HYPERVISOR_COMMAND_FAILED: VBoxManage command timed out; last guest phase export-started at 01:05:09 UTC (7 phases)
+```
+
+정해진 모양의 줄만 읽고 나머지는 버리며, 4 KB를 넘거나 회수가 안 되면 `guest progress
+unreadable (too large)` 또는 `guest progress unavailable`만 붙는다. 성공한 런에서는 회수하지
+않는다. 마지막 단계가 `export-started`면 내보내기, `target-started`나 `window-elapsed`면 실행
+창 또는 프로세스 정리에서 멈춘 것이다.
+
 ## 6. 검증 상태
 
 - 2026-11-12: 모의 VBoxManage 기반 pytest와 PowerShell mock(`tests/powershell/Test-WorkbenchGuestRun.ps1`)만

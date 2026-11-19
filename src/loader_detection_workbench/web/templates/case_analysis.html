@@ -98,7 +98,7 @@
   <h2>Process and file relationships</h2>
   {% if not process_graph.is_empty %}
     {{ render_graph(process_graph, 'Process tree and written files from Sysmon records') }}
-    <p class="hint">Built from {{ relations.record_total }} Sysmon record(s). Only file names are shown: directories, command lines and Process GUIDs are omitted. Dashed processes were referenced as a parent or actor but their creation was not captured.{% if relations.truncated %} Showing {{ relations.processes|length }} of {{ relations.process_total }} processes.{% endif %}</p>
+    <p class="hint">Built from {{ relations.record_total }} Sysmon record(s). Only file names are shown: directories, command lines and Process GUIDs are omitted. Dashed processes were referenced as a parent or actor but their creation was not captured. "Same file as" means the image SHA-256 logged by Sysmon equals a sample Artifact of this Case (ART-…) or a registered Project sample (SMP-…); files that were written but never started cannot be compared.{% if relations.truncated %} Showing {{ relations.processes|length }} of {{ relations.process_total }} processes.{% endif %}</p>
   {% else %}
     <p class="empty">No process relationship is available from the attached Sysmon Artifacts.</p>
   {% endif %}

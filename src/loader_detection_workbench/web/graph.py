@@ -226,6 +226,8 @@ def process_graph(relations: ProcessRelations) -> Graph:
         sublabel = pid if not activity else f"{pid} · {activity}"
         if not process.captured:
             sublabel = f"{pid} · not captured"
+        if process.same_as is not None:
+            sublabel = f"{sublabel} · same file as {process.same_as}"
         columns.setdefault(depth, []).append(
             NodeSpec(
                 key,

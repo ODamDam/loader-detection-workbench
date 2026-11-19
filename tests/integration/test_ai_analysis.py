@@ -320,7 +320,7 @@ def test_cli_flow(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert "offline-template\ttemplate-v1\tenabled\n" in capsys.readouterr().out
     assert main(["ai", "preview", "CASE-0001"]) == 0
     output = capsys.readouterr().out
-    assert "input_scope: structural" in output and '"digest_version": 1' in output
+    assert "input_scope: structural" in output and '"digest_version": 2' in output
     assert main(["ai", "list"]) == 0 and capsys.readouterr().out == ""
 
     assert main(["ai", "analyze", "CASE-0001"]) == 0

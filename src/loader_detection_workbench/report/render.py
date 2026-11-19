@@ -17,12 +17,14 @@ from loader_detection_workbench.ai.compare import compare_analyses, latest_per_p
 from loader_detection_workbench.case.timeline import CaseTimeline
 from loader_detection_workbench.detection.domain import (
     DetectionRule,
+    RuleFormat,
     RuleVersion,
     RuleVersionStatus,
     RunKind,
     ValidationResult,
     ValidationRun,
 )
+from loader_detection_workbench.detection.sigma_engine import attack_tags
 from loader_detection_workbench.domain.events import ProcessCreateEvent
 from loader_detection_workbench.domain.time import format_utc
 from loader_detection_workbench.execution.domain import ExecutionRun
@@ -487,6 +489,29 @@ def _hypotheses(analysis: CaseAnalysis) -> list[Block]:
     return blocks
 
 
+def attack_summary(rule: DetectionRule, version: RuleVersion) -> str | None:
+    """ATT&CK tags of one Sigma rule version; ``None`` for YARA rules."""
+    if rule.format is not RuleFormat.SIGMA:
+        return None
+    tags = attack_tags(version.content)
+    if tags.is_empty:
+        return "none tagged"
+    parts = []
+    if tags.tactics:
+        parts.append("tactics " + ", ".join(tags.tactics))
+    if tags.techniques:
+        parts.append("techniques " + ", ".join(tags.techniques))
+    return "; ".join(parts)
+
+
+def _attack_item(rule: DetectionRule, version: RuleVersion) -> tuple[Any, ...]:
+    summary = attack_summary(rule, version)
+    if summary is None:
+        return ()
+    # Built only from the fixed tactic list and the technique-ID pattern.
+    return (item(f"ATT&CK (v{version.version})", summary, is_trusted=True),)
+
+
 def _rules(analysis: CaseAnalysis) -> list[Block]:
     blocks: list[Block] = [Heading(2, trusted("Detection Rules"))]
     for rule in analysis.rules:
@@ -500,6 +525,7 @@ def _rules(analysis: CaseAnalysis) -> list[Block]:
                         item(
                             "Created At", format_utc(rule.created_at), is_trusted=True
                         ),
+                        *_attack_item(rule, shown),
                         item(
                             "Linked Hypotheses",
                             ", ".join(

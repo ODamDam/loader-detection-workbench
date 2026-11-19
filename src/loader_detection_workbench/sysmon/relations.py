@@ -6,13 +6,14 @@ files it wrote. Every other Event ID is counted per process as activity.
 
 Only the last path element of an image or target file is kept (``image_name``,
 ``name``); directories, command lines and ProcessGuids never leave this module
-except as opaque node keys.
+except as opaque node keys. The image SHA-256 is kept only to name an
+identical recorded file (``same_as``, a display ID); it is not displayed.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -64,6 +65,10 @@ class ProcessNode:
     file_total: int = 0
     # Started by the Workbench guest runner itself (not by the sample).
     workbench: bool = False
+    # SHA-256 of the image from the Process Create ``Hashes`` field, if logged.
+    sha256: str | None = None
+    # Display ID of a Project sample or Case Artifact with the same SHA-256.
+    same_as: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +139,31 @@ def prioritized_processes(processes: Sequence[ProcessNode]) -> list[ProcessNode]
     )
 
 
+_SHA256 = re.compile(r"(?:^|,)SHA256=([0-9A-Fa-f]{64})(?:,|$)", re.ASCII)
+
+
+def image_sha256(hashes: str | None) -> str | None:
+    """The SHA-256 entry of a Sysmon ``Hashes`` value, lowercase."""
+    if not hashes:
+        return None
+    match = _SHA256.search(hashes.strip())
+    return None if match is None else match.group(1).lower()
+
+
+def mark_known_files(
+    processes: Sequence[ProcessNode], known: Mapping[str, str]
+) -> None:
+    """Name the recorded file each process image is identical to.
+
+    ``known`` maps a lowercase SHA-256 to a display ID (a Case Artifact or a
+    Project sample). Only the image hash logged by Sysmon is compared, so a
+    written file that was never started stays unknown.
+    """
+    for process in processes:
+        if process.sha256 is not None:
+            process.same_as = known.get(process.sha256)
+
+
 # The guest runner (ADR-024) is a PowerShell process running this script.
 _GUEST_RUNNER = "invoke-workbenchguestrun.ps1"
 
@@ -159,7 +189,9 @@ def mark_workbench_processes(nodes: Sequence[ProcessNode]) -> None:
                 changed = True
 
 
-def build_process_relations(records: list[SysmonRecord]) -> ProcessRelations:
+def build_process_relations(
+    records: list[SysmonRecord], known_files: Mapping[str, str] | None = None
+) -> ProcessRelations:
     nodes: dict[str, ProcessNode] = {}
 
     def placeholder(guid: str, image: str | None, pid: str | None) -> ProcessNode:
@@ -193,6 +225,7 @@ def build_process_relations(records: list[SysmonRecord]) -> ProcessRelations:
                     file_total=0 if node is None else node.file_total,
                 )
                 nodes[guid] = node
+            node.sha256 = image_sha256(record.fields.get("Hashes")) or node.sha256
             command = (record.fields.get("CommandLine") or "").lower()
             if _GUEST_RUNNER in command:
                 node.workbench = True
@@ -226,6 +259,8 @@ def build_process_relations(records: list[SysmonRecord]) -> ProcessRelations:
                 label = ACTIVITY_LABELS.get(record.event_id, f"event {record.event_id}")
                 node.activity[label] = node.activity.get(label, 0) + 1
     mark_workbench_processes(list(nodes.values()))
+    if known_files:
+        mark_known_files(list(nodes.values()), known_files)
     # Keep the sample's own tree inside the cap (real runs are mostly noise).
     processes = tuple(prioritized_processes(list(nodes.values())))
     return ProcessRelations(

@@ -1,7 +1,8 @@
 """Bounded, structural evidence digest: the only input a provider receives.
 
 Scope ``structural`` (ADR-026) is an allowlist. It carries counts, categories,
-API and file *names*, and display IDs. It never carries sample bytes, raw
+API and file *names*, and display IDs (including which recorded sample a
+process image is identical to, by display ID). It never carries sample bytes, raw
 Sysmon XML, extracted strings, indicator values, command lines, directories,
 hashes, ProcessGuids, host or user names, or analyst free text.
 
@@ -23,7 +24,8 @@ from loader_detection_workbench.sysmon.relations import (
     prioritized_processes,
 )
 
-DIGEST_VERSION = 1
+# 2 adds ``same_file_as``: the display ID a process image is identical to.
+DIGEST_VERSION = 2
 DIGEST_SCOPE = "structural"
 # Synthesis (ADR-031) adds the analyst's confirmed findings to the same digest.
 SYNTHESIS_SCOPE = "structural+findings"
@@ -36,6 +38,7 @@ MAX_PROCESSES = 40
 MAX_FLAGS = 32
 _NAME = re.compile(r"[A-Za-z0-9_.@?$+\- ]{1,64}", re.ASCII)
 _PLACEHOLDER = "(non-standard name)"
+_DISPLAY_ID = re.compile(r"(?:ART|SMP)-[0-9]{6}", re.ASCII)
 # Analyzer leads look like ``notable_imports:LoadLibraryA,VirtualAlloc``.
 _LEAD = re.compile(r"[A-Za-z0-9_.:,\-]{1,160}", re.ASCII)
 
@@ -167,6 +170,13 @@ def build_digest(
                     None if process.source is None else process.source.partition("#")[0]
                 ),
                 "activity": dict(sorted(process.activity.items())),
+                # A display ID, never the hash itself.
+                "same_file_as": (
+                    process.same_as
+                    if process.same_as is not None
+                    and _DISPLAY_ID.fullmatch(process.same_as) is not None
+                    else None
+                ),
                 "files_written": process.file_total,
                 "file_extensions": sorted(
                     {ext for f in process.files if (ext := _extension(f.name))}

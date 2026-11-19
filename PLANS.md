@@ -39,13 +39,24 @@ Status: `in_progress` — 1단계(확정 사항 + 확정 기반 보고서) 완�
   (PureCrypter), Sigma RULE-0003 v1, RULE-0004 v1, RULE-0005 v1, RULE-0006 v2(태그를
   `attack.defense_evasion`으로 고침, 검증 결과 v1과 같음), RULE-0007 v1. 정량 목표 현황: YARA
   동결 2/6, Sigma 동결 5/6.
-- dev 6건 확정 사항 초안 FND-0001~0032(모두 draft, 분석가 확정 대기)와 AI collection 의견:
+- dev 6건 확정 사항 초안 FND-0001~0033(모두 draft, 분석가 확정 대기)와 AI collection 의견:
   DeepSeek 5/5, Gemini 5/5(3건은 인용 부족으로 거절 후 1회 재호출로 성공), OpenAI 0/5
   (HTTP 429, 사용자 계정 확인 필요). AI 의견에서 빠진 점 3개를 초안에 반영(FND-0010
   위장 이름, FND-0015 IPv4 문자열, FND-0025 덤프 미수집).
 - AI 입력 품질 수정: 게스트 실행기 PowerShell과 그 자식을 `workbench` 프로세스로 표시하고
   요약에서 제외(개수만 기록). `wevtutil`은 확인해 보니 Defender가 띄운 정상 동작이었다.
-- 남은 것: 확정(사용자) → 보고서·synthesis, 게스트 지연 진단, HijackLoader YARA, eval 평가.
+- 2026-11-19 진행:
+  - 추가 dev 3건(미배정 SMP-000004·011·015 → CASE-0014~0016) VM 실행 성공. BMK-0003(추가 dev 3 +
+    정상 VM 5)에서 RULE-0005가 dev 밖 HijackLoader 2/2 탐지, Sigma 오탐 모두 0/5.
+  - RULE-0008(Sigma, Inno `is-*.tmp` 단계가 추출 exe 실행) 사용자 검토 후 v1 동결. Sigma 6/6.
+  - 확정 사항 초안 검토 반영(사용자 결정): 해시 대조로 CASE-0001은 자기 복사 확인, CASE-0002의
+    `synchost.exe`는 SMP-000004와 같은 다른 Amadey 빌드, CASE-0003은 미실행이라 확인 불가로
+    표현 낮춤. 복호화는 "추정", DLL 로드는 "로드되도록 배치"(Event 7 필터됨). 모두 draft.
+  - 구현: 프로세스 이미지 해시로 같은 파일 표시(digest v2 `same_file_as`, 관계 그래프), 게스트
+    진행 기록(`progress.log`, 실패 시 마지막 단계를 `execute` 기록에 붙임), 보고서 룰 항목에
+    Sigma ATT&CK 전술·기법 표시.
+- 남은 것: 확정(사용자) → 보고서·synthesis, HijackLoader YARA 방향, eval 평가. 게스트 지연은
+  다음 실패 때 진행 기록으로 원인 확인.
 - 실제 샘플: dev 6건 Case 등록·정적 분석·YARA 초안 2개(Amadey, PureCrypter) 완료.
   - VM: 게스트 비밀번호 만료(11/17 19:04)로 로그인 거부 → 시계를 되돌려 부팅하고 사용자가
     "만료 없음"으로 고친 뒤 `SYSMON-V2-CLEAN` 재생성(이전은 `SYSMON-V2-CLEAN-pwexpired`).

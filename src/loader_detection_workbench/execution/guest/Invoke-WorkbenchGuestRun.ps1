@@ -234,14 +234,30 @@ function Export-WorkbenchEvents {
     return $count
 }
 
+function Write-WorkbenchPhase {
+    # Progress for failure diagnosis (fetched by the host only when a run fails):
+    # a UTC time, a fixed phase name and at most a count. Never paths, command
+    # lines or event data. Writing it must never fail the run.
+    param([string]$Work, [string]$Phase, [long]$Number = -1)
+    try {
+        $line = [DateTime]::UtcNow.ToString('HH:mm:ss') + ' ' + $Phase
+        if ($Number -ge 0) { $line = $line + ' ' + $Number }
+        $encoding = New-Object System.Text.UTF8Encoding($false)
+        [IO.File]::AppendAllText((Join-Path $Work 'progress.log'), $line + "`r`n", $encoding)
+    } catch { }
+}
+
 function Invoke-WorkbenchGuestRun {
     param([string]$Work, [string]$Run, [string]$RunMode, [string]$File, [string]$Sha, [string]$Name, [int]$Timeout, [int]$Settle)
     $ErrorActionPreference = 'Stop'
     Assert-WorkbenchArguments -Work $Work -Run $Run -RunMode $RunMode -File $File -Sha $Sha -Name $Name -Timeout $Timeout -Settle $Settle
+    Write-WorkbenchPhase $Work 'arguments-checked'
     $out = Join-Path $Work 'out'
     if (Test-Path -LiteralPath $out) { throw 'OUTPUT_EXISTS: output directory exists' }
     Assert-WorkbenchSysmon
+    Write-WorkbenchPhase $Work 'sysmon-checked'
     $baseline = Get-WorkbenchBaseline
+    Write-WorkbenchPhase $Work 'baseline-read'
     $manifest = [ordered]@{
         collector = 'workbench-guest-run'; version = 1; run_id = $Run; mode = $RunMode
         scenario = $null; target_sha256 = $null; baseline_record_id = $baseline
@@ -250,23 +266,28 @@ function Invoke-WorkbenchGuestRun {
     if ($RunMode -eq 'Sample') { $manifest.target_sha256 = $Sha } else { $manifest.scenario = $Name }
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $process = Start-WorkbenchTarget -RunMode $RunMode -Work $Work -File $File -Sha $Sha -Name $Name
+    Write-WorkbenchPhase $Work 'target-started'
     try {
         $exited = $process.WaitForExit($Timeout * 1000)
         $manifest.process_outcome = if ($exited) { 'exited' } else { 'timeout_killed' }
         # Keep observing children of an early-exiting root for the full window.
         $remaining = ($Timeout * 1000) - [int]$watch.ElapsedMilliseconds
         if ($remaining -gt 0) { Start-Sleep -Milliseconds $remaining }
+        Write-WorkbenchPhase $Work 'window-elapsed'
     } finally {
         Stop-WorkbenchProcessTree -RootId $process.Id
         $process.Dispose()
+        Write-WorkbenchPhase $Work 'tree-stopped'
     }
     if ($Settle -gt 0) { Start-Sleep -Seconds $Settle }
+    Write-WorkbenchPhase $Work 'export-started'
     [void][IO.Directory]::CreateDirectory($out)
     try { $count = Export-WorkbenchEvents -Baseline $baseline -OutDirectory $out -Manifest $manifest }
     catch {
         if ($_.Exception.Message -match '^(SYSMON_LOG_UNREADABLE|EXPORT_FAILED)') { throw }
         throw 'EXPORT_FAILED: events could not be written'
     }
+    Write-WorkbenchPhase $Work 'export-done' $count
     Write-Output "collection: complete ($count events)"
 }
 
@@ -287,6 +308,9 @@ if ($MyInvocation.InvocationName -ne '.') {
         # Never echo event XML, command lines or paths; the host maps exit codes.
         # VBoxManage reports any non-zero exit as 33, so the code is also printed.
         $code = Get-WorkbenchExitCode $_.Exception.Message
+        if ($WorkDirectory -and (Test-Path -LiteralPath $WorkDirectory -PathType Container)) {
+            Write-WorkbenchPhase $WorkDirectory 'failed' $code
+        }
         Write-Output "workbench-exit: $code"
         exit $code
     }

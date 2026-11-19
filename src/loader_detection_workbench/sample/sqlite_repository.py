@@ -264,3 +264,24 @@ class SQLiteSampleRepository:
             benchmark_frozen_at=row["benchmark_frozen_at"],
             created_at=row["created_at"],
         )
+
+
+def read_sample_hashes(path: Path) -> dict[str, str]:
+    """SHA-256 → sample ID, read-only; an absent or empty registry gives ``{}``.
+
+    Read paths (the web UI, the AI digest) must never create or migrate the
+    sample tables, so this opens the database read-only instead of using
+    :class:`SQLiteSampleRepository`.
+    """
+    if not path.is_file():
+        return {}
+    connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        rows = connection.execute(
+            "SELECT sha256, sample_id FROM candidate_samples ORDER BY sample_id"
+        ).fetchall()
+    except sqlite3.OperationalError:  # no sample registry in this Project yet
+        return {}
+    finally:
+        connection.close()
+    return {str(sha256).lower(): str(sample_id) for sha256, sample_id in rows}

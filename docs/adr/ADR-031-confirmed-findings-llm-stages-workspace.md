@@ -123,6 +123,13 @@ ADR-025(블록 문서 보고서), ADR-026(AI 골격), ADR-027(다중 Provider �
     프로세스(샘플 트리 제외)를 프로세스 관계에서 `workbench`로 표시하고, 요약에서는 빼고 개수
     (`workbench_processes_excluded`)만 남긴다. 실제 기록의 `wevtutil`은 Defender(MsMpEng)가 띄운
     것이라 정상 Windows 동작이며 그대로 둔다.
+  - 같은 파일 표시(2026-11-19, digest v2): Process Create의 `Hashes` 필드 SHA-256을 이 Case의
+    sample Artifact와 Project 샘플 등록부(`candidate_samples`, 읽기 전용)와 비교해, 같으면
+    프로세스에 `same_file_as`(표시 ID `ART-…`/`SMP-…`)를 붙인다. Case의 sample이 우선이라
+    정확한 자기 복사는 `ART-…`로, 다른 등록 샘플은 `SMP-…`로 보인다. 요약에는 표시 ID만 가고
+    해시 값은 가지 않으므로 범위 `structural`의 허용 목록 안이다. 실행되지 않은 작성 파일은
+    해시가 없어 비교할 수 없다. 실제 데이터: CASE-0001 `Ogogycaf.exe` → ART-000001(자기 복사),
+    CASE-0002 `synchost.exe` → SMP-000004(다른 Amadey 빌드). 분석가의 수동 대조와 같다.
 
 ### 6. Case 작업 공간 UI
 

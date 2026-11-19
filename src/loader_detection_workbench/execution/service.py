@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import sqlite3
@@ -82,6 +83,35 @@ GUEST_RUN_OVERHEAD_SECONDS = 360
 READY_POLL_SECONDS = 5.0
 METADATA_FORMAT = "workbench-execution-run"
 _PROCESS_OUTCOMES = frozenset({"exited", "timeout_killed"})
+# The guest script appends one "HH:MM:SS phase [number]" line per phase to this
+# file next to itself; it is fetched only when the guest run fails.
+PROGRESS_FILE = "progress.log"
+MAX_PROGRESS_BYTES = 4096
+_PROGRESS_LINE = re.compile(
+    r"([0-2][0-9]:[0-5][0-9]:[0-5][0-9]) ([a-z][a-z-]{0,31})(?: ([0-9]{1,9}))?",
+    re.ASCII,
+)
+
+
+def summarize_progress(data: bytes) -> str:
+    """Last guest phase from ``progress.log``; any other content is ignored.
+
+    The file is guest-written, so only lines of the fixed shape are read and
+    the summary is built from those parts alone (no guest text is echoed).
+    """
+    if len(data) > MAX_PROGRESS_BYTES:
+        return "guest progress unreadable (too large)"
+    phases = [
+        match
+        for line in data.decode("ascii", errors="replace").splitlines()
+        if (match := _PROGRESS_LINE.fullmatch(line.strip())) is not None
+    ]
+    if not phases:
+        return "guest progress empty"
+    time_text, phase, number = phases[-1].groups()
+    shown = phase if number is None else f"{phase} {number}"
+    return f"last guest phase {shown} at {time_text} UTC ({len(phases)} phases)"
+
 
 # Guest script exit codes -> stable reasons (no guest output is trusted/echoed).
 GUEST_EXIT_REASONS: dict[int, str] = {
@@ -702,25 +732,45 @@ class _Run:
         return "script" + (" and sample" if self.sample_path is not None else "")
 
     def _run_guest(self) -> str:
-        result = self.hv.run_in_guest(
-            self.vm,
-            self.credentials,
-            GUEST_POWERSHELL,
-            guest_arguments(
-                self.request,
-                self.run_id,
-                self.target.sha256,
-                self.settings.settle_seconds,
-            ),
-            self.request.timeout_seconds + GUEST_RUN_OVERHEAD_SECONDS,
-        )
+        try:
+            result = self.hv.run_in_guest(
+                self.vm,
+                self.credentials,
+                GUEST_POWERSHELL,
+                guest_arguments(
+                    self.request,
+                    self.run_id,
+                    self.target.sha256,
+                    self.settings.settle_seconds,
+                ),
+                self.request.timeout_seconds + GUEST_RUN_OVERHEAD_SECONDS,
+            )
+        except DomainError as exc:  # e.g. the guestcontrol time limit
+            raise DomainError(exc.code, f"{exc}; {self._guest_progress()}") from exc
         if result.exit_code != 0:
             reason = GUEST_EXIT_REASONS.get(result.exit_code, "guest run failed")
             raise DomainError(
                 DomainErrorCode.GUEST_EXECUTION_FAILED,
-                f"{reason} (exit status {result.exit_code})",
+                f"{reason} (exit status {result.exit_code}); {self._guest_progress()}",
             )
         return f"time limit {self.request.timeout_seconds}s"
+
+    def _guest_progress(self) -> str:
+        """Best effort: where the guest script was when the run failed."""
+        with host_exchange_directory("wb-progress-") as host_dir:
+            try:
+                self.hv.copy_from_guest(
+                    self.vm,
+                    self.credentials,
+                    [f"{self.work}\\{PROGRESS_FILE}"],
+                    host_dir,
+                )
+                path = host_dir / PROGRESS_FILE
+                if path.stat().st_size > MAX_PROGRESS_BYTES:
+                    return "guest progress unreadable (too large)"
+                return summarize_progress(path.read_bytes())
+            except (DomainError, OSError):
+                return "guest progress unavailable"
 
     def _collect(self, host_dir: Path) -> str:
         out = f"{self.work}\\out"

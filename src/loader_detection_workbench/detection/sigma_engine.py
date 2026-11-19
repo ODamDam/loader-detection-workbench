@@ -91,6 +91,67 @@ class CompiledSigmaRule:
     conditions: tuple[Any, ...]
 
 
+# MITRE ATT&CK Enterprise tactics as Sigma tags name them (attack.<tactic>).
+ATTACK_TACTICS = frozenset(
+    {
+        "reconnaissance",
+        "resource_development",
+        "initial_access",
+        "execution",
+        "persistence",
+        "privilege_escalation",
+        "defense_evasion",
+        "credential_access",
+        "discovery",
+        "lateral_movement",
+        "collection",
+        "command_and_control",
+        "exfiltration",
+        "impact",
+    }
+)
+_TECHNIQUE = re.compile(r"t[0-9]{4}(?:\.[0-9]{3})?", re.ASCII)
+
+
+@dataclass(frozen=True, slots=True)
+class AttackTags:
+    tactics: tuple[str, ...]
+    techniques: tuple[str, ...]
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.tactics and not self.techniques
+
+
+def attack_tags(content: str) -> AttackTags:
+    """ATT&CK tactics and techniques named in a Sigma rule's ``tags``.
+
+    Only ``attack.<known tactic>`` and ``attack.tNNNN[.NNN]`` are kept, in rule
+    order and normalised (``defense-evasion``, ``T1574.002``); other tags and
+    content that does not parse give nothing, never an error.
+    """
+    try:
+        collection = SigmaCollection.from_yaml(content)
+    except Exception:  # noqa: BLE001 - tags are display-only
+        return AttackTags((), ())
+    tactics: list[str] = []
+    techniques: list[str] = []
+    for rule in collection.rules:
+        for tag in getattr(rule, "tags", None) or ():
+            if str(tag.namespace).lower() != "attack":
+                continue
+            name = str(tag.name).lower()
+            if name in ATTACK_TACTICS:
+                shown = name.replace("_", "-")
+                if shown not in tactics:
+                    tactics.append(shown)
+            elif _TECHNIQUE.fullmatch(name):
+                shown = name.upper()
+                if shown not in techniques:
+                    techniques.append(shown)
+    return AttackTags(tuple(tactics), tuple(techniques))
+
+
 def compile_rule(content: str) -> CompiledSigmaRule:
     try:
         collection = SigmaCollection.from_yaml(content)
