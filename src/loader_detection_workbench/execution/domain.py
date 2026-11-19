@@ -67,6 +67,7 @@ class StepName(StrEnum):
     EXECUTE = "execute"
     COLLECT = "collect"
     VERIFY = "verify"
+    COLLECT_DROPPED = "collect_dropped"
     POWER_OFF = "power_off"
     RESTORE_AFTER = "restore_after"
     REGISTER = "register"
@@ -138,9 +139,13 @@ class ExecutionRequest:
     timeout_seconds: int
     sample_artifact_id: str | None = None
     scenario: str | None = None
+    # ADR-032: also collect, sealed, the files the sample tree wrote.
+    collect_dropped: bool = False
 
     def __post_init__(self) -> None:
         require_timeout(self.timeout_seconds)
+        if self.collect_dropped and self.profile is not ExecutionProfile.SAMPLE:
+            raise _invalid("dropped files are collected only for sample runs")
         if self.profile is ExecutionProfile.SAMPLE:
             if self.sample_artifact_id is None or self.scenario is not None:
                 raise _invalid("sample runs require exactly one sample Artifact")

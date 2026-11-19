@@ -109,6 +109,31 @@ def _pid(value: str | None) -> str | None:
 _TARGET = re.compile(r"target-[0-9a-f]{12}\.exe", re.IGNORECASE | re.ASCII)
 
 
+def sample_related_keys(processes: Sequence[ProcessNode]) -> set[str]:
+    """Keys of the started target, its descendants and its dropped copies.
+
+    A dropped copy is a process whose image name is a file this tree wrote
+    (for example a copy started later by Task Scheduler). Workbench guest
+    processes are never related.
+    """
+    related: set[str] = {
+        p.key for p in processes if _TARGET.fullmatch(p.image_name) and not p.workbench
+    }
+    changed = bool(related)
+    while changed:
+        changed = False
+        written = {
+            f.name.lower() for p in processes if p.key in related for f in p.files
+        }
+        for process in processes:
+            if process.key in related or process.workbench:
+                continue
+            if process.parent_key in related or process.image_name.lower() in written:
+                related.add(process.key)
+                changed = True
+    return related
+
+
 def prioritized_processes(processes: Sequence[ProcessNode]) -> list[ProcessNode]:
     """Sample-related processes first, then the rest in time order.
 
@@ -118,19 +143,7 @@ def prioritized_processes(processes: Sequence[ProcessNode]) -> list[ProcessNode]
     is a file that this tree wrote (a dropped copy started later). Order inside
     each group stays as recorded.
     """
-    related: set[str] = {p.key for p in processes if _TARGET.fullmatch(p.image_name)}
-    changed = bool(related)
-    while changed:
-        changed = False
-        written = {
-            f.name.lower() for p in processes if p.key in related for f in p.files
-        }
-        for process in processes:
-            if process.key in related:
-                continue
-            if process.parent_key in related or process.image_name.lower() in written:
-                related.add(process.key)
-                changed = True
+    related = sample_related_keys(processes)
     first = [p for p in processes if p.key in related]
     rest = [p for p in processes if p.key not in related]
     # Workbench's own guest processes go last: they are never sample behavior.

@@ -12,6 +12,10 @@ Mode Sample   : unseal the transferred file if it is sealed (ADR-030: "LDWSEAL1"
                 header, XOR with a fixed public keystream), verify its SHA-256,
                 then start it.
 Mode Scenario : run one fixed benign scenario (no arbitrary commands).
+Mode Collect  : after a Sample run, seal the files the host listed in
+                collect-request.json (ADR-032) into <WorkDirectory>\collect\NN.bin
+                with dropped-manifest.json. Nothing is started; paths outside the
+                fixed locations are refused here as well as on the host.
 
 The target runs for the full TimeoutSeconds (child activity after the root
 process exits is still collected), then the whole process tree is stopped,
@@ -20,13 +24,13 @@ EventRecordID greater than the pre-run baseline is exported to
 <WorkDirectory>\out\events.xml with run-manifest.json (SHA-256, counts).
 Exit codes: 0 ok, 10 invalid arguments, 11 Sysmon not running, 12 log
 unreadable, 13 sample hash mismatch, 14 start failed, 15 output exists,
-16 export failed, 1 other. A failing run also prints "workbench-exit: N".
+16 export failed, 17 collection failed, 1 other. A failing run also prints "workbench-exit: N".
 #>
 [CmdletBinding()]
 param(
     [string]$WorkDirectory = '',
     [string]$RunId = '',
-    [ValidateSet('Sample', 'Scenario')][string]$Mode = 'Scenario',
+    [ValidateSet('Sample', 'Scenario', 'Collect')][string]$Mode = 'Scenario',
     [string]$SampleFileName = '',
     [string]$ExpectedSha256 = '',
     [string]$Scenario = '',
@@ -37,7 +41,7 @@ param(
 $script:WorkbenchExitCodes = @{
     INVALID_ARGUMENTS = 10; SYSMON_NOT_RUNNING = 11; SYSMON_LOG_UNREADABLE = 12
     SAMPLE_HASH_MISMATCH = 13; TARGET_START_FAILED = 14; OUTPUT_EXISTS = 15
-    EXPORT_FAILED = 16
+    EXPORT_FAILED = 16; COLLECT_FAILED = 17
 }
 
 # Fixed benign scenarios; keep identical to BENIGN_SCENARIOS in
@@ -133,6 +137,102 @@ function Restore-WorkbenchSample {
     $stream = New-Object IO.FileStream($Destination, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
     try { $stream.Write($plain, 0, $plain.Length) } finally { $stream.Dispose() }
     Remove-Item -LiteralPath $Source -Force -ErrorAction Stop
+}
+
+# Keep identical to execution/dropped.py (limits and collectable_path).
+$script:WorkbenchCollectMaxFiles = 32
+$script:WorkbenchCollectMaxFileBytes = 32MB
+$script:WorkbenchCollectMaxTotalBytes = 64MB
+$script:WorkbenchCollectAllowed = '^(?i)C:\\(Users\\[^\\]+\\AppData\\(Local|Roaming)\\|Users\\Public\\|ProgramData\\)[^\x00-\x1f:*?"<>|]+$'
+
+function Test-WorkbenchCollectPath {
+    param([string]$Path)
+    if (-not $Path -or $Path.Length -gt 260) { return $false }
+    foreach ($c in $Path.ToCharArray()) { if ([int]$c -gt 127) { return $false } }
+    if ($Path -notmatch $script:WorkbenchCollectAllowed -or $Path.EndsWith('\')) { return $false }
+    $segments = $Path.Split('\')
+    for ($i = 1; $i -lt $segments.Length; $i++) {
+        if ($segments[$i] -eq '' -or $segments[$i] -eq '.' -or $segments[$i] -eq '..') { return $false }
+    }
+    return -not $Path.ToLowerInvariant().EndsWith('.pf')
+}
+
+function Get-WorkbenchSealedBytes {
+    # ADR-030 seal of in-memory content: header + XOR with the public keystream.
+    param([byte[]]$Data, [byte[]]$Key)
+    $magic = $script:WorkbenchSealMagic
+    $sealed = New-Object byte[] ($magic.Length + $Data.Length)
+    [Array]::Copy($magic, 0, $sealed, 0, $magic.Length)
+    $offset = $magic.Length
+    for ($i = 0; $i -lt $Data.Length; $i++) { $sealed[$i + $offset] = $Data[$i] -bxor $Key[$i % 4096] }
+    return ,$sealed
+}
+
+function Assert-WorkbenchCollectArguments {
+    param([string]$Work, [string]$Run)
+    if ($Run -notmatch '^VMR-[0-9]{4,}$') { throw 'INVALID_ARGUMENTS: run id' }
+    if ($Work -cne "C:\WorkbenchRun\$Run") { throw 'INVALID_ARGUMENTS: work directory' }
+}
+
+function Invoke-WorkbenchCollect {
+    param([string]$Work, [string]$Run)
+    $ErrorActionPreference = 'Stop'
+    Assert-WorkbenchCollectArguments -Work $Work -Run $Run
+    $requestPath = Join-Path $Work 'collect-request.json'
+    if (-not (Test-Path -LiteralPath $requestPath -PathType Leaf)) { throw 'INVALID_ARGUMENTS: collect request missing' }
+    try { $request = [IO.File]::ReadAllText($requestPath) | ConvertFrom-Json }
+    catch { throw 'INVALID_ARGUMENTS: collect request is not JSON' }
+    if ($request.run_id -cne $Run) { throw 'INVALID_ARGUMENTS: collect request run id' }
+    $paths = @($request.paths)
+    if ($paths.Count -gt $script:WorkbenchCollectMaxFiles) { throw 'INVALID_ARGUMENTS: too many paths' }
+    $out = Join-Path $Work 'collect'
+    if (Test-Path -LiteralPath $out) { throw 'OUTPUT_EXISTS: collect directory exists' }
+    [void][IO.Directory]::CreateDirectory($out)
+    Write-WorkbenchPhase $Work 'collect-started' $paths.Count
+    $key = Get-WorkbenchSealKey
+    $sha = [Security.Cryptography.SHA256]::Create()
+    $total = [long]0
+    $files = New-Object System.Collections.ArrayList
+    try {
+        for ($i = 0; $i -lt $paths.Count; $i++) {
+            $path = [string]$paths[$i]
+            $entry = [ordered]@{ index = $i; status = $null; sha256 = $null; size = $null }
+            if (-not (Test-WorkbenchCollectPath $path)) { $entry.status = 'rejected' }
+            elseif (Test-Path -LiteralPath $path -PathType Container) { $entry.status = 'not_file' }
+            elseif (-not (Test-Path -LiteralPath $path -PathType Leaf)) { $entry.status = 'missing' }
+            else {
+                try {
+                    $length = (Get-Item -LiteralPath $path -Force).Length
+                    if ($length -gt $script:WorkbenchCollectMaxFileBytes -or
+                        ($total + $length) -gt $script:WorkbenchCollectMaxTotalBytes) {
+                        $entry.status = 'too_large'
+                        $entry.size = $length
+                    } else {
+                        $data = [IO.File]::ReadAllBytes($path)
+                        $sealed = Get-WorkbenchSealedBytes -Data $data -Key $key
+                        $target = Join-Path $out ('{0:D2}.bin' -f $i)
+                        $stream = New-Object IO.FileStream($target, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
+                        try { $stream.Write($sealed, 0, $sealed.Length) } finally { $stream.Dispose() }
+                        $entry.sha256 = ([BitConverter]::ToString($sha.ComputeHash($data)) -replace '-', '').ToLowerInvariant()
+                        $entry.size = $data.Length
+                        $entry.status = 'collected'
+                        $total += $data.Length
+                    }
+                } catch { $entry.status = 'unreadable' }
+            }
+            [void]$files.Add($entry)
+        }
+    } finally { $sha.Dispose() }
+    $manifest = [ordered]@{
+        collector = 'workbench-guest-collect'; version = 1; run_id = $Run
+        files = $files.ToArray()
+    }
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    try {
+        [IO.File]::WriteAllText((Join-Path $out 'dropped-manifest.json'), ($manifest | ConvertTo-Json -Depth 4), $encoding)
+    } catch { throw 'COLLECT_FAILED: manifest could not be written' }
+    Write-WorkbenchPhase $Work 'collect-done' @($files | Where-Object { $_.status -eq 'collected' }).Count
+    Write-Output "collection: dropped files sealed"
 }
 
 function Get-WorkbenchDescendants {
@@ -301,8 +401,12 @@ function Get-WorkbenchExitCode {
 
 if ($MyInvocation.InvocationName -ne '.') {
     try {
-        Invoke-WorkbenchGuestRun -Work $WorkDirectory -Run $RunId -RunMode $Mode -File $SampleFileName `
-            -Sha $ExpectedSha256 -Name $Scenario -Timeout $TimeoutSeconds -Settle $SettleSeconds
+        if ($Mode -eq 'Collect') {
+            Invoke-WorkbenchCollect -Work $WorkDirectory -Run $RunId
+        } else {
+            Invoke-WorkbenchGuestRun -Work $WorkDirectory -Run $RunId -RunMode $Mode -File $SampleFileName `
+                -Sha $ExpectedSha256 -Name $Scenario -Timeout $TimeoutSeconds -Settle $SettleSeconds
+        }
         exit 0
     } catch {
         # Never echo event XML, command lines or paths; the host maps exit codes.

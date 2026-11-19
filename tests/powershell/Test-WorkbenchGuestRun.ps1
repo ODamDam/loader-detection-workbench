@@ -196,6 +196,44 @@ try {
     [void][IO.Directory]::CreateDirectory($work6)
     Assert-Failure { Invoke-WorkbenchGuestRun -Work $work6 -Run 'VMR-0006' -RunMode Scenario -Name 'file-write' -Timeout 10 -Settle 0 } 'SYSMON_LOG_UNREADABLE'
     $script:exportFails = $false
+
+    # -- Collect mode (ADR-032): only fixed locations, sealed output -----------------
+    Assert-True (Test-WorkbenchCollectPath 'C:\Users\a\AppData\Local\Temp\is-A.tmp\x.dll') 'temp path allowed'
+    Assert-True (Test-WorkbenchCollectPath 'C:\ProgramData\v\a.bin') 'programdata allowed'
+    foreach ($bad in @('C:\Windows\Tasks\a.job', 'C:\Users\a\Desktop\a.exe', 'C:\Users\a\AppData\Local\Temp\..\..\x.exe',
+            'C:\Users\a\AppData\Local\Temp\a.exe:s', 'C:\Users\a\AppData\Local\Temp\', 'C:\Users\a\AppData\Local\Temp\A.EXE-1.pf',
+            ('C:\Users\a\AppData\Local\Temp\caf' + [char]0xE9 + '.exe'), '')) {
+        Assert-True (-not (Test-WorkbenchCollectPath $bad)) "refused: $bad"
+    }
+    $sealedProbe = Get-WorkbenchSealedBytes -Data $bytes -Key (Get-WorkbenchSealKey)
+    Assert-True ((-join ($sealedProbe | ForEach-Object { $_.ToString('x2') })) -eq $sealedHex.Substring(0, $sealedProbe.Length * 2)) 'guest seal matches the host seal'
+
+    # The host temp directory is itself under AppData\Local, so real files can be
+    # collected here; the work-directory rule is relaxed like the run test above.
+    function Assert-WorkbenchCollectArguments { param($Work, $Run) }
+    $drops = Join-Path $temp 'drops'
+    [void][IO.Directory]::CreateDirectory((Join-Path $drops 'dir'))
+    [IO.File]::WriteAllBytes((Join-Path $drops 'side.dll'), $bytes)
+    $work7 = Join-Path $temp 'run7'
+    [void][IO.Directory]::CreateDirectory($work7)
+    $request = [ordered]@{ run_id = 'VMR-0007'; paths = @(
+            (Join-Path $drops 'side.dll'), (Join-Path $drops 'gone.exe'), (Join-Path $drops 'dir'), 'C:\Windows\win.ini') }
+    [IO.File]::WriteAllText((Join-Path $work7 'collect-request.json'), ($request | ConvertTo-Json))
+    $result7 = Invoke-WorkbenchCollect -Work $work7 -Run 'VMR-0007'
+    Assert-True ($result7 -eq 'collection: dropped files sealed') 'collect output'
+    $collected = Get-Content -LiteralPath (Join-Path $work7 'collect\dropped-manifest.json') -Raw | ConvertFrom-Json
+    Assert-True ($collected.collector -eq 'workbench-guest-collect' -and $collected.run_id -eq 'VMR-0007') 'collect manifest identity'
+    $statuses = @($collected.files | ForEach-Object { $_.status })
+    Assert-True (($statuses -join ',') -eq 'collected,missing,not_file,rejected') "collect statuses ($($statuses -join ','))"
+    Assert-True ($collected.files[0].sha256 -eq $realSha -and $collected.files[0].size -eq $bytes.Length) 'collected hash and size'
+    $out7 = [IO.File]::ReadAllBytes((Join-Path $work7 'collect\00.bin'))
+    Assert-True ((-join ($out7 | ForEach-Object { $_.ToString('x2') })) -eq $sealedHex.Substring(0, $out7.Length * 2)) 'collected file is sealed'
+    Assert-True (@(Get-ChildItem -LiteralPath (Join-Path $work7 'collect')).Count -eq 2) 'only sealed files and manifest'
+    Assert-Failure { Invoke-WorkbenchCollect -Work $work7 -Run 'VMR-0007' } 'OUTPUT_EXISTS'
+    $work8 = Join-Path $temp 'run8'
+    [void][IO.Directory]::CreateDirectory($work8)
+    [IO.File]::WriteAllText((Join-Path $work8 'collect-request.json'), '{"run_id":"VMR-0099","paths":[]}')
+    Assert-Failure { Invoke-WorkbenchCollect -Work $work8 -Run 'VMR-0008' } 'INVALID_ARGUMENTS'
 } finally {
     Remove-Item -LiteralPath $temp -Recurse -Force
 }

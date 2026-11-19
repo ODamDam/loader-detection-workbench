@@ -55,8 +55,13 @@ Status: `in_progress` — 1단계(확정 사항 + 확정 기반 보고서) 완�
   - 구현: 프로세스 이미지 해시로 같은 파일 표시(digest v2 `same_file_as`, 관계 그래프), 게스트
     진행 기록(`progress.log`, 실패 시 마지막 단계를 `execute` 기록에 붙임), 보고서 룰 항목에
     Sigma ATT&CK 전술·기법 표시.
-- 남은 것: 확정(사용자) → 보고서·synthesis, HijackLoader YARA 방향, eval 평가. 게스트 지연은
-  다음 실패 때 진행 기록으로 원인 확인.
+  - YARA 방향(사용자 결정): (가-2) VM 드롭 파일 회수, ADR-032 승인·구현(`vm run --collect-dropped`,
+    게스트 `Collect` 모드 봉인, 호스트 메모리 검증 후 봉인 `sample` 저장). 가짜 VBoxManage·
+    PowerShell 모의 테스트까지. 실제 VM 실행은 미실행(승인 대기).
+  - OpenAI: 사용자가 추가 결제 완료. 5건 재호출은 별도 승인 대기.
+- 남은 것: 확정(사용자 검토 중) → 보고서·synthesis, HijackLoader dev 3건 `--collect-dropped`
+  재실행(승인 필요) → YARA 초안, eval 평가(같은 옵션). 게스트 지연은 다음 실패 때 진행 기록으로
+  원인 확인.
 - 실제 샘플: dev 6건 Case 등록·정적 분석·YARA 초안 2개(Amadey, PureCrypter) 완료.
   - VM: 게스트 비밀번호 만료(11/17 19:04)로 로그인 거부 → 시계를 되돌려 부팅하고 사용자가
     "만료 없음"으로 고친 뒤 `SYSMON-V2-CLEAN` 재생성(이전은 `SYSMON-V2-CLEAN-pwexpired`).

@@ -29,6 +29,8 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
+from loader_detection_workbench.artifact.seal import MAGIC as SEAL_MAGIC
+from loader_detection_workbench.artifact.seal import unseal_bytes
 from loader_detection_workbench.artifact.service import ArtifactService
 from loader_detection_workbench.artifact.store import ArtifactStore
 from loader_detection_workbench.case.service import CaseService
@@ -56,6 +58,15 @@ from loader_detection_workbench.execution.domain import (
     StepStatus,
     VmSettings,
     require_run_id,
+)
+from loader_detection_workbench.execution.dropped import (
+    COLLECT_STATUSES,
+    MAX_DROPPED_FILE_BYTES,
+    MAX_DROPPED_FILES,
+    MAX_DROPPED_TOTAL_BYTES,
+    DroppedCandidate,
+    DroppedSelection,
+    select_dropped,
 )
 from loader_detection_workbench.execution.hypervisor import (
     GuestCredentials,
@@ -113,6 +124,25 @@ def summarize_progress(data: bytes) -> str:
     return f"last guest phase {shown} at {time_text} UTC ({len(phases)} phases)"
 
 
+# ADR-032: the guest seals the listed files into <work>\collect\NN.bin.
+COLLECT_REQUEST_FILE = "collect-request.json"
+COLLECT_MANIFEST_FILE = "dropped-manifest.json"
+GUEST_COLLECTOR_DROPPED = "workbench-guest-collect"
+# Sealing is a PowerShell byte loop (about 1-3 MB/s); 64 MiB fits well inside.
+GUEST_COLLECT_TIMEOUT_SECONDS = 600
+
+
+@dataclass(frozen=True, slots=True)
+class DroppedFile:
+    """One collected (or not collected) file of a run, verified on the host."""
+
+    candidate: DroppedCandidate
+    status: str
+    sha256: str | None = None
+    size: int | None = None
+    content: bytes | None = None  # unsealed, in memory only
+
+
 # Guest script exit codes -> stable reasons (no guest output is trusted/echoed).
 GUEST_EXIT_REASONS: dict[int, str] = {
     1: "guest run failed",
@@ -123,6 +153,7 @@ GUEST_EXIT_REASONS: dict[int, str] = {
     14: "target could not be started in the guest",
     15: "guest output already exists",
     16: "guest export failed",
+    17: "guest collection of dropped files failed",
 }
 
 
@@ -204,6 +235,24 @@ def guest_arguments(
         assert request.scenario is not None
         arguments += ["-Mode", "Scenario", "-Scenario", request.scenario]
     return arguments
+
+
+def guest_collect_arguments(run_display_id: str) -> list[str]:
+    work = guest_work_directory(run_display_id)
+    return [
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        f"{work}\\{GUEST_SCRIPT_NAME}",
+        "-WorkDirectory",
+        work,
+        "-RunId",
+        run_display_id,
+        "-Mode",
+        "Collect",
+    ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -475,6 +524,27 @@ class ExecutionService:
             PlannedStep(
                 StepName.VERIFY, "verify manifest, SHA-256 and parse every event"
             ),
+            *(
+                (
+                    PlannedStep(
+                        StepName.COLLECT_DROPPED,
+                        "select files the sample tree wrote (allowed locations, "
+                        f"at most {MAX_DROPPED_FILES}), seal them in the guest, "
+                        "copy and verify them; a failure keeps the events",
+                        vbox.run_command(
+                            executable,
+                            vm,
+                            user,
+                            password,
+                            GUEST_POWERSHELL,
+                            guest_collect_arguments(run_id),
+                            GUEST_COLLECT_TIMEOUT_SECONDS,
+                        ),
+                    ),
+                )
+                if request.collect_dropped
+                else ()
+            ),
             PlannedStep(
                 StepName.POWER_OFF, "power off", vbox.poweroff_command(executable, vm)
             ),
@@ -485,7 +555,12 @@ class ExecutionService:
             ),
             PlannedStep(
                 StepName.REGISTER,
-                "register events.xml as sysmon and the run metadata as other",
+                "register events.xml as sysmon and the run metadata as other"
+                + (
+                    "; collected files as sealed sample Artifacts"
+                    if request.collect_dropped
+                    else ""
+                ),
             ),
         )
         return ExecutionPlan(request, self.settings, target.sha256, steps)
@@ -578,6 +653,10 @@ class _Run:
         self.work = guest_work_directory(run_id)
         self.vm_touched = False  # restore attempted: cleanup must restore again
         self.restored_after = False
+        # ADR-032 results, filled by the collect_dropped step.
+        self.dropped: list[DroppedFile] = []
+        self.dropped_error = False
+        self.dropped_selection: DroppedSelection | None = None
 
     def _ok(self, step: StepName, detail: str | None = None) -> None:
         self.service._record(self.run_id, step, StepStatus.OK, detail)
@@ -645,6 +724,15 @@ class _Run:
             self._step(StepName.VERIFY, verify)
             # Keep the verified bytes outside the temporary directory lifetime.
             data = collected[0].events.read_bytes()
+        if self.request.collect_dropped:
+            try:
+                self._step(
+                    StepName.COLLECT_DROPPED, lambda: self._collect_dropped_safely(data)
+                )
+            except _StepFailed:
+                # Recorded as failed; the verified events are still registered.
+                self.dropped = []
+                self.dropped_error = True
         keep = keep_dir / EVENTS_FILE
         keep.write_bytes(data)
         return _Collected(
@@ -772,6 +860,169 @@ class _Run:
             except (DomainError, OSError):
                 return "guest progress unavailable"
 
+    def _collect_dropped_safely(self, events: bytes) -> str:
+        """The optional step never turns a host-side surprise into a run failure."""
+        try:
+            return self._collect_dropped(events)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise DomainError(
+                DomainErrorCode.EXECUTION_COLLECTION_INVALID,
+                f"dropped files could not be processed ({type(exc).__name__})",
+            ) from exc
+
+    def _collect_dropped(self, events: bytes) -> str:
+        records = parse_sysmon_records(events)
+        selection = select_dropped(records)
+        self.dropped_selection = selection
+        if not selection.candidates:
+            return (
+                f"nothing to collect ({selection.written_total} written, "
+                f"{selection.outside_allowed} outside allowed locations)"
+            )
+        with host_exchange_directory("wb-collect-request-") as temporary:
+            request = temporary / COLLECT_REQUEST_FILE
+            request.write_text(
+                json.dumps(
+                    {
+                        "run_id": self.run_id,
+                        "paths": [c.path for c in selection.candidates],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.hv.copy_to_guest(self.vm, self.credentials, [request], self.work)
+        try:
+            result = self.hv.run_in_guest(
+                self.vm,
+                self.credentials,
+                GUEST_POWERSHELL,
+                guest_collect_arguments(self.run_id),
+                GUEST_COLLECT_TIMEOUT_SECONDS,
+            )
+        except DomainError as exc:
+            raise DomainError(exc.code, f"{exc}; {self._guest_progress()}") from exc
+        if result.exit_code != 0:
+            reason = GUEST_EXIT_REASONS.get(result.exit_code, "guest run failed")
+            raise DomainError(
+                DomainErrorCode.GUEST_EXECUTION_FAILED,
+                f"{reason} (exit status {result.exit_code}); {self._guest_progress()}",
+            )
+        out = f"{self.work}\\collect"
+        with host_exchange_directory("wb-collect-") as host_dir:
+            self.hv.copy_from_guest(
+                self.vm, self.credentials, [f"{out}\\{COLLECT_MANIFEST_FILE}"], host_dir
+            )
+            entries = self._dropped_manifest(host_dir, len(selection.candidates))
+            names = [
+                f"{out}\\{index:02d}.bin"
+                for index, entry in enumerate(entries)
+                if entry["status"] == "collected"
+            ]
+            if names:
+                self.hv.copy_from_guest(self.vm, self.credentials, names, host_dir)
+            files: list[DroppedFile] = []
+            total = 0
+            for index, (candidate, entry) in enumerate(
+                zip(selection.candidates, entries, strict=True)
+            ):
+                if entry["status"] != "collected":
+                    files.append(
+                        DroppedFile(candidate, entry["status"], size=entry["size"])
+                    )
+                    continue
+                content = self._verified_dropped(
+                    host_dir / f"{index:02d}.bin", entry["sha256"], entry["size"]
+                )
+                total += len(content)
+                if total > MAX_DROPPED_TOTAL_BYTES:
+                    raise DomainError(
+                        DomainErrorCode.EXECUTION_COLLECTION_INVALID,
+                        "collected files exceed the total size limit",
+                    )
+                files.append(
+                    DroppedFile(
+                        candidate, "collected", entry["sha256"], len(content), content
+                    )
+                )
+        self.dropped = files
+        counts: dict[str, int] = {}
+        for item in files:
+            counts[item.status] = counts.get(item.status, 0) + 1
+        summary = ", ".join(f"{counts[key]} {key}" for key in sorted(counts))
+        return f"{summary}; {selection.outside_allowed} outside allowed locations" + (
+            f"; {selection.over_limit} over the file limit"
+            if selection.over_limit
+            else ""
+        )
+
+    def _dropped_manifest(self, host_dir: Path, expected: int) -> list[dict[str, Any]]:
+        def invalid(message: str) -> DomainError:
+            return DomainError(DomainErrorCode.EXECUTION_COLLECTION_INVALID, message)
+
+        path = host_dir / COLLECT_MANIFEST_FILE
+        if not path.is_file() or path.is_symlink():
+            raise invalid("dropped-file manifest was not collected")
+        if path.stat().st_size > MAX_MANIFEST_BYTES:
+            raise invalid("dropped-file manifest is too large")
+        try:
+            manifest = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (UnicodeError, ValueError) as exc:
+            raise invalid("dropped-file manifest is not valid JSON") from exc
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("collector") != GUEST_COLLECTOR_DROPPED
+            or manifest.get("version") != 1
+            or manifest.get("run_id") != self.run_id
+        ):
+            raise invalid("dropped-file manifest identity does not match")
+        files = manifest.get("files")
+        if isinstance(
+            files, dict
+        ):  # PowerShell 5.1 writes a one-item array as an object
+            files = [files]
+        if not isinstance(files, list) or len(files) != expected:
+            raise invalid("dropped-file manifest does not list every requested file")
+        entries: list[dict[str, Any]] = []
+        for index, item in enumerate(files):
+            if not isinstance(item, dict) or item.get("index") != index:
+                raise invalid("dropped-file manifest entries are out of order")
+            status = item.get("status")
+            if status not in COLLECT_STATUSES:
+                raise invalid("dropped-file manifest status is invalid")
+            size = item.get("size")
+            if size is not None and (type(size) is not int or size < 0):
+                raise invalid("dropped-file manifest size is invalid")
+            sha256 = item.get("sha256")
+            if status == "collected" and (
+                not isinstance(sha256, str)
+                or len(sha256) != 64
+                or any(c not in "0123456789abcdef" for c in sha256)
+                or size is None
+                or size > MAX_DROPPED_FILE_BYTES
+            ):
+                raise invalid("dropped-file manifest hash or size is invalid")
+            entries.append({"status": status, "sha256": sha256, "size": size})
+        return entries
+
+    @staticmethod
+    def _verified_dropped(path: Path, sha256: str, size: int) -> bytes:
+        def invalid(message: str) -> DomainError:
+            return DomainError(DomainErrorCode.EXECUTION_COLLECTION_INVALID, message)
+
+        if not path.is_file() or path.is_symlink():
+            raise invalid("a collected file is missing")
+        if path.stat().st_size != size + len(SEAL_MAGIC):
+            raise invalid("a collected file has the wrong size")
+        stored = path.read_bytes()
+        if not stored.startswith(SEAL_MAGIC):
+            # Never keep an unsealed copy: the guest must seal (ADR-032).
+            path.unlink()
+            raise invalid("a collected file is not sealed")
+        content = unseal_bytes(stored)
+        if hashlib.sha256(content).hexdigest() != sha256:
+            raise invalid("a collected file does not match its SHA-256")
+        return content
+
     def _collect(self, host_dir: Path) -> str:
         out = f"{self.work}\\out"
         self.hv.copy_from_guest(
@@ -857,6 +1108,7 @@ class _Run:
             sysmon = artifacts.add(
                 self.request.case_display_id, collected.events, "sysmon"
             )
+            dropped = self._register_dropped(artifacts, sysmon.artifact_id.display_id)
             run = self.service.show_run(self.run_id)
             metadata = {
                 "format": METADATA_FORMAT,
@@ -897,6 +1149,20 @@ class _Run:
                     for item in run.steps
                 ],
             }
+            if self.request.collect_dropped:
+                selection = self.dropped_selection
+                metadata["dropped_files"] = {
+                    "requested": True,
+                    "step_failed": self.dropped_error,
+                    "written_total": None
+                    if selection is None
+                    else selection.written_total,
+                    "outside_allowed": None
+                    if selection is None
+                    else selection.outside_allowed,
+                    "over_limit": None if selection is None else selection.over_limit,
+                    "files": dropped,
+                }
             meta_path = collected.events.parent / "execution-run.json"
             meta_path.write_text(
                 json.dumps(metadata, indent=2, sort_keys=True) + "\n",
@@ -905,12 +1171,61 @@ class _Run:
             other = artifacts.add(self.request.case_display_id, meta_path, "other")
         except DomainError as exc:
             raise self._fail(StepName.REGISTER, exc) from exc
+        stored = sorted(
+            {str(item["artifact_id"]) for item in dropped if item.get("artifact_id")}
+        )
         self._ok(
             StepName.REGISTER,
             f"sysmon {sysmon.artifact_id.display_id}, "
-            f"metadata {other.artifact_id.display_id}",
+            f"metadata {other.artifact_id.display_id}"
+            + (
+                f", dropped {len(stored)} sample(s)"
+                if self.request.collect_dropped
+                else ""
+            ),
         )
         return sysmon.artifact_id.display_id, other.artifact_id.display_id
+
+    def _register_dropped(
+        self, artifacts: ArtifactService, sysmon_id: str
+    ) -> list[dict[str, Any]]:
+        """Store collected files as sealed ``sample`` Artifacts (ADR-032).
+
+        Content the Case already holds (for example the sample's own copy) is
+        not stored again; the entry points at the existing Artifact.
+        """
+        existing = {
+            artifact.sha256: artifact.artifact_id.display_id
+            for artifact in artifacts.list_artifacts(self.request.case_display_id)
+            if artifact.kind is ArtifactKind.SAMPLE
+        }
+        entries: list[dict[str, Any]] = []
+        for item in self.dropped:
+            entry: dict[str, Any] = {
+                "name": item.candidate.name,
+                "source": f"{sysmon_id}#{item.candidate.record_id}",
+                "status": item.status,
+                "sha256": item.sha256,
+                "size": item.size,
+                "artifact_id": None,
+                "existing": False,
+            }
+            if item.content is not None and item.sha256 is not None:
+                if item.sha256 in existing:
+                    entry["artifact_id"] = existing[item.sha256]
+                    entry["existing"] = True
+                else:
+                    added = artifacts.add_content(
+                        self.request.case_display_id, item.content, "sample"
+                    )
+                    existing[item.sha256] = added.artifact_id.display_id
+                    entry["artifact_id"] = added.artifact_id.display_id
+            entries.append(entry)
+        # Drop the in-memory content as soon as it is stored.
+        self.dropped = [
+            DroppedFile(d.candidate, d.status, d.sha256, d.size) for d in self.dropped
+        ]
+        return entries
 
     # -- cleanup --------------------------------------------------------------
 

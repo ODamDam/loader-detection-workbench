@@ -55,6 +55,23 @@ uv run workbench case timeline CASE-0002   # 등록된 이벤트 확인
 - 실행 중에는 외장 SSD를 분리하지 않는다. 명령은 제한 시간 + 부팅·복원 시간 동안 끝나지 않는다.
 - 성공하면 `events.xml`(`sysmon`)과 실행 메타데이터 JSON(`other`) Artifact가 Case에 붙는다.
 
+### 드롭 파일 회수 (`--collect-dropped`, ADR-032)
+
+```powershell
+uv run workbench vm run CASE-0006 --sample ART-000006 --timeout 60 --collect-dropped --dry-run
+uv run workbench vm run CASE-0006 --sample ART-000006 --timeout 60 --collect-dropped --approve
+```
+
+- `verify` 다음 `collect_dropped` 단계에서, 검증된 이벤트 중 샘플 트리의 File Create(Event 11)
+  경로를 고른다. 허용 위치는 사용자 `AppData\Local`·`AppData\Roaming`, `C:\Users\Public`,
+  `C:\ProgramData`이고 최대 32개, 파일당 32 MiB, 합계 64 MiB다.
+- 게스트 스크립트를 `-Mode Collect`로 다시 실행해 파일을 VM 안에서 봉인(`LDWSEAL1`)한 뒤
+  `C:\WorkbenchRun\VMR-NNNN\collect\`에서 가져온다. 호스트는 메모리에서 해시를 확인하고 봉인
+  `sample` Artifact로 저장한다. 원본 바이트는 호스트 디스크에 쓰이지 않는다.
+- 회수 결과(이름, 상태, SHA-256, Artifact ID, 근거 이벤트)는 실행 메타데이터의
+  `dropped_files`에 있다. 이 단계가 실패해도 런은 이벤트만 등록하고 성공한다.
+- eval 평가는 dev와 같은 옵션으로 실행해야 한다.
+
 ## 4. 실패와 안전 잠금
 
 | 상황 | 결과 |
@@ -87,6 +104,7 @@ uv run workbench vm unlock --note "poweroff + SYSMON-V2-CLEAN restored and verif
 | 14 | 대상 시작 실패 |
 | 15 | 출력 디렉터리가 이미 있음 |
 | 16 | 내보내기 실패 |
+| 17 | 드롭 파일 회수 실패(`Collect` 모드, ADR-032) |
 
 VBoxManage 7.2는 게스트 프로세스의 0이 아닌 종료 코드를 모두 자신의 종료 코드 33으로
 바꿔 돌려준다. 그래서 게스트 스크립트는 실패할 때 `workbench-exit: N` 한 줄을 출력하고,

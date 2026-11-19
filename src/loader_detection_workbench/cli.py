@@ -430,6 +430,11 @@ def _add_vm_parsers(groups: Any) -> None:
     run = commands.add_parser("run", help="execute a sample Artifact in the VM")
     run.add_argument("case_display_id", metavar="CASE-NNNN")
     run.add_argument("--sample", required=True, metavar="ART-NNNNNN")
+    run.add_argument(
+        "--collect-dropped",
+        action="store_true",
+        help="also collect, sealed, the files the sample tree wrote (ADR-032)",
+    )
     _add_vm_run_options(run)
     scenario = commands.add_parser(
         "scenario", help="execute a fixed benign scenario in the VM"
@@ -1489,6 +1494,7 @@ def _run_vm(arguments: argparse.Namespace) -> int:
             ExecutionProfile.SAMPLE,
             arguments.timeout,
             sample_artifact_id=arguments.sample,
+            collect_dropped=arguments.collect_dropped,
         )
     else:
         request = ExecutionRequest(

@@ -397,6 +397,9 @@ uv run workbench vm status
 uv run workbench vm unlock --note "VM verified by hand"
 ```
 
+- `vm run ... --collect-dropped`(ADR-032)는 샘플 트리가 사용자 `AppData`·`C:\Users\Public`·
+  `C:\ProgramData`에 쓴 파일(최대 32개, 합계 64 MiB)을 게스트에서 봉인해 가져와 같은 Case의
+  `sample` Artifact로 저장한다. 실패해도 이벤트 수집 결과는 등록된다.
 - 게스트 계정은 `WORKBENCH_GUEST_USER`·`WORKBENCH_GUEST_PASSWORD` 환경 변수로만 받는다.
 - sample 실행은 NIC 케이블 분리, 공유 폴더 없음, 클립보드·드래그 앤 드롭 비활성화를 요구한다.
 - 2026-11-12 기준 실제 VM 실행 검증은 하지 않았다(모의 VBoxManage·PowerShell mock만 통과).

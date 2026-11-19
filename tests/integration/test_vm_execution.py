@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from loader_detection_workbench.artifact.seal import MAGIC, unseal_bytes
+from loader_detection_workbench.artifact.seal import MAGIC, seal_bytes, unseal_bytes
 from loader_detection_workbench.artifact.service import ArtifactService
 from loader_detection_workbench.artifact.store import ArtifactStore
 from loader_detection_workbench.case.service import CaseService
@@ -95,6 +95,40 @@ def _guest_events(baseline: int) -> str:
     )
 
 
+GUEST_TEMP = "C:\\Users\\analyst\\AppData\\Local\\Temp\\"
+
+
+def _drop_events(baseline: int, work: str, sha256: str, drops: dict[str, bytes]) -> str:
+    """The started target writes every path in ``drops`` (Event 11)."""
+    target = "{11111111-2222-4333-8444-555555555555}"
+    events = [
+        _event(
+            baseline + 1,
+            1,
+            UtcTime="2026-11-12 01:02:03.456",
+            ProcessGuid=target,
+            ProcessId="1234",
+            Image=f"{work}\\target-{sha256[:12]}.exe",
+            ParentProcessGuid="{99999999-2222-4333-8444-555555555555}",
+            ParentCommandLine=(
+                f"powershell.exe -File {work}\\Invoke-WorkbenchGuestRun.ps1"
+            ),
+        )
+    ]
+    for offset, path in enumerate([*drops, "C:\\Windows\\Tasks\\x.job"], start=2):
+        events.append(
+            _event(
+                baseline + offset,
+                11,
+                UtcTime="2026-11-12 01:02:04.000",
+                ProcessGuid=target,
+                Image=f"{work}\\target-{sha256[:12]}.exe",
+                TargetFilename=path,
+            )
+        )
+    return "<Events>" + "".join(events) + "</Events>"
+
+
 @dataclass
 class VmConfig:
     cable: str = "off"
@@ -123,6 +157,10 @@ class FakeVBoxManage:
     tamper: Callable[[dict[str, bytes], str], None] | None = None
     baseline: int = 500
     progress: bytes | None = None
+    # ADR-032: guest files the sample "writes" (path -> bytes) and Collect faults.
+    drops: dict[str, bytes] = field(default_factory=dict)
+    collect_exit: int = 0
+    collect_tamper: Callable[[dict[str, bytes], str], None] | None = None
 
     def _info(self) -> str:
         lines = [
@@ -218,6 +256,8 @@ class FakeVBoxManage:
         assert f"{work}\\Invoke-WorkbenchGuestRun.ps1" in self.guest_files
         if self.progress is not None:
             self.guest_files[f"{work}\\progress.log"] = self.progress
+        if values["Mode"] == "Collect":
+            return self._guest_collect(work, values["RunId"])
         if self.guest_exit:
             return self.guest_exit
         manifest: dict[str, object] = {
@@ -239,9 +279,13 @@ class FakeVBoxManage:
             )
             if hashlib.sha256(sample).hexdigest() != values["ExpectedSha256"]:
                 return 13
-        events = _guest_events(self.baseline).encode("utf-8")
+        events = (
+            _drop_events(self.baseline, work, values["ExpectedSha256"], self.drops)
+            if self.drops
+            else _guest_events(self.baseline)
+        ).encode("utf-8")
         manifest.update(
-            event_count=3,
+            event_count=events.count(b"<Event "),
             events_file="events.xml",
             events_sha256=hashlib.sha256(events).hexdigest(),
         )
@@ -251,6 +295,43 @@ class FakeVBoxManage:
         ).encode("utf-8")
         if self.tamper is not None:
             self.tamper(self.guest_files, work)
+        return 0
+
+    def _guest_collect(self, work: str, run_id: str) -> int:
+        """Mirror of the guest Collect mode: seal listed files that exist."""
+        if self.collect_exit:
+            return self.collect_exit
+        request = json.loads(self.guest_files[f"{work}\\collect-request.json"])
+        assert request["run_id"] == run_id
+        files = []
+        for index, path in enumerate(request["paths"]):
+            entry: dict[str, object] = {
+                "index": index,
+                "status": "missing",
+                "sha256": None,
+                "size": None,
+            }
+            if path in self.drops:
+                data = self.drops[path]
+                self.guest_files[f"{work}\\collect\\{index:02d}.bin"] = seal_bytes(data)
+                entry.update(
+                    status="collected",
+                    sha256=hashlib.sha256(data).hexdigest(),
+                    size=len(data),
+                )
+            files.append(entry)
+        manifest = {
+            "collector": "workbench-guest-collect",
+            "version": 1,
+            "run_id": run_id,
+            # PowerShell 5.1 ConvertTo-Json writes a single item as an object.
+            "files": files[0] if len(files) == 1 else files,
+        }
+        self.guest_files[f"{work}\\collect\\dropped-manifest.json"] = json.dumps(
+            manifest
+        ).encode("utf-8")
+        if self.collect_tamper is not None:
+            self.collect_tamper(self.guest_files, work)
         return 0
 
     def ops(self) -> list[str]:
@@ -973,3 +1054,145 @@ def test_progress_summary_ignores_anything_but_fixed_lines() -> None:
     assert summarize_progress(b"09:00:00 export-done 3565\n") == (
         "last guest phase export-done 3565 at 09:00:00 UTC (1 phases)"
     )
+
+
+# -- ADR-032: dropped-file collection ------------------------------------------
+
+COLLECT = ExecutionRequest(
+    "CASE-0002",
+    ExecutionProfile.SAMPLE,
+    120,
+    sample_artifact_id="ART-000001",
+    collect_dropped=True,
+)
+SAMPLE_BYTES = b"MZ" + b"\0" * 62 + b"HARMLESS-SYNTHETIC-SAMPLE"
+
+
+def _metadata(root: Path) -> dict[str, object]:
+    other = [
+        a
+        for a in ArtifactService(root).list_artifacts("CASE-0002")
+        if a.kind is ArtifactKind.OTHER
+    ][-1]
+    data = ArtifactStore(root).read_verified(
+        other.relative_path, (other.sha256, other.size_bytes), max_bytes=1 << 20
+    )
+    loaded: dict[str, object] = json.loads(data)
+    return loaded
+
+
+def test_collect_dropped_stores_sealed_samples_and_reuses_known_content(
+    root: Path,
+) -> None:
+    side = b"MZ synthetic side-loaded dll"
+    blob = b"synthetic data file"
+    fake = FakeVBoxManage(
+        drops={
+            GUEST_TEMP + "is-ABCDE.tmp\\side.dll": side,
+            GUEST_TEMP + "is-ABCDE.tmp\\data.bin": blob,
+            GUEST_TEMP + "5c266c2086\\copy.exe": SAMPLE_BYTES,  # exact copy
+        }
+    )
+    run = _service(root, fake).run(COLLECT, approved=True)
+    assert run.status is RunStatus.SUCCEEDED
+    steps = _steps(run)
+    assert steps.index(("collect_dropped", "ok")) == steps.index(("verify", "ok")) + 1
+    collect_run = [
+        c for c in fake.commands if c[1] == "guestcontrol" and c[3] == "run"
+    ][-1]
+    assert collect_run[-2:] == ("-Mode", "Collect")
+    request = json.loads(fake.copied[-1] if fake.copied[-1].startswith(b"{") else b"{}")
+    assert request["paths"] == list(fake.drops)  # x.job is outside the locations
+    samples = [
+        a
+        for a in ArtifactService(root).list_artifacts("CASE-0002")
+        if a.kind is ArtifactKind.SAMPLE
+    ]
+    assert [a.artifact_id.display_id for a in samples][0] == "ART-000001"
+    added = samples[1:]
+    assert len(added) == 2  # side.dll and data.bin; the copy reuses ART-000001
+    for artifact in added:
+        raw = artifact.relative_path.resolve_under(root).read_bytes()
+        assert raw.startswith(MAGIC)  # sealed at rest
+        assert unseal_bytes(raw) in (side, blob)
+    files = _metadata(root)["dropped_files"]
+    assert isinstance(files, dict) and files["step_failed"] is False
+    entries = {e["name"]: e for e in files["files"]}  # type: ignore[index]
+    assert entries["copy.exe"]["artifact_id"] == "ART-000001"
+    assert entries["copy.exe"]["existing"] is True
+    assert entries["side.dll"]["status"] == "collected"
+    assert str(entries["side.dll"]["source"]).startswith("ART-")
+    assert files["outside_allowed"] == 1
+    # Raw collected bytes never reach the host disk: only sealed files are copied.
+    assert all(
+        data.startswith(MAGIC)
+        for path, data in fake.guest_files.items()
+        if "\\collect\\" in path and path.endswith(".bin")
+    )
+
+
+def test_single_requested_file_manifest_object_is_accepted(root: Path) -> None:
+    fake = FakeVBoxManage(drops={GUEST_TEMP + "one.dll": b"MZ one"})
+    run = _service(root, fake).run(COLLECT, approved=True)
+    assert ("collect_dropped", "ok") in _steps(run)
+    names = {e["name"] for e in _metadata(root)["dropped_files"]["files"]}  # type: ignore[index]
+    assert names == {"one.dll"}
+
+
+def test_unsealed_or_mismatching_collected_file_fails_the_step_keeps_events(
+    root: Path,
+) -> None:
+    def unsealed(files: dict[str, bytes], work: str) -> None:
+        # Same length as a sealed file, but no seal header.
+        files[f"{work}\\collect\\00.bin"] = b"NOTSEALD" + b"MZ raw bytes, never sealed"
+
+    fake = FakeVBoxManage(
+        drops={GUEST_TEMP + "a.dll": b"MZ raw bytes, never sealed"},
+        collect_tamper=unsealed,
+    )
+    run = _service(root, fake).run(COLLECT, approved=True)
+    assert run.status is RunStatus.SUCCEEDED
+    steps = _steps(run)
+    assert ("collect_dropped", "failed") in steps
+    assert steps[-1] == ("register", "ok")
+    detail = next(s.detail for s in run.steps if s.step.value == "collect_dropped")
+    assert detail is not None and "a collected file is not sealed" in detail
+    kinds = [a.kind for a in ArtifactService(root).list_artifacts("CASE-0002")]
+    assert kinds.count(ArtifactKind.SAMPLE) == 1  # nothing stored from the guest
+    assert ArtifactKind.SYSMON in kinds
+    assert _metadata(root)["dropped_files"]["step_failed"] is True  # type: ignore[index]
+
+
+def test_guest_collect_failure_is_recorded_and_events_are_kept(root: Path) -> None:
+    fake = FakeVBoxManage(drops={GUEST_TEMP + "a.dll": b"MZ"}, collect_exit=17)
+    run = _service(root, fake).run(COLLECT, approved=True)
+    assert run.status is RunStatus.SUCCEEDED
+    detail = next(s.detail for s in run.steps if s.step.value == "collect_dropped")
+    assert detail is not None
+    assert "guest collection of dropped files failed (exit status 17)" in detail
+    assert fake.state == "poweroff" and fake.current == SNAPSHOT
+
+
+def test_without_the_option_nothing_is_collected(root: Path) -> None:
+    fake = FakeVBoxManage(drops={GUEST_TEMP + "a.dll": b"MZ"})
+    run = _service(root, fake).run(SAMPLE, approved=True)
+    assert "collect_dropped" not in {s for s, _ in _steps(run)}
+    runs = [c for c in fake.commands if c[1] == "guestcontrol" and c[3] == "run"]
+    assert len(runs) == 1
+    assert "dropped_files" not in _metadata(root)
+
+
+def test_collect_option_is_refused_for_scenarios_and_shown_in_the_plan(
+    root: Path,
+) -> None:
+    with pytest.raises(DomainError) as error:
+        ExecutionRequest(
+            "CASE-0001",
+            ExecutionProfile.BENIGN_SCENARIO,
+            60,
+            scenario="registry-probe",
+            collect_dropped=True,
+        )
+    assert error.value.code is DomainErrorCode.INVALID_EXECUTION_REQUEST
+    plan = _service(root, FakeVBoxManage()).plan(COLLECT)
+    assert [s.step.value for s in plan.steps].count("collect_dropped") == 1
