@@ -477,6 +477,10 @@ uv run workbench --config workbench.toml ai analyze CASE-0001 --stage collection
 
 - 보내는 것은 `ai preview`가 보여주는 구조 요약뿐이다(`synthesis`는 확정 사항 문장 포함).
   명령줄·경로·사용자 이름·해시·추출 문자열·샘플·원본 로그는 보내지 않는다.
+- 읽기용 한국어 번역(ADR-033): `ai translate AIA-NNNN|CASE-NNNN --allow-network`(기본
+  DeepSeek)는 저장된 의견의 제목·본문만 보내 번역을 저장한다. Workbench ID가 하나라도 바뀌면
+  거부한다. 작업 공간 AI 탭에서 `KO` 표시가 있는 의견에 마우스를 올리면 번역이 뜬다. 비교·
+  채택·보고서는 영어 원문만 쓴다.
 - 접속 대상은 세 API 호스트로 고정된 HTTPS다. 키는 환경 변수에서만 읽고 저장·출력하지 않는다.
 - 응답은 단계별 JSON 형식으로 받고 오프라인 Provider와 같은 검증을 거친다. 형식이 틀리거나
   없는 ID를 인용하면 아무것도 저장하지 않는다. 외부 Provider는 `--stage`가 있어야 한다.

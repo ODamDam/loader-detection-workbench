@@ -955,6 +955,45 @@ def validate_ai(
                 analysis_id,
                 "AI analysis has more than one summary",
             )
+    _validate_ai_translations(connection, found, emit)
+
+
+def _validate_ai_translations(
+    connection: sqlite3.Connection, found: dict[str, list[int]], emit: Emit
+) -> None:
+    """ADR-033 reading translations (AI schema v3): only an existing suggestion."""
+    if "ai_translations" not in _objects(connection, "table"):
+        return
+    scope = ValidationScope.AI
+    for row in connection.execute(
+        "SELECT analysis_display_id, sequence, language, text, request_sha256 "
+        "FROM ai_translations"
+    ):
+        subject = f"{row['analysis_display_id']}#{row['sequence']}"
+        if row["sequence"] not in found.get(str(row["analysis_display_id"]), []):
+            emit(
+                2,
+                AI_REFERENCE_BROKEN,
+                FindingSeverity.ERROR,
+                scope,
+                subject,
+                "AI translation references a missing suggestion",
+            )
+        elif (
+            row["language"] != "ko"
+            or not isinstance(row["text"], str)
+            or not row["text"].strip()
+            or not isinstance(row["request_sha256"], str)
+            or _SHA256.fullmatch(row["request_sha256"]) is None
+        ):
+            emit(
+                2,
+                AI_RECORD_INVALID,
+                FindingSeverity.ERROR,
+                scope,
+                subject,
+                "AI translation language, text or request hash is invalid",
+            )
 
 
 _FINDING_TABLES = ("findings_counters", "findings", "finding_revisions")

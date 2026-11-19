@@ -27,10 +27,12 @@ from loader_detection_workbench.domain.time import format_utc, parse_utc, utc_no
 from loader_detection_workbench.project.database import connect_database
 from loader_detection_workbench.project.service import ProjectWorkspace
 
-AI_SCHEMA_VERSION = 2
-# v1 (ADR-026) is still readable; the first write migrates it to v2, which only
-# widens the suggestion kinds for the ADR-031 stages.
-READABLE_AI_SCHEMA_VERSIONS = (1, 2)
+AI_SCHEMA_VERSION = 3
+# v1 (ADR-026) is still readable; the first write migrates it, widening the
+# suggestion kinds for the ADR-031 stages (v2). v3 only adds the append-only
+# ``ai_translations`` table (ADR-033), so a v2 database is upgraded in place.
+READABLE_AI_SCHEMA_VERSIONS = (1, 2, 3)
+TRANSLATION_LANGUAGES = ("ko",)
 _KINDS = ", ".join(f"'{kind.value}'" for kind in SuggestionKind)
 
 _SUGGESTION_TABLE = f"""CREATE TABLE IF NOT EXISTS {{name}} (
@@ -90,6 +92,28 @@ _SCHEMA = (
     """CREATE TRIGGER IF NOT EXISTS ai_suggestions_no_delete
         BEFORE DELETE ON ai_suggestions
         BEGIN SELECT RAISE(ABORT, 'AI suggestions are append-only'); END""",
+    # ADR-033: machine translations of suggestion text, for reading only.
+    """CREATE TABLE IF NOT EXISTS ai_translations (
+        analysis_display_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL CHECK (sequence >= 1),
+        language TEXT NOT NULL CHECK (language IN ('ko')),
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        title TEXT,
+        text TEXT NOT NULL,
+        request_sha256 TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (analysis_display_id, sequence, language),
+        FOREIGN KEY (analysis_display_id, sequence)
+            REFERENCES ai_suggestions(analysis_display_id, sequence)
+            ON DELETE RESTRICT
+    )""",
+    """CREATE TRIGGER IF NOT EXISTS ai_translations_immutable
+        BEFORE UPDATE ON ai_translations
+        BEGIN SELECT RAISE(ABORT, 'AI translations are immutable'); END""",
+    """CREATE TRIGGER IF NOT EXISTS ai_translations_no_delete
+        BEFORE DELETE ON ai_translations
+        BEGIN SELECT RAISE(ABORT, 'AI translations are append-only'); END""",
 )
 
 
@@ -178,6 +202,12 @@ class SQLiteAiRepository:
         installed = version is not None
         if version == 1:
             self._migrate_v1()
+        elif version == 2:
+            # v2 -> v3 adds a table only; the statements below create it.
+            self._connection.execute(
+                "UPDATE ai_schema SET version = ?, applied_at = ?",
+                (AI_SCHEMA_VERSION, format_utc(utc_now())),
+            )
         for statement in _SCHEMA:
             self._connection.execute(statement)
         if not installed:
@@ -292,7 +322,66 @@ class SQLiteAiRepository:
                 "suggestion is missing or was already reviewed",
             )
 
+    def insert_translations(
+        self,
+        analysis_display_id: str,
+        language: str,
+        provider: str,
+        model: str,
+        request_sha256: str,
+        items: tuple[tuple[int, str | None, str], ...],
+    ) -> int:
+        """Store (sequence, title, text) translations; existing ones are kept."""
+        self._require_write()
+        if language not in TRANSLATION_LANGUAGES:
+            raise DomainError(
+                DomainErrorCode.INVALID_AI_REQUEST,
+                "translation language is unsupported",
+            )
+        stored = 0
+        at = format_utc(utc_now())
+        for sequence, title, text in items:
+            cursor = self._connection.execute(
+                "INSERT OR IGNORE INTO ai_translations (analysis_display_id, sequence, "
+                "language, provider, model, title, text, request_sha256, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    analysis_display_id,
+                    sequence,
+                    language,
+                    provider,
+                    model,
+                    title,
+                    text,
+                    request_sha256,
+                    at,
+                ),
+            )
+            stored += cursor.rowcount
+        return stored
+
     # -- reads ----------------------------------------------------------------
+
+    def translations(
+        self, analysis_display_id: str, language: str = "ko"
+    ) -> dict[int, tuple[str | None, str]]:
+        """sequence -> (title, text); empty before v3 or without translations."""
+        if not self._available:
+            return {}
+        exists = self._connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'ai_translations'"
+        ).fetchone()
+        if exists is None:
+            return {}
+        return {
+            int(row["sequence"]): (row["title"], str(row["text"]))
+            for row in self._connection.execute(
+                "SELECT sequence, title, text FROM ai_translations "
+                "WHERE analysis_display_id = ? AND language = ? ORDER BY sequence",
+                (analysis_display_id, language),
+            )
+        }
 
     def _suggestions(self, display_id: str) -> tuple[Suggestion, ...]:
         items: list[Suggestion] = []

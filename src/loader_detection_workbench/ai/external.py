@@ -333,6 +333,29 @@ class ChatCompletionsProvider:
             raise _invalid("provider reply has no message content") from exc
         return parse_answer(content)
 
+    def complete_json(self, system: str, user: str) -> str:
+        """One JSON-mode completion (translations, ADR-033); the caller validates."""
+        key = _require_key(self.name)
+        reply = self._transport(
+            self._url,
+            {"Authorization": f"Bearer {key}"},
+            {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "response_format": {"type": "json_object"},
+            },
+        )
+        try:
+            content = reply["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise _invalid("provider reply has no message content") from exc
+        if not isinstance(content, str):
+            raise _invalid("provider reply has no message content")
+        return content
+
 
 class GeminiProvider:
     """Google Gemini ``generateContent`` with a response schema."""
@@ -368,6 +391,28 @@ class GeminiProvider:
         except (KeyError, IndexError, TypeError, AttributeError) as exc:
             raise _invalid("provider reply has no candidate content") from exc
         return parse_answer(content)
+
+    def complete_json(self, system: str, user: str) -> str:
+        """One JSON-mode completion (translations, ADR-033); the caller validates."""
+        key = _require_key(self.name)
+        reply = self._transport(
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{self.model}:generateContent",
+            {"x-goog-api-key": key},
+            {
+                "systemInstruction": {"parts": [{"text": system}]},
+                "contents": [{"role": "user", "parts": [{"text": user}]}],
+                "generationConfig": {
+                    "responseMimeType": "application/json",
+                    "temperature": 0.2,
+                },
+            },
+        )
+        try:
+            parts = reply["candidates"][0]["content"]["parts"]
+            return "".join(str(part.get("text", "")) for part in parts)
+        except (KeyError, IndexError, TypeError, AttributeError) as exc:
+            raise _invalid("provider reply has no candidate content") from exc
 
 
 def external_providers(

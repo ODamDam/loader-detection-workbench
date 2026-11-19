@@ -123,8 +123,21 @@
             {% for s in record.suggestions %}
               <article class="opinion">
                 <p><span class="badge">{{ s.kind.value }}</span> <span class="badge">{{ s.state.value }}</span></p>
-                {% if s.title %}<p><strong>{{ s.title }}</strong></p>{% endif %}
-                <p>{{ s.text }}</p>
+                {% set ko = korean.get(record.display_id, {}).get(s.sequence) %}
+                {% if ko %}
+                  <div class="translated" tabindex="0" aria-describedby="ko-{{ record.display_id }}-{{ s.sequence }}">
+                    {% if s.title %}<p><strong>{{ s.title }}</strong></p>{% endif %}
+                    <p>{{ s.text }} <span class="badge ko-badge">KO</span></p>
+                    <div class="ko-text" role="tooltip" id="ko-{{ record.display_id }}-{{ s.sequence }}" lang="ko">
+                      {% if ko[0] %}<p><strong>{{ ko[0] }}</strong></p>{% endif %}
+                      <p>{{ ko[1] }}</p>
+                      <p class="hint">Machine translation for reading only; the English text is the record.</p>
+                    </div>
+                  </div>
+                {% else %}
+                  {% if s.title %}<p><strong>{{ s.title }}</strong></p>{% endif %}
+                  <p>{{ s.text }}</p>
+                {% endif %}
                 <p class="hint">cites: {{ s.evidence_artifact_ids|join(', ') or 'none' }}</p>
                 {% if editable and s.kind in adoptable %}
                   <form method="post" class="inline" action="{{ url_for('web.ai_adopt', case_display_id=cid, analysis_display_id=record.display_id, sequence=s.sequence) }}">

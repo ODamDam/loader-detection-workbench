@@ -549,6 +549,21 @@ def _add_ai_parsers(groups: Any) -> None:
         help="allow sending the previewed input to an external provider; "
         "also needs [ai] allow_network = true in --config (ADR-031)",
     )
+    translate = commands.add_parser(
+        "translate",
+        help="store Korean reading translations of suggestions (ADR-033); sends "
+        "only each suggestion's title and text",
+    )
+    translate.add_argument(
+        "target", metavar="AIA-NNNN|CASE-NNNN", help="one analysis, or all of a Case"
+    )
+    translate.add_argument("--provider", default="deepseek")
+    translate.add_argument(
+        "--allow-network",
+        action="store_true",
+        help="allow sending suggestion text to the provider; also needs "
+        "[ai] allow_network = true in --config",
+    )
     listing = commands.add_parser("list")
     listing.add_argument("--case", dest="case_display_id", metavar="CASE-NNNN")
     show = commands.add_parser("show")
@@ -1322,6 +1337,32 @@ def _run_finding(arguments: argparse.Namespace, service: FindingService) -> int:
     return 0
 
 
+def _run_ai_translate(arguments: argparse.Namespace, service: AiAnalysisService) -> int:
+    target = str(arguments.target)
+    ids = (
+        [a.display_id for a in service.list_analyses(target)]
+        if target.startswith("CASE-")
+        else [target]
+    )
+    failed = 0
+    for analysis_id in ids:
+        try:
+            result = service.translate(
+                analysis_id, arguments.provider, allow_network=arguments.allow_network
+            )
+        except DomainError as exc:
+            if len(ids) == 1:
+                raise
+            failed += 1
+            print(f"{analysis_id}\terror: {exc.code.value}: {exc}")
+            continue
+        print(
+            f"{analysis_id}\t{result.provider}\t{result.stored} translated\t"
+            f"{result.total} total"
+        )
+    return 2 if failed else 0
+
+
 def _run_ai(arguments: argparse.Namespace, service: AiAnalysisService) -> int:
     command = arguments.ai_command
     if command == "providers":
@@ -1365,6 +1406,8 @@ def _run_ai(arguments: argparse.Namespace, service: AiAnalysisService) -> int:
                 f"{len(analysis.suggestions)} suggestions\t"
                 f"{pending} pending"
             )
+    elif command == "translate":
+        return _run_ai_translate(arguments, service)
     elif command == "show":
         _print_ai_analysis(service.show(arguments.analysis_id))
     elif command == "compare":

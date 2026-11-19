@@ -40,6 +40,14 @@ from loader_detection_workbench.ai.domain import (
 from loader_detection_workbench.ai.external import KEY_ENV, api_key, external_providers
 from loader_detection_workbench.ai.provider import AnalysisProvider, default_providers
 from loader_detection_workbench.ai.store import AiAnalysisReader, ai_repository
+from loader_detection_workbench.ai.translate import (
+    LANGUAGE,
+    parse_translation,
+    translation_request,
+)
+from loader_detection_workbench.ai.translate import (
+    SYSTEM_PROMPT as TRANSLATE_SYSTEM_PROMPT,
+)
 from loader_detection_workbench.case.relations import CaseProcessRelationsQuery
 from loader_detection_workbench.case.timeline import CaseTimelineQuery
 from loader_detection_workbench.config import AiConfig
@@ -61,6 +69,14 @@ class ProviderInfo:
     enabled: bool
     # Why an external provider cannot be called now, or ``None``.
     blocked_by: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TranslationResult:
+    analysis_display_id: str
+    provider: str
+    stored: int  # translated by this call
+    total: int  # translations the analysis now has
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,6 +263,56 @@ class AiAnalysisService:
 
     def show(self, analysis_display_id: str) -> AiAnalysis:
         return self._reader.show(analysis_display_id)
+
+    # -- reading aid (ADR-033) -----------------------------------------------
+
+    def translations(
+        self, analysis_display_id: str
+    ) -> dict[int, tuple[str | None, str]]:
+        """Stored Korean translations of one analysis, by suggestion sequence."""
+        require_analysis_id(analysis_display_id)
+        with ai_repository(self._root) as repository:
+            return repository.translations(analysis_display_id, LANGUAGE)
+
+    def translate(
+        self,
+        analysis_display_id: str,
+        provider_name: str = "deepseek",
+        *,
+        allow_network: bool = False,
+    ) -> TranslationResult:
+        """Translate the not yet translated suggestions of one analysis.
+
+        Sends only each suggestion's sequence, title and text. The answer is
+        validated fail closed before anything is stored.
+        """
+        analysis = self.show(analysis_display_id)
+        provider = self._provider(provider_name, allow_network)
+        complete = getattr(provider, "complete_json", None)
+        if complete is None:
+            raise DomainError(
+                DomainErrorCode.AI_PROVIDER_UNAVAILABLE,
+                f"provider {provider_name} cannot translate",
+            )
+        done = self.translations(analysis_display_id)
+        todo = [s for s in analysis.suggestions if s.sequence not in done]
+        if not todo:
+            return TranslationResult(analysis_display_id, provider_name, 0, len(done))
+        request = translation_request(todo)
+        answer = complete(TRANSLATE_SYSTEM_PROMPT, request.json)
+        items = parse_translation(answer, todo)
+        with ai_repository(self._root, write=True) as repository:
+            stored = repository.insert_translations(
+                analysis_display_id,
+                LANGUAGE,
+                provider.name,
+                provider.model,
+                request.sha256,
+                items,
+            )
+        return TranslationResult(
+            analysis_display_id, provider_name, stored, len(done) + stored
+        )
 
     # -- human review ---------------------------------------------------------
 

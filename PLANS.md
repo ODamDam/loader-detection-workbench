@@ -59,6 +59,11 @@ Status: `in_progress` — 1단계(확정 사항 + 확정 기반 보고서) 완�
     게스트 `Collect` 모드 봉인, 호스트 메모리 검증 후 봉인 `sample` 저장). 가짜 VBoxManage·
     PowerShell 모의 테스트까지. 실제 VM 실행은 미실행(승인 대기).
   - OpenAI: 사용자가 추가 결제 완료. 5건 재호출은 별도 승인 대기.
+  - HijackLoader dev 3건 `--collect-dropped` VM 재실행(VMR-0026~0028) 성공, 새 sample 33개.
+    YARA 초안 RULE-0009(IDAT 페이로드 블롭, `C6 A5 79 EA`, 3/3), RULE-0010(2단계 암호화 헤더,
+    2/2), 정상 호스트 파일 242,421개 오탐 0. CASE-0006 증거 초안 FND-0034. 동결 대기.
+  - AI 의견 한국어 번역(ADR-033, 사용자 승인 (A)): `ai translate`, AI 스키마 v3
+    `ai_translations`, 작업 공간 hover 표시. 가짜 전송 테스트까지, 실제 호출은 미실행.
 - 남은 것: 확정(사용자 검토 중) → 보고서·synthesis, HijackLoader dev 3건 `--collect-dropped`
   재실행(승인 필요) → YARA 초안, eval 평가(같은 옵션). 게스트 지연은 다음 실패 때 진행 기록으로
   원인 확인.

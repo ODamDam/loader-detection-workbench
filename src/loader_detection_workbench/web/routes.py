@@ -394,7 +394,14 @@ def _workspace_ai(case_display_id: str, stage: AnalysisStage) -> dict[str, objec
             )
         except DomainError:
             comparison = None  # e.g. providers answered different inputs
-    return {"columns": columns, "comparison": comparison, "adoptable": _ADOPTABLE}
+    # ADR-033: Korean reading translations, shown on hover; never the source.
+    korean = {a.display_id: service.translations(a.display_id) for a in columns}
+    return {
+        "columns": columns,
+        "comparison": comparison,
+        "adoptable": _ADOPTABLE,
+        "korean": korean,
+    }
 
 
 @web.get("/cases/<case_display_id>/workspace")
