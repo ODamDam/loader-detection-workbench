@@ -140,7 +140,9 @@ state-changing route of the UI remains manual evidence registration.
 
 The server accepts only the configured loopback Host and exact Origin for state
 changing requests. All POST requests require a CSRF token. Jinja autoescaping is
-kept enabled. Responses deny framing, MIME sniffing, referrer forwarding,
+kept enabled. Responses deny framing, MIME sniffing, cross-site referrer forwarding
+(`Referrer-Policy: same-origin`; `no-referrer` would make browsers send `Origin: null`
+on form POSTs, which the origin check rejects),
 cross-origin resources, objects, external form actions, and caching. Debug mode,
 the reloader, proxy headers and raw evidence rendering are not enabled. The only
 downloads are generated reports and the frozen ruleset; no route returns sample or

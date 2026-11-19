@@ -64,7 +64,7 @@
   연다. Project는 bind 전에 기존 validator로 검증한다.
 - state-changing request에는 CSRF와 exact Origin 검사를 적용하고 Host allowlist,
   multipart 크기·form memory·part 개수 제한을 적용한다.
-- Jinja escaping과 CSP, frame deny, no-sniff, no-referrer, no-store 응답 헤더를
+- Jinja escaping과 CSP, frame deny, no-sniff, Referrer-Policy same-origin(다른 사이트로는 보내지 않음), no-store 응답 헤더를
   유지한다. 사용자 문자열을 safe HTML로 표시하지 않는다.
 - 업로드 파일명은 경로로 사용하지 않는다. bytes는 OS 임시 디렉터리의 생성된
   이름에 staging하고 기존 Manual Evidence Service에 전달한 뒤 모든 결과에서

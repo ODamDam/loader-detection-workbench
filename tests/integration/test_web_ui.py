@@ -93,7 +93,9 @@ def test_case_list_empty_state_and_security_headers(tmp_path: Path) -> None:
     assert "이 Project에 Case가 없습니다." in response.text
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["X-Frame-Options"] == "DENY"
-    assert response.headers["Referrer-Policy"] == "no-referrer"
+    # same-origin, not no-referrer: with no-referrer browsers send `Origin: null`
+    # on form POSTs and every write would be rejected by the origin check.
+    assert response.headers["Referrer-Policy"] == "same-origin"
     assert response.headers["Cache-Control"] == "no-store"
     assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
 

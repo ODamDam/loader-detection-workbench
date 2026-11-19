@@ -186,6 +186,7 @@
               <span class="sp"></span>
               {% if editable and finding.state.value == 'draft' %}
                 {% if it.waiting %}<span class="note">먼저 확정: {% for ref in it.waiting %}{{ ref|ids(cid) }} {% endfor %}</span>{% endif %}
+                {% if finding.kind.value == 'hypothesis' and not c.verdict %}<span class="note">판정을 정해야 확정할 수 있습니다 (수정 → 판정)</span>{% endif %}
                 <form method="post" class="inline" action="{{ url_for('web.finding_transition', case_display_id=cid, finding_display_id=finding.display_id, action='confirm') }}">
                   {{ csrf() }}<button type="submit" class="sm">확정</button>
                 </form>

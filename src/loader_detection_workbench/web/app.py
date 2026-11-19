@@ -55,6 +55,19 @@ _SAFE_MESSAGES = {
 }
 
 
+# Finding errors carry fixed, path-free reasons the analyst needs to act on
+# (for example "a hypothesis finding needs a verdict before it is confirmed").
+_EXPLAINED = frozenset(
+    {
+        DomainErrorCode.FINDING_NOT_FOUND,
+        DomainErrorCode.INVALID_FINDING,
+        DomainErrorCode.FINDING_REFERENCE_INVALID,
+        DomainErrorCode.FINDING_STATE_INVALID,
+        DomainErrorCode.FINDING_IN_USE,
+    }
+)
+
+
 def _domain_status(error: DomainError) -> int:
     if error.category is DomainErrorCategory.IDENTITY:
         return 404
@@ -129,7 +142,10 @@ def create_app(
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "no-referrer"
+        # "no-referrer" makes browsers send `Origin: null` on same-site form POSTs,
+        # which the origin check above rejects; "same-origin" still sends nothing
+        # to other sites.
+        response.headers["Referrer-Policy"] = "same-origin"
         response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -141,8 +157,12 @@ def create_app(
                 "error.html",
                 status=status,
                 code=error.code.value,
-                message=_SAFE_MESSAGES.get(
-                    error.code, "The request could not be completed safely."
+                message=(
+                    str(error)
+                    if error.code in _EXPLAINED
+                    else _SAFE_MESSAGES.get(
+                        error.code, "The request could not be completed safely."
+                    )
                 ),
             ),
             status,

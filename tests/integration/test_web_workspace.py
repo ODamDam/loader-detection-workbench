@@ -128,6 +128,18 @@ def test_ai_tab_shows_providers_and_adopts(client: FlaskClient, root: Path) -> N
     synthesis = _get(client, WS + "?tab=ai&stage=synthesis").text
     assert "이 단계의 AI 분석이 없습니다." in synthesis
 
+    # An adopted hypothesis has no verdict yet: confirming explains why it fails,
+    # and succeeds once a verdict is set through the edit form.
+    queue = _get(client, WS + "?tab=findings").text
+    assert "판정을 정해야 확정할 수 있습니다" in queue
+    base = f"/cases/CASE-0001/findings/{draft.display_id}"
+    refused = _post(client, f"{base}/confirm", {})
+    assert refused.status_code == 400
+    assert "needs a verdict" in refused.text
+    assert _post(client, f"{base}/edit", {"verdict": "supported"}).status_code == 303
+    assert _post(client, f"{base}/confirm", {}).status_code == 303
+    assert FindingService(root).show(draft.display_id).state.value == "confirmed"
+
 
 def test_report_tab_serves_confirmed_report(client: FlaskClient, root: Path) -> None:
     html = _get(client, WS + "/report.html")
