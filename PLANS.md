@@ -72,6 +72,60 @@ Status: `in_progress` — 1단계(확정 사항 + 확정 기반 보고서) 완�
 - 남은 것: 확정(사용자 검토 중) → 보고서·synthesis, HijackLoader dev 3건 `--collect-dropped`
   재실행(승인 필요) → YARA 초안, eval 평가(같은 옵션). 게스트 지연은 다음 실패 때 진행 기록으로
   원인 확인.
+- 2026-11-21 eval 평가 준비(미실행): eval 6건(SMP-000001·002 Amadey, 006·008·010 PureCrypter,
+  013 HijackLoader)은 모두 `metadata_only`·`valid_unseen`. 사용자 결정: 6건 모두
+  `--collect-dropped`, 옵션은 dev와 같게 `WIN11-ANALYSIS`/`SYSMON-V2-CLEAN`/60초.
+  순서: `sample eval-open` → Case 생성 → `import-zip` → `--dry-run` → 실행 승인 후 `--approve`
+  → 전 건 성공 뒤 BMK-0004(unseen 6 + benign_common CASE-0007~0013) 생성·동결 → 동결 룰
+  10개를 룰마다 1회 `validate run`(재실행은 `tuning`으로 기록되므로 한 번만).
+  - 2026-11-21 진행: 6건 `eval-open`, CASE-0017~0022 생성, `import-zip`으로 봉인 sample
+    ART-000165~000170 등록(SHA-256 6/6 일치), `--dry-run` 6/6 통과. 실제 VM 실행 전(승인 대기).
+  - 호스트 V3가 uv 실행기 `.venv\Scripts\workbench.exe`를 평판 기반으로 차단해 SMP-000002 가져오기가
+    한 번 실패했다(기록 손상 없음). 이후 `python -c "...cli import main"`으로 같은 CLI를 호출했다.
+  - 게스트 계정은 `WORKBENCH_GUEST_USER`/`WORKBENCH_GUEST_PASSWORD` 환경변수로만 받으므로 실제
+    실행은 사용자가 자기 터미널에서 설정해 실행한다.
+  - 평가 계획 사용자 승인(2026-11-21): VM 6건 성공 확인(`vm list`/`vm show`, 실패 기록 Artifact가
+    Case에 섞이면 중단) → BMK-0004 생성·13건 추가·동결 → 룰마다 1회
+    `validate run RULE BMK-0004 --version V --role unseen --role benign_common`(RULE-0002·0006은
+    v2, 나머지 v1). role을 빼면 `development`로 기록되고, `tuning` 판정은 룰 단위(이전
+    evaluation 존재 여부)다. YARA는 VM benign 5건, Sigma는 CASE-0007·0008이 `not_evaluable`로
+    나온다(예상된 동작). 오류가 나면 재실행하지 않고 보고한다.
+  - VMR-0029(CASE-0017) preflight `HYPERVISOR_COMMAND_FAILED`(`showvminfo` VBOX_E_OBJECT_NOT_FOUND,
+    VM 드라이브 미연결). 샘플 미실행, Sysmon·메타데이터 Artifact 없음 → 평가에 영향 없음.
+  - 6건 `sample show`의 `evaluation_integrity`는 `eval-open`(`first_detailed_access_at`) 이후
+    `contaminated`로 계산된다(설계상 동작, `validate run`은 이 값을 검사하지 않음). 보고에서는
+    validation run kind(`evaluation`)와 샘플 integrity 표시를 구분해 적는다.
+  - VMR-0030(CASE-0017) 성공: Sysmon ART-000171(2,770건), 메타데이터 ART-000172. 회수한 드롭 파일
+    `Ezgsu.exe`는 원본과 SHA-256이 같은 자기 복사본이라 기존 ART-000165로 연결됐다(새 sample 없음).
+    등록 단계 문구 "dropped 1 sample(s)"는 기존 Artifact 연결도 센다.
+  - VMR-0031(CASE-0018) 실패: 해시 확인 뒤 대상 시작 단계에서 `GUEST_EXECUTION_FAILED`(exit 14).
+    Artifact 없음, 복원 정상. 재실행 여부는 사용자 결정. CASE-0018이 끝내 실패하면 BMK-0004
+    구성(unseen 5건으로 진행할지)을 사용자에게 다시 묻는다.
+  - 1단계 확인 완료: VMR-0032~0035(CASE-0019~0022) succeeded, 복원 정상. Sysmon 3,022 / 5,260 /
+    3,176 / 3,988건. 드롭 파일은 CASE-0019~0021 0개, CASE-0022 10개(ART-000180~189, 메타데이터
+    ART-000190; 18 missing·3 not_file·1 unreadable·1 크기 제한 초과로 미회수). CASE-0018은
+    VMR-0036에서도 exit 14로 2회 연속 실패, Artifact는 ART-000166뿐. BMK-0004는 CASE-0018 포함
+    여부 사용자 결정 전까지 만들지 않는다.
+  - 사용자 결정: CASE-0018을 unseen으로 포함(YARA는 원본 sample로 평가, Sigma는 `not_evaluable`,
+    실행 실패 2회는 보고서에 남김). BMK-0004 생성·13건 추가·동결(2026-11-21T07:58:10Z).
+  - eval 평가 완료: RUN-0034~0043, 10건 모두 kind `evaluation`(룰마다 1회, 재실행 없음).
+    FP 0/10. 탐지된 unseen: RULE-0001 v1 → CASE-0017, RULE-0002 v2 → CASE-0020, RULE-0005 v1 →
+    CASE-0022, RULE-0006 v2 → CASE-0017, RULE-0008 v1 → CASE-0022. RULE-0003·0004·0007(Sigma)과
+    RULE-0009·0010(YARA, CASE-0022 드롭 파일 10개 포함)은 unseen 탐지 0. `not_evaluable`은 YARA에서
+    CASE-0009~0013, Sigma에서 CASE-0007·0008·0018. 샘플 `evaluation_integrity`는 6건 모두
+    `contaminated`로 표시되며 run kind와 구분한다.
+  - eval 해석(사용자 승인): 겨냥 패밀리 기준 YARA 0001 Amadey 1/2, 0002 PureCrypter 1/3,
+    0009·0010 HijackLoader 각 0/1. Sigma 0003 Amadey 0/1(0018 판정 불가), 0006 Amadey 1/1,
+    0004 PureCrypter 0/3, 0007 Amadey·PureCrypter 0/4, 0005·0008 HijackLoader 각 1/1(겨냥
+    패밀리는 dev 탐지 기록 기준). Case 기준 6건 중 3건 탐지(0017: 0001·0006, 0020: 0002, 0022:
+    0005·0008), 0018·0019·0021 탐지 없음. FP 0.
+    1) 표본이 작다(unseen 6). YARA 정상 비교는 BMK에서 2건뿐이므로 정상 호스트 파일 242,421개 오탐 0을
+       함께 근거로 적는다. 2) HijackLoader YARA는 dev 추가 Case 2/2였지만 eval 미탐. CASE-0022 미회수
+       파일(unreadable 1, 크기 초과 1)이 원인인지는 확인 안 됨 → "미탐, 회수 한계 있음". 3) CASE-0018은
+       실행 실패 2회(VMR-0031·0036, exit 14, 원인 확인 안 됨)로 Sigma 평가 불가, 원본 sample은 RULE-0001
+       FN. 4) PureCrypter 행위 룰(0004·0007) eval 0건 → dev 행위에 맞춰져 일반화가 약했다. 5) 이 결과가
+       최종 unseen 평가값이며 이후 룰 수정 후 재실행은 `tuning`이다. 6) `contaminated` 표시는
+       `eval-open`에서 계산된 값이며 평가 무효가 아니다.
 - 실제 샘플: dev 6건 Case 등록·정적 분석·YARA 초안 2개(Amadey, PureCrypter) 완료.
   - VM: 게스트 비밀번호 만료(11/17 19:04)로 로그인 거부 → 시계를 되돌려 부팅하고 사용자가
     "만료 없음"으로 고친 뒤 `SYSMON-V2-CLEAN` 재생성(이전은 `SYSMON-V2-CLEAN-pwexpired`).
