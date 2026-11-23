@@ -25,7 +25,7 @@ flowchart TD
     APP --> REPORT[Report Generator]
     APP --> VM[VM Orchestrator]
 
-    VM --> HYPERVISOR[VMware Adapter]
+    VM --> HYPERVISOR[VirtualBox Adapter target - ADR-018]
     VM --> GUEST[PowerShell Guest Orchestrator]
 
     APP --> DB[(SQLite)]

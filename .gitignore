@@ -6,3 +6,11 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+.venv-ai/
+sysmon-demo-output/
+.sysmon-demo-*.tmp/
+.demo/
+*.vdi
+*.vmdk
+*.ova
+*.sav

@@ -91,3 +91,10 @@ def test_invalid_supported_values_are_distinguished(
 
     with pytest.raises(ConfigValueError, match=message):
         load_config(config_path)
+
+
+def test_utf8_bom_is_accepted(tmp_path: Path) -> None:
+    """Windows PowerShell 5.1 ``Set-Content -Encoding utf8`` writes a BOM."""
+    config_path = tmp_path / "bom.toml"
+    config_path.write_bytes(b"\xef\xbb\xbf[ai]\nallow_network = true\n")
+    assert load_config(config_path).ai.allow_network is True

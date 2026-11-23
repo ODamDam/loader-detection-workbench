@@ -90,13 +90,13 @@ M1 구현 전에는 Project/Case/Artifact, ID/status 규칙, SQLite v1,
 - [ ] F-009 JSON 프로필 스키마
 - [ ] F-010 JSON 실행 엔진 전환
 
-## Epic G. VMware 자동화
+## Epic G. VirtualBox 자동화 (향후, ADR-018)
 
 - [ ] G-001 VM 등록 설정
 - [ ] G-002 준비 상태 검사
 - [ ] G-003 Clean Snapshot 복원
 - [ ] G-004 VM 시작·종료
-- [ ] G-005 VMware Tools 파일 전달
+- [ ] G-005 Guest Additions 파일 전달
 - [ ] G-006 게스트 해시 재검증
 - [ ] G-007 PowerShell 오케스트레이터
 - [ ] G-008 Sysmon 회수

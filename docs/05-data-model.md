@@ -61,6 +61,13 @@ YARA 또는 Sigma 룰의 버전별 본문, 상태, 작성자, 생성 방식을 �
 ### AIInteraction
 선택 기능이다. Provider, 입력 증거 범위, 출력, 승인 여부를 기록한다.
 
+### Case Bundle v1
+Case Bundle은 `project.json`과 SQLite를 포함하지 않는 단일 Case 교환 패키지다.
+`manifest.json`은 Case snapshot, attached Artifact metadata, unique content 목록과
+`public < internal < restricted` classification을 기록한다. 물리 바이트는
+`artifacts/sha256/<두 자리>/<sha256>`에 한 번만 저장하며, import 시 Case와
+Artifact ID·timestamp·lifecycle은 보존하고 target Project ID로 rebinding한다.
+
 ## 3. 관계
 
 ```mermaid
@@ -106,3 +113,81 @@ collection_coverage:
 - 모든 등록 파일은 SHA-256을 가진다.
 - 결과 회수 전후 해시를 비교한다.
 - 공개 번들에는 원본 자료 대신 정제 사본의 해시를 기록한다.
+
+## 6. Process Create 최소 모델 — 2026-10-06 승인
+
+기존 정규화 이벤트 contract가 없는 것을 확인한 뒤 사용자가 승인한 신규
+최소 모델이다. `domain/events.py`의 immutable `ProcessCreateEvent`는 메모리
+결과이며 SQLite v1, Case Bundle v1 또는 기존 ID contract를 변경하지 않는다.
+
+| 필드 | 입력과 의미 |
+| --- | --- |
+| `timestamp` | EventData/UtcTime, 기존 UTC helper와 같은 초 단위 UTC datetime |
+| `event_id` | System/EventID, 정수 1만 허용 |
+| `process_guid` | EventData/ProcessGuid, 유효한 UUID 문자열을 원문 보존 |
+| `process_id` | EventData/ProcessId, 음수가 아닌 정수 |
+| `image` | EventData/Image, 비어 있지 않은 문자열 |
+| `command_line` | EventData/CommandLine, 비어 있지 않은 문자열 |
+| `source_artifact_id` | 기존 ArtifactId(ULID와 display ID) |
+| `source_record_id` | System/EventRecordID 숫자 문자열, 해당 Artifact 안에서 식별 |
+
+`SysmonService.normalize(case_display_id, artifact_display_id)`는 요청 Case에
+연결된 `sysmon` Artifact만 읽는다. 기존 content store의 상대 경로 해석을
+사용하고, 실제 파싱할 bytes의 SHA-256과 크기를 등록 metadata와 비교한다.
+읽기 전용이라 closed Case에서도 사용할 수 있다. 반환 시점의 source metadata를
+기준으로 하며 이후 detach 등 동시 변경을 막는 장기 잠금은 제공하지 않는다.
+
+지원 입력은 최대 1 MiB의 Windows Event namespace를 가진 단일 `Event`이며
+Provider는 `Microsoft-Windows-Sysmon`이어야 한다. `UtcTime`은
+`YYYY-MM-DD HH:MM:SS`에 선택적인 소수초(1~6자리)를 붙이는 형식이다.
+소수초는 기존 `require_utc` 규칙에 따라 결과에서 절삭되지만 원본 Artifact에는
+보존된다. Image/CommandLine은 데이터로만 처리하며 실행하거나 경로로 열지 않는다.
+부모 프로세스와 User 등 추가 EventData는 이번 결과에 매핑하지 않는다.
+
+오류는 기존 `DomainError` convention을 따른다. 손상 XML/DTD/크기 제한은
+`INVALID_SYSMON_XML`, 누락·중복·잘못된 필드는 `INVALID_PROCESS_CREATE`,
+지원하지 않는 Event ID는 `UNSUPPORTED_SYSMON_EVENT`이다. 서비스의 Case 연결 실패는
+`ARTIFACT_NOT_ATTACHED`, kind 오류는 `INVALID_ARTIFACT_KIND`, content 누락·변조·
+읽기 제한 초과는 `ARTIFACT_INTEGRITY_MISMATCH`이다. 실패 시 성공 결과나 부분
+이벤트를 반환하지 않으며 DB를 수정하지 않는다.
+
+## 7. File Create와 공통 Sysmon 경계 — 2026-10-06 승인
+
+`FileCreateEvent`는 `ProcessCreateEvent`와 같은 frozen dataclass/slots를 사용한다.
+다음 필드만 가지며 별도 DB persistence나 generic Evidence 모델은 도입하지 않는다.
+
+| 필드 | 입력과 의미 |
+| --- | --- |
+| `timestamp` | EventData/UtcTime, 기존 초 단위 UTC datetime |
+| `event_id` | 정수 11 |
+| `process_guid` | ProcessGuid, 유효한 UUID 문자열 원문 |
+| `process_id` | ProcessId, 음수가 아닌 정수 |
+| `image` | Image, 비어 있지 않은 문자열 |
+| `target_filename` | TargetFilename, 비어 있지 않은 문자열, 파일로 열지 않음 |
+| `creation_utc_time` | CreationUtcTime, 기존 초 단위 UTC datetime |
+| `source_artifact_id` | 기존 ArtifactId |
+| `source_record_id` | System/EventRecordID 숫자 문자열 |
+
+`NormalizedSysmonEvent = ProcessCreateEvent | FileCreateEvent`는 단순 union이다.
+`normalize_sysmon_event(xml, source_artifact_id)`는 동일 XML 검사 뒤 Event ID로
+분기하여 정확히 한 결과의 list를 반환한다. 기존 `normalize_process_create()`는
+기존 반환 타입과 Event ID 1 전용 지원을 유지하며 Event ID 11도 거부한다.
+`SysmonService.normalize()`의 인자는 동일하고 반환 타입은
+`list[NormalizedSysmonEvent]`로 확장한다. 호출자는 event별 필드 접근 전에
+`isinstance`로 타입을 구분할 수 있다.
+
+Event ID 11의 필수 필드 누락·중복·잘못된 값은 `INVALID_FILE_CREATE`로 실패한다.
+Event ID 분기 이전 envelope/provider 오류는 기존 `INVALID_PROCESS_CREATE`
+identity를 유지하며, 손상 XML/DTD는 `INVALID_SYSMON_XML`, 지원하지 않는 ID는
+`UNSUPPORTED_SYSMON_EVENT`이다. 두 timestamp는 같은 입력 형식 및 소수초 절삭
+정책을 사용한다. XML size cap, Artifact 연결·kind·무결성 검사와 읽기 전용 보장은
+그대로 유지한다. Image와 TargetFilename은 단순 문자열 데이터이다.
+
+공통 timestamp/event_id/ArtifactId/EventRecordID로 향후 Case observation을
+정렬·추적할 수 있다. 이번에는 aggregation, Case 조회 CLI와 report를 추가하지 않는다.
+
+## 8. SQLite v2 수동 증거 provenance
+
+SQLite v2는 기존 `artifacts`를 변경하지 않고 optional 1:1
+`artifact_provenance`를 추가한다. 필드와 제약, 명시적 migration, 등록 transaction,
+Bundle v1 제외 범위는 `docs/manual-evidence-contract-v2.md`에 정의한다.

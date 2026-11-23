@@ -1,0 +1,13 @@
+<div class="row"><h3 class="m0 mono">{{ detail.title }}</h3><span class="sp"></span><button type="button" class="sm secondary" data-close-detail aria-label="상세 패널 닫기">닫기</button></div>
+<p class="subtitle note">{{ detail.subtitle }}</p>
+{% if detail.text %}<p>{{ detail.text|ids(cid) }}</p>{% endif %}
+{% if detail.rows %}
+  <dl class="kv">
+    {% for label, value in detail.rows %}<dt>{{ label }}</dt><dd>{{ value|ids(cid) }}</dd>{% endfor %}
+  </dl>
+{% endif %}
+{% if detail.cited_by %}
+  <h3 class="mt12">인용한 소견</h3>
+  <p>{% for ref in detail.cited_by %}{{ ref|ids(cid) }} {% endfor %}</p>
+{% endif %}
+{% if detail.link %}<p class="mt12"><a class="button sm secondary" href="{{ detail.link }}">{{ detail.link_label }}</a></p>{% endif %}

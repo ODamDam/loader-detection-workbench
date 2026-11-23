@@ -1,0 +1,421 @@
+#requires -Version 5.1
+<#
+.SYNOPSIS
+Workbench guest runner: execute one target for a fixed time and export every
+Sysmon event of the run window as a single <Events> XML document.
+.DESCRIPTION
+Copied into the isolated analysis VM by the Workbench host (ADR-024) and run
+through VBoxManage guestcontrol. Never run on the host. No network access,
+downloads, Sysmon configuration changes or credential handling.
+
+Mode Sample   : unseal the transferred file if it is sealed (ADR-030: "LDWSEAL1"
+                header, XOR with a fixed public keystream), verify its SHA-256,
+                then start it.
+Mode Scenario : run one fixed benign scenario (no arbitrary commands).
+Mode Collect  : after a Sample run, seal the files the host listed in
+                collect-request.json (ADR-032) into <WorkDirectory>\collect\NN.bin
+                with dropped-manifest.json. Nothing is started; paths outside the
+                fixed locations are refused here as well as on the host.
+
+The target runs for the full TimeoutSeconds (child activity after the root
+process exits is still collected), then the whole process tree is stopped,
+SettleSeconds are waited for Sysmon to flush, and every event with
+EventRecordID greater than the pre-run baseline is exported to
+<WorkDirectory>\out\events.xml with run-manifest.json (SHA-256, counts).
+Exit codes: 0 ok, 10 invalid arguments, 11 Sysmon not running, 12 log
+unreadable, 13 sample hash mismatch, 14 start failed, 15 output exists,
+16 export failed, 17 collection failed, 1 other. A failing run also prints "workbench-exit: N".
+#>
+[CmdletBinding()]
+param(
+    [string]$WorkDirectory = '',
+    [string]$RunId = '',
+    [ValidateSet('Sample', 'Scenario', 'Collect')][string]$Mode = 'Scenario',
+    [string]$SampleFileName = '',
+    [string]$ExpectedSha256 = '',
+    [string]$Scenario = '',
+    [int]$TimeoutSeconds = 0,
+    [int]$SettleSeconds = 5
+)
+
+$script:WorkbenchExitCodes = @{
+    INVALID_ARGUMENTS = 10; SYSMON_NOT_RUNNING = 11; SYSMON_LOG_UNREADABLE = 12
+    SAMPLE_HASH_MISMATCH = 13; TARGET_START_FAILED = 14; OUTPUT_EXISTS = 15
+    EXPORT_FAILED = 16; COLLECT_FAILED = 17
+}
+
+# Fixed benign scenarios; keep identical to BENIGN_SCENARIOS in
+# execution/domain.py (a unit test compares the identifiers).
+$script:WorkbenchScenarios = [ordered]@{
+    'notepad-open-close'   = '$p = Start-Process -FilePath notepad.exe -PassThru; Start-Sleep -Seconds 3; Stop-Process -Id $p.Id -Force'
+    'powershell-inventory' = 'Get-Process | Out-Null; Get-Service | Out-Null; Get-ChildItem -LiteralPath (Join-Path $env:SystemRoot ''System32'') -Filter *.dll | Select-Object -First 50 | Out-Null'
+    'registry-probe'       = '$k = ''HKCU:\Software\WorkbenchScenario''; New-Item -Path $k -Force | Out-Null; Set-ItemProperty -Path $k -Name probe -Value 1; Remove-Item -Path $k -Recurse -Force'
+    'file-write'           = '$d = Join-Path $env:TEMP ''workbench-scenario''; New-Item -ItemType Directory -Path $d -Force | Out-Null; $f = Join-Path $d ''probe.txt''; Set-Content -LiteralPath $f -Value probe; Add-Content -LiteralPath $f -Value more; Remove-Item -LiteralPath $d -Recurse -Force'
+    'dns-invalid'          = 'Resolve-DnsName -Name workbench-probe.example.invalid -ErrorAction SilentlyContinue | Out-Null'
+}
+
+function Assert-WorkbenchArguments {
+    param([string]$Work, [string]$Run, [string]$RunMode, [string]$File, [string]$Sha, [string]$Name, [int]$Timeout, [int]$Settle)
+    if ($Run -notmatch '^VMR-[0-9]{4,}$') { throw 'INVALID_ARGUMENTS: run id' }
+    if ($Work -cne "C:\WorkbenchRun\$Run") { throw 'INVALID_ARGUMENTS: work directory' }
+    if ($Timeout -lt 10 -or $Timeout -gt 900) { throw 'INVALID_ARGUMENTS: timeout' }
+    if ($Settle -lt 0 -or $Settle -gt 60) { throw 'INVALID_ARGUMENTS: settle time' }
+    if ($RunMode -eq 'Sample') {
+        if ($File -cnotmatch '^[0-9a-f]{64}$' -or $Sha -cnotmatch '^[0-9a-f]{64}$' -or $Name) {
+            throw 'INVALID_ARGUMENTS: sample'
+        }
+    } elseif (-not $script:WorkbenchScenarios.Contains($Name) -or $File -or $Sha) {
+        throw 'INVALID_ARGUMENTS: scenario'
+    }
+}
+
+function Get-WorkbenchLogRecords {
+    param([string]$XPath, [int]$MaxEvents = 0)
+    $options = @{ LogName = 'Microsoft-Windows-Sysmon/Operational'; FilterXPath = $XPath; ErrorAction = 'Stop' }
+    if ($MaxEvents -gt 0) { $options.MaxEvents = $MaxEvents }
+    try { @(Get-WinEvent @options) }
+    catch {
+        if ($_.FullyQualifiedErrorId -like 'NoMatchingEventsFound*') { return }
+        throw 'SYSMON_LOG_UNREADABLE: cannot query the Operational log'
+    }
+}
+
+function Assert-WorkbenchSysmon {
+    $services = @(Get-Service -Name Sysmon, Sysmon64 -ErrorAction SilentlyContinue)
+    if (@($services | Where-Object { $_.Status -eq 'Running' }).Count -eq 0) {
+        throw 'SYSMON_NOT_RUNNING: no running Sysmon service'
+    }
+    try { $log = Get-WinEvent -ListLog 'Microsoft-Windows-Sysmon/Operational' -ErrorAction Stop }
+    catch { throw 'SYSMON_LOG_UNREADABLE: cannot inspect the Operational log' }
+    if (-not $log.IsEnabled) { throw 'SYSMON_LOG_UNREADABLE: the Operational log is disabled' }
+}
+
+function Get-WorkbenchBaseline {
+    $latest = @(Get-WorkbenchLogRecords -XPath '*' -MaxEvents 1)
+    if ($latest.Count -eq 0) { return [long]0 }
+    return [long]$latest[0].RecordId
+}
+
+function Get-WorkbenchSha256 {
+    param([string]$Path)
+    (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+$script:WorkbenchSealMagic = [Text.Encoding]::ASCII.GetBytes('LDWSEAL1')
+
+function Get-WorkbenchSealKey {
+    # Same public keystream as loader_detection_workbench.artifact.seal (not a secret).
+    $label = [Text.Encoding]::ASCII.GetBytes('loader-detection-workbench/seal/v1')
+    $sha = [Security.Cryptography.SHA256]::Create()
+    $key = New-Object byte[] 4096
+    try {
+        for ($i = 0; $i -lt 128; $i++) {
+            $counter = [byte[]]@((($i -shr 24) -band 255), (($i -shr 16) -band 255), (($i -shr 8) -band 255), ($i -band 255))
+            $block = $sha.ComputeHash([byte[]]($label + $counter))
+            [Array]::Copy($block, 0, $key, $i * 32, 32)
+        }
+    } finally { $sha.Dispose() }
+    return ,$key
+}
+
+function Restore-WorkbenchSample {
+    param([string]$Source, [string]$Destination)
+    $data = [IO.File]::ReadAllBytes($Source)
+    $magic = $script:WorkbenchSealMagic
+    $sealed = $data.Length -ge $magic.Length
+    for ($i = 0; $sealed -and $i -lt $magic.Length; $i++) {
+        if ($data[$i] -ne $magic[$i]) { $sealed = $false }
+    }
+    if (-not $sealed) {
+        Move-Item -LiteralPath $Source -Destination $Destination -ErrorAction Stop
+        return
+    }
+    $key = Get-WorkbenchSealKey
+    $offset = $magic.Length
+    $plain = New-Object byte[] ($data.Length - $offset)
+    for ($i = 0; $i -lt $plain.Length; $i++) { $plain[$i] = $data[$i + $offset] -bxor $key[$i % 4096] }
+    $stream = New-Object IO.FileStream($Destination, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
+    try { $stream.Write($plain, 0, $plain.Length) } finally { $stream.Dispose() }
+    Remove-Item -LiteralPath $Source -Force -ErrorAction Stop
+}
+
+# Keep identical to execution/dropped.py (limits and collectable_path).
+$script:WorkbenchCollectMaxFiles = 32
+$script:WorkbenchCollectMaxFileBytes = 32MB
+$script:WorkbenchCollectMaxTotalBytes = 64MB
+$script:WorkbenchCollectAllowed = '^(?i)C:\\(Users\\[^\\]+\\AppData\\(Local|Roaming)\\|Users\\Public\\|ProgramData\\)[^\x00-\x1f:*?"<>|]+$'
+
+function Test-WorkbenchCollectPath {
+    param([string]$Path)
+    if (-not $Path -or $Path.Length -gt 260) { return $false }
+    foreach ($c in $Path.ToCharArray()) { if ([int]$c -gt 127) { return $false } }
+    if ($Path -notmatch $script:WorkbenchCollectAllowed -or $Path.EndsWith('\')) { return $false }
+    $segments = $Path.Split('\')
+    for ($i = 1; $i -lt $segments.Length; $i++) {
+        if ($segments[$i] -eq '' -or $segments[$i] -eq '.' -or $segments[$i] -eq '..') { return $false }
+    }
+    return -not $Path.ToLowerInvariant().EndsWith('.pf')
+}
+
+function Get-WorkbenchSealedBytes {
+    # ADR-030 seal of in-memory content: header + XOR with the public keystream.
+    param([byte[]]$Data, [byte[]]$Key)
+    $magic = $script:WorkbenchSealMagic
+    $sealed = New-Object byte[] ($magic.Length + $Data.Length)
+    [Array]::Copy($magic, 0, $sealed, 0, $magic.Length)
+    $offset = $magic.Length
+    for ($i = 0; $i -lt $Data.Length; $i++) { $sealed[$i + $offset] = $Data[$i] -bxor $Key[$i % 4096] }
+    return ,$sealed
+}
+
+function Assert-WorkbenchCollectArguments {
+    param([string]$Work, [string]$Run)
+    if ($Run -notmatch '^VMR-[0-9]{4,}$') { throw 'INVALID_ARGUMENTS: run id' }
+    if ($Work -cne "C:\WorkbenchRun\$Run") { throw 'INVALID_ARGUMENTS: work directory' }
+}
+
+function Invoke-WorkbenchCollect {
+    param([string]$Work, [string]$Run)
+    $ErrorActionPreference = 'Stop'
+    Assert-WorkbenchCollectArguments -Work $Work -Run $Run
+    $requestPath = Join-Path $Work 'collect-request.json'
+    if (-not (Test-Path -LiteralPath $requestPath -PathType Leaf)) { throw 'INVALID_ARGUMENTS: collect request missing' }
+    try { $request = [IO.File]::ReadAllText($requestPath) | ConvertFrom-Json }
+    catch { throw 'INVALID_ARGUMENTS: collect request is not JSON' }
+    if ($request.run_id -cne $Run) { throw 'INVALID_ARGUMENTS: collect request run id' }
+    $paths = @($request.paths)
+    if ($paths.Count -gt $script:WorkbenchCollectMaxFiles) { throw 'INVALID_ARGUMENTS: too many paths' }
+    $out = Join-Path $Work 'collect'
+    if (Test-Path -LiteralPath $out) { throw 'OUTPUT_EXISTS: collect directory exists' }
+    [void][IO.Directory]::CreateDirectory($out)
+    Write-WorkbenchPhase $Work 'collect-started' $paths.Count
+    $key = Get-WorkbenchSealKey
+    $sha = [Security.Cryptography.SHA256]::Create()
+    $total = [long]0
+    $files = New-Object System.Collections.ArrayList
+    try {
+        for ($i = 0; $i -lt $paths.Count; $i++) {
+            $path = [string]$paths[$i]
+            $entry = [ordered]@{ index = $i; status = $null; sha256 = $null; size = $null }
+            if (-not (Test-WorkbenchCollectPath $path)) { $entry.status = 'rejected' }
+            elseif (Test-Path -LiteralPath $path -PathType Container) { $entry.status = 'not_file' }
+            elseif (-not (Test-Path -LiteralPath $path -PathType Leaf)) { $entry.status = 'missing' }
+            else {
+                try {
+                    $length = (Get-Item -LiteralPath $path -Force).Length
+                    if ($length -gt $script:WorkbenchCollectMaxFileBytes -or
+                        ($total + $length) -gt $script:WorkbenchCollectMaxTotalBytes) {
+                        $entry.status = 'too_large'
+                        $entry.size = $length
+                    } else {
+                        $data = [IO.File]::ReadAllBytes($path)
+                        $sealed = Get-WorkbenchSealedBytes -Data $data -Key $key
+                        $target = Join-Path $out ('{0:D2}.bin' -f $i)
+                        $stream = New-Object IO.FileStream($target, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
+                        try { $stream.Write($sealed, 0, $sealed.Length) } finally { $stream.Dispose() }
+                        $entry.sha256 = ([BitConverter]::ToString($sha.ComputeHash($data)) -replace '-', '').ToLowerInvariant()
+                        $entry.size = $data.Length
+                        $entry.status = 'collected'
+                        $total += $data.Length
+                    }
+                } catch { $entry.status = 'unreadable' }
+            }
+            [void]$files.Add($entry)
+        }
+    } finally { $sha.Dispose() }
+    $manifest = [ordered]@{
+        collector = 'workbench-guest-collect'; version = 1; run_id = $Run
+        files = $files.ToArray()
+    }
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    try {
+        [IO.File]::WriteAllText((Join-Path $out 'dropped-manifest.json'), ($manifest | ConvertTo-Json -Depth 4), $encoding)
+    } catch { throw 'COLLECT_FAILED: manifest could not be written' }
+    Write-WorkbenchPhase $Work 'collect-done' @($files | Where-Object { $_.status -eq 'collected' }).Count
+    Write-Output "collection: dropped files sealed"
+}
+
+function Get-WorkbenchDescendants {
+    param([int]$RootId, [object[]]$Processes)
+    $children = @{}
+    foreach ($item in $Processes) {
+        $parent = [int]$item.ParentProcessId
+        if (-not $children.ContainsKey($parent)) { $children[$parent] = New-Object System.Collections.ArrayList }
+        [void]$children[$parent].Add([int]$item.ProcessId)
+    }
+    $result = New-Object System.Collections.ArrayList
+    $queue = New-Object System.Collections.Queue
+    $queue.Enqueue($RootId)
+    $seen = @{ $RootId = $true }
+    while ($queue.Count -gt 0) {
+        $current = $queue.Dequeue()
+        if (-not $children.ContainsKey($current)) { continue }
+        foreach ($child in $children[$current]) {
+            if ($seen.ContainsKey($child)) { continue }
+            $seen[$child] = $true
+            [void]$result.Add($child)
+            $queue.Enqueue($child)
+        }
+    }
+    return $result.ToArray()
+}
+
+function Stop-WorkbenchProcessTree {
+    param([int]$RootId)
+    $processes = @(Get-CimInstance -ClassName Win32_Process -ErrorAction SilentlyContinue |
+        Select-Object ProcessId, ParentProcessId)
+    $ids = @(Get-WorkbenchDescendants -RootId $RootId -Processes $processes)
+    [array]::Reverse($ids)
+    foreach ($id in @($ids) + @($RootId)) {
+        Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Start-WorkbenchTarget {
+    param([string]$RunMode, [string]$Work, [string]$File, [string]$Sha, [string]$Name)
+    if ($RunMode -eq 'Sample') {
+        $source = Join-Path $Work $File
+        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw 'SAMPLE_HASH_MISMATCH: sample missing' }
+        $target = Join-Path $Work ('target-' + $Sha.Substring(0, 12) + '.exe')
+        try { Restore-WorkbenchSample -Source $source -Destination $target }
+        catch { throw 'SAMPLE_HASH_MISMATCH: sample could not be restored' }
+        if ((Get-WorkbenchSha256 $target) -cne $Sha) { throw 'SAMPLE_HASH_MISMATCH: sample hash differs' }
+        try { return Start-Process -FilePath $target -WorkingDirectory $Work -PassThru -ErrorAction Stop }
+        catch { throw 'TARGET_START_FAILED: sample could not be started' }
+    }
+    $command = $script:WorkbenchScenarios[$Name]
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+    $shell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    try {
+        return Start-Process -FilePath $shell -WorkingDirectory $Work -PassThru -WindowStyle Hidden -ErrorAction Stop `
+            -ArgumentList @('-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded)
+    } catch { throw 'TARGET_START_FAILED: scenario could not be started' }
+}
+
+function Invoke-WorkbenchLogExport {
+    # wevtutil streams the log natively and oldest first. On the analysis VM it
+    # exported 44,796 events in 11 s; Get-WinEvent plus ToXml took 294 s, which
+    # pushed busy runs past the host time limit. /uni:true keeps non-ASCII text
+    # intact as UTF-16; the caller re-encodes the document as UTF-8.
+    param([long]$Baseline, [string]$Path)
+    $tool = Join-Path $env:SystemRoot 'System32\wevtutil.exe'
+    $arguments = @('qe', 'Microsoft-Windows-Sysmon/Operational', "/q:*[System[EventRecordID>$Baseline]]",
+        '/f:xml', '/e:Events', '/uni:true')
+    try {
+        $exporter = Start-Process -FilePath $tool -ArgumentList $arguments -RedirectStandardOutput $Path `
+            -NoNewWindow -Wait -PassThru -ErrorAction Stop
+    } catch { throw 'SYSMON_LOG_UNREADABLE: export tool could not start' }
+    if ($exporter.ExitCode -ne 0) { throw 'SYSMON_LOG_UNREADABLE: export tool failed' }
+}
+
+function Export-WorkbenchEvents {
+    param([long]$Baseline, [string]$OutDirectory, [System.Collections.IDictionary]$Manifest)
+    $raw = Join-Path $OutDirectory 'events.export.tmp'
+    Invoke-WorkbenchLogExport -Baseline $Baseline -Path $raw
+    if (-not (Test-Path -LiteralPath $raw -PathType Leaf)) { throw 'EXPORT_FAILED: no export output' }
+    $document = [IO.File]::ReadAllText($raw, [Text.Encoding]::Unicode).Trim()
+    Remove-Item -LiteralPath $raw -Force
+    if ($document -match '<!DOCTYPE') { throw 'EXPORT_FAILED: DTD in event XML' }
+    if (-not ($document.StartsWith('<Events>') -and $document.EndsWith('</Events>'))) {
+        throw 'EXPORT_FAILED: unexpected export format'
+    }
+    # "<Event " / "<Event>" only: <Events>, <EventID>, <EventData> do not match.
+    $count = [regex]::Matches($document, '<Event[ >]').Count
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    $eventsPath = Join-Path $OutDirectory 'events.xml'
+    [IO.File]::WriteAllText($eventsPath, $document, $encoding)
+    $Manifest.event_count = $count
+    $Manifest.events_file = 'events.xml'
+    $Manifest.events_sha256 = Get-WorkbenchSha256 $eventsPath
+    $Manifest.completed_at = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    $manifestPath = Join-Path $OutDirectory 'run-manifest.json'
+    [IO.File]::WriteAllText($manifestPath, ($Manifest | ConvertTo-Json -Depth 3), $encoding)
+    if ((Get-WorkbenchSha256 $eventsPath) -cne $Manifest.events_sha256) { throw 'EXPORT_FAILED: events changed' }
+    return $count
+}
+
+function Write-WorkbenchPhase {
+    # Progress for failure diagnosis (fetched by the host only when a run fails):
+    # a UTC time, a fixed phase name and at most a count. Never paths, command
+    # lines or event data. Writing it must never fail the run.
+    param([string]$Work, [string]$Phase, [long]$Number = -1)
+    try {
+        $line = [DateTime]::UtcNow.ToString('HH:mm:ss') + ' ' + $Phase
+        if ($Number -ge 0) { $line = $line + ' ' + $Number }
+        $encoding = New-Object System.Text.UTF8Encoding($false)
+        [IO.File]::AppendAllText((Join-Path $Work 'progress.log'), $line + "`r`n", $encoding)
+    } catch { }
+}
+
+function Invoke-WorkbenchGuestRun {
+    param([string]$Work, [string]$Run, [string]$RunMode, [string]$File, [string]$Sha, [string]$Name, [int]$Timeout, [int]$Settle)
+    $ErrorActionPreference = 'Stop'
+    Assert-WorkbenchArguments -Work $Work -Run $Run -RunMode $RunMode -File $File -Sha $Sha -Name $Name -Timeout $Timeout -Settle $Settle
+    Write-WorkbenchPhase $Work 'arguments-checked'
+    $out = Join-Path $Work 'out'
+    if (Test-Path -LiteralPath $out) { throw 'OUTPUT_EXISTS: output directory exists' }
+    Assert-WorkbenchSysmon
+    Write-WorkbenchPhase $Work 'sysmon-checked'
+    $baseline = Get-WorkbenchBaseline
+    Write-WorkbenchPhase $Work 'baseline-read'
+    $manifest = [ordered]@{
+        collector = 'workbench-guest-run'; version = 1; run_id = $Run; mode = $RunMode
+        scenario = $null; target_sha256 = $null; baseline_record_id = $baseline
+        process_outcome = $null; started_at = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    }
+    if ($RunMode -eq 'Sample') { $manifest.target_sha256 = $Sha } else { $manifest.scenario = $Name }
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    $process = Start-WorkbenchTarget -RunMode $RunMode -Work $Work -File $File -Sha $Sha -Name $Name
+    Write-WorkbenchPhase $Work 'target-started'
+    try {
+        $exited = $process.WaitForExit($Timeout * 1000)
+        $manifest.process_outcome = if ($exited) { 'exited' } else { 'timeout_killed' }
+        # Keep observing children of an early-exiting root for the full window.
+        $remaining = ($Timeout * 1000) - [int]$watch.ElapsedMilliseconds
+        if ($remaining -gt 0) { Start-Sleep -Milliseconds $remaining }
+        Write-WorkbenchPhase $Work 'window-elapsed'
+    } finally {
+        Stop-WorkbenchProcessTree -RootId $process.Id
+        $process.Dispose()
+        Write-WorkbenchPhase $Work 'tree-stopped'
+    }
+    if ($Settle -gt 0) { Start-Sleep -Seconds $Settle }
+    Write-WorkbenchPhase $Work 'export-started'
+    [void][IO.Directory]::CreateDirectory($out)
+    try { $count = Export-WorkbenchEvents -Baseline $baseline -OutDirectory $out -Manifest $manifest }
+    catch {
+        if ($_.Exception.Message -match '^(SYSMON_LOG_UNREADABLE|EXPORT_FAILED)') { throw }
+        throw 'EXPORT_FAILED: events could not be written'
+    }
+    Write-WorkbenchPhase $Work 'export-done' $count
+    Write-Output "collection: complete ($count events)"
+}
+
+function Get-WorkbenchExitCode {
+    param([string]$Message)
+    if ($Message -match '^([A-Z_]+)(:|$)' -and $script:WorkbenchExitCodes.ContainsKey($Matches[1])) {
+        return $script:WorkbenchExitCodes[$Matches[1]]
+    }
+    return 1
+}
+
+if ($MyInvocation.InvocationName -ne '.') {
+    try {
+        if ($Mode -eq 'Collect') {
+            Invoke-WorkbenchCollect -Work $WorkDirectory -Run $RunId
+        } else {
+            Invoke-WorkbenchGuestRun -Work $WorkDirectory -Run $RunId -RunMode $Mode -File $SampleFileName `
+                -Sha $ExpectedSha256 -Name $Scenario -Timeout $TimeoutSeconds -Settle $SettleSeconds
+        }
+        exit 0
+    } catch {
+        # Never echo event XML, command lines or paths; the host maps exit codes.
+        # VBoxManage reports any non-zero exit as 33, so the code is also printed.
+        $code = Get-WorkbenchExitCode $_.Exception.Message
+        if ($WorkDirectory -and (Test-Path -LiteralPath $WorkDirectory -PathType Container)) {
+            Write-WorkbenchPhase $WorkDirectory 'failed' $code
+        }
+        Write-Output "workbench-exit: $code"
+        exit $code
+    }
+}

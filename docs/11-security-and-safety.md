@@ -7,7 +7,8 @@
 ## 2. 필수 통제
 
 - 호스트에서 악성 샘플을 직접 실행하지 않는다.
-- VMware 공유 폴더를 분석 중 상시 연결하지 않는다.
+- Hypervisor 공유 폴더를 실제 샘플 분석 중 상시 연결하지 않는다.
+  ADR-018의 승인된 benign demo는 기존 VirtualBox Shared Folder로 XML을 전달할 수 있다.
 - 실행 전 사용자의 명시적 승인을 받는다.
 - 모든 실행에 제한 시간을 둔다.
 - 기본 네트워크 모드는 차단이다.
@@ -54,3 +55,20 @@
 - AI 출력은 원본 증거 참조와 함께 저장한다.
 - API Key가 없어도 핵심 기능을 사용할 수 있어야 한다.
 - 민감 로그의 외부 전송 여부를 사용자가 통제해야 한다.
+
+## 6. 로컬 웹 UI 안전
+
+- UI는 인증된 원격 서비스가 아니다. Waitress를 `127.0.0.1`에만 바인딩하고
+  port forwarding, reverse proxy와 원격 bind를 지원하지 않는다.
+- browser에서 Project 경로를 받지 않고 CLI 운영자가 선택한 하나의 workspace만
+  연다. Project는 bind 전에 기존 validator로 검증한다.
+- state-changing request에는 CSRF와 exact Origin 검사를 적용하고 Host allowlist,
+  multipart 크기·form memory·part 개수 제한을 적용한다.
+- Jinja escaping과 CSP, frame deny, no-sniff, Referrer-Policy same-origin(다른 사이트로는 보내지 않음), no-store 응답 헤더를
+  유지한다. 사용자 문자열을 safe HTML로 표시하지 않는다.
+- 업로드 파일명은 경로로 사용하지 않는다. bytes는 OS 임시 디렉터리의 생성된
+  이름에 staging하고 기존 Manual Evidence Service에 전달한 뒤 모든 결과에서
+  임시 디렉터리를 제거한다.
+- Artifact 내부 ID, workspace·content 경로, raw evidence, Sysmon command line,
+  executable/target path와 ProcessGuid를 화면에 표시하거나 오류에 기록하지 않는다.
+- 다운로드, 원문 미리보기, 자동 migration, VM 실행과 AI 전송 route는 제공하지 않는다.

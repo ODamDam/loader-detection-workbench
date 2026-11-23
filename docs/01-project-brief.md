@@ -71,7 +71,7 @@ Windows 악성코드 로더의 초기 실행 행위는 프로세스 생성, 파�
 - YARA·Sigma 룰 생성·편집·검증
 - AI Provider 추상화
 - CLI와 로컬 웹 UI
-- VMware 기반 단일 Windows 분석 VM 자동화
+- VirtualBox 기반 단일 Windows 분석 VM 자동화 (향후 구현, ADR-018)
 - Markdown·HTML 케이스 보고서
 - 공개용 정제 데이터 번들
 

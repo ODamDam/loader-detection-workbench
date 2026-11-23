@@ -1,0 +1,50 @@
+{% macro render_graph(graph, label) %}
+  <div class="graph-scroll">
+    <svg class="graph" role="img" aria-label="{{ label }}" viewBox="0 0 {{ graph.width }} {{ graph.height }}" width="{{ graph.width }}" height="{{ graph.height }}">
+      {% for column in graph.columns %}
+        <text class="graph-column" x="{{ column.x }}" y="20">{{ column.title }}</text>
+      {% endfor %}
+      {% for edge in graph.edges %}
+        <path class="graph-edge edge-{{ edge.kind }}" d="{{ edge.path }}" fill="none"></path>
+      {% endfor %}
+      {% for node in graph.nodes %}
+        {% if node.href %}<a href="{{ node.href }}">{% endif %}
+        <g class="graph-node {{ node.kind }}">
+          <title>{{ node.title }}</title>
+          <rect x="{{ node.x }}" y="{{ node.y }}" width="{{ node.width }}" height="{{ node.height }}" rx="6"></rect>
+          <text class="graph-label" x="{{ node.text_x }}" y="{{ node.label_y }}">{{ node.label }}</text>
+          <text class="graph-sublabel" x="{{ node.text_x }}" y="{{ node.sublabel_y }}">{{ node.sublabel }}</text>
+        </g>
+        {% if node.href %}</a>{% endif %}
+      {% endfor %}
+    </svg>
+  </div>
+{% endmacro %}
+
+{% macro run_table(runs, show_case=false) %}
+  <table>
+    <thead>
+      <tr>
+        <th>런</th><th>룰</th><th>벤치마크</th><th>역할</th>
+        <th>탐지 (TP / 악성)</th><th>오탐 (FP / 정상)</th><th>평가 불가</th>
+        {% if show_case %}<th>이 Case</th>{% endif %}
+        <th>생성</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for run in runs %}
+        <tr>
+          <td><a href="{{ url_for('web.validation_run', run_display_id=run.display_id) }}">{{ run.display_id }}</a></td>
+          <td><a href="{{ url_for('web.rule_detail', rule_display_id=run.rule_display_id) }}">{{ run.rule_display_id }}</a> v{{ run.rule_version }}</td>
+          <td>{{ run.benchmark_display_id }}</td>
+          <td>{{ run.roles }}</td>
+          <td>{{ run.detected }}</td>
+          <td>{{ run.false_positives }}</td>
+          <td>{{ run.not_evaluable }}</td>
+          {% if show_case %}<td>{{ run.case_outcome }}</td>{% endif %}
+          <td>{{ run.created_at }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endmacro %}

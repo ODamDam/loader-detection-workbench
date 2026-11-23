@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}타임라인 — {{ case.case_id.display_id }}{% endblock %}
+{% block content %}
+  <nav><a href="{{ url_for('web.workspace', case_display_id=case.case_id.display_id) }}">← Case 작업 공간</a></nav>
+  <h1>Sysmon 타임라인</h1>
+  <p>{{ case.case_id.display_id }} · {{ artifact_count }} Sysmon Artifact(s)</p>
+  <p class="actions"><a class="button secondary" href="{{ url_for('web.report_preview', case_display_id=case.case_id.display_id) }}">보고서 미리보기</a></p>
+  {% if events %}
+    <table>
+      <thead><tr><th>시각</th><th>이벤트</th><th>PID</th><th>Artifact</th><th>레코드</th></tr></thead>
+      <tbody>
+        {% for event in events %}
+          <tr>
+            <td>{{ event.timestamp }}</td>
+            <td>{{ event.event_id }} · {{ event.event_name }}</td>
+            <td>{{ event.process_id }}</td>
+            <td>{{ event.artifact_id }}</td>
+            <td>{{ event.record_id }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty">정규화된 Sysmon 관측이 없습니다.</p>
+  {% endif %}
+  {% if other_events %}
+    <h2>Other Sysmon events ({{ other_events|length }})</h2>
+    <table>
+      <thead><tr><th>시각</th><th>Event ID</th><th>요약</th><th>Artifact</th><th>레코드</th></tr></thead>
+      <tbody>
+        {% for event in other_events %}
+          <tr>
+            <td>{{ event.timestamp }}</td>
+            <td>{{ event.event_id }}</td>
+            <td>{{ event.summary }}</td>
+            <td>{{ event.artifact_id }}</td>
+            <td>{{ event.record_id }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+  <p class="hint">민감한 명령줄, 실행 경로, 대상 경로, Process GUID는 표시하지 않습니다.</p>
+{% endblock %}

@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% from "_graph.html" import render_graph, run_table %}
+{% block title %}Analysis — {{ case.case_id.display_id }}{% endblock %}
+{% block content %}
+  <nav><a href="{{ url_for('web.workspace', case_display_id=case.case_id.display_id) }}">← Case 작업 공간</a></nav>
+  <h1>증거와 탐지 분석</h1>
+  <p>{{ case.case_id.display_id }} · {{ case.name }} · {{ case.kind.value }}</p>
+  <section class="metrics" aria-label="Analysis record summary">
+    <div><strong>{{ analysis.artifacts|length }}</strong><span>Artifact</span></div>
+    <div><strong>{{ analysis.hypotheses|length }}</strong><span>탐지 가설</span></div>
+    <div><strong>{{ analysis.rules|length }}</strong><span>룰</span></div>
+    <div><strong>{{ analysis.validation_runs|length }}</strong><span>검증 런</span></div>
+    <div><strong>{{ execution_runs|length }}</strong><span>VM 실행</span></div>
+  </section>
+  {% for membership in analysis.memberships %}
+    <p class="notice">Member of {{ membership.benchmark.display_id }} as <strong>{{ membership.member.role.value }}</strong> ({{ 'frozen' if membership.benchmark.is_frozen else 'not frozen' }}).</p>
+  {% endfor %}
+
+  <h2>증거 → 가설 → 룰 → 검증</h2>
+  {% if analysis.hypotheses or analysis.rules or analysis.validation_runs %}
+    {{ render_graph(evidence_graph, 'Evidence, hypothesis, rule and validation relationships') }}
+    <p class="hint">Edges: an Artifact supports a Hypothesis, a Hypothesis is implemented by a Rule, a Rule is validated by a Run. Run colors show the outcome of this Case in that run.</p>
+    <ul class="legend">
+      <li><span class="swatch outcome-tp"></span>TP</li>
+      <li><span class="swatch outcome-tn"></span>TN</li>
+      <li><span class="swatch outcome-fp"></span>FP</li>
+      <li><span class="swatch outcome-fn"></span>FN</li>
+      <li><span class="swatch outcome-not_evaluable"></span>평가 불가</li>
+      <li><span class="swatch outcome-none"></span>구성원 아님</li>
+    </ul>
+  {% else %}
+    <p class="empty">이 Case의 가설, 룰, 검증 런이 없습니다.</p>
+  {% endif %}
+
+  <h2>탐지 가설</h2>
+  {% for hypothesis in analysis.hypotheses %}
+    <article class="artifact">
+      <h3>{{ hypothesis.display_id }} · {{ hypothesis.title }}</h3>
+      <dl>
+        <dt>상태</dt><dd><span class="badge hypothesis-{{ hypothesis.status.value }}">{{ hypothesis.status.value }}</span> (set by the analyst)</dd>
+        <dt>내용</dt><dd>{{ hypothesis.statement }}</dd>
+        <dt>예상 정상 대응</dt><dd>{{ hypothesis.expected_benign or '—' }}</dd>
+        <dt>증거</dt>
+        <dd>
+          {% for artifact_id in hypothesis.evidence_artifact_ids %}
+            <a href="{{ url_for('web.artifact_detail', case_display_id=case.case_id.display_id, artifact_display_id=artifact_id) }}">{{ artifact_id }}</a>{{ ', ' if not loop.last }}
+          {% else %}none linked{% endfor %}
+        </dd>
+        <dt>룰</dt>
+        <dd>
+          {% for rule_id in hypothesis.rule_display_ids %}
+            <a href="{{ url_for('web.rule_detail', rule_display_id=rule_id) }}">{{ rule_id }}</a>{{ ', ' if not loop.last }}
+          {% else %}none linked{% endfor %}
+        </dd>
+      </dl>
+    </article>
+  {% else %}
+    <p class="empty">이 Case의 탐지 가설이 없습니다.</p>
+  {% endfor %}
+
+  <h2>검증 결과</h2>
+  <p class="hint">Counts are shown with their denominators. Members without a target Artifact are not evaluable and are excluded from both denominators. Unseen evaluation and later tuning runs are listed separately.</p>
+  {% for title, runs in runs_by_kind %}
+    <h3>{{ title }}</h3>
+    {{ run_table(runs, show_case=true) }}
+  {% else %}
+    <p class="empty">이 Case나 연결된 룰을 포함한 검증 런이 없습니다.</p>
+  {% endfor %}
+
+  <h2>AI 보조 분석</h2>
+  {% if analysis.ai_analyses %}
+    <p class="warning">Inference, not observed evidence. A suggestion changes nothing until a person accepts it with the CLI (<code>workbench ai accept</code>).</p>
+    {% for record in analysis.ai_analyses %}
+      <article class="artifact ai-analysis">
+        <h3>{{ record.display_id }} · {{ record.provider }} / {{ record.model }}</h3>
+        <p class="hint">Input scope: {{ record.input_scope }} · input SHA-256 <span class="digest">{{ record.input_sha256 }}</span></p>
+        <table>
+          <thead><tr><th>No.</th><th>종류</th><th>검토</th><th>제안</th><th>인용 증거</th><th>결과</th></tr></thead>
+          <tbody>
+            {% for suggestion in record.suggestions %}
+              <tr>
+                <td>{{ suggestion.sequence }}</td>
+                <td>{{ suggestion.kind.value }}</td>
+                <td><span class="badge review-{{ suggestion.state.value }}">{{ suggestion.state.value }}</span></td>
+                <td>{% if suggestion.title %}<strong>{{ suggestion.title }}</strong>: {% endif %}{{ suggestion.text }}</td>
+                <td>{{ suggestion.evidence_artifact_ids|join(', ') or '—' }}</td>
+                <td>{{ suggestion.hypothesis_display_id or '—' }}{% if suggestion.review_note %} ({{ suggestion.review_note }}){% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </article>
+    {% endfor %}
+  {% else %}
+    <p class="empty">이 Case의 AI 보조 분석이 없습니다. 선택 기능이라 다른 화면은 그대로 동작합니다.</p>
+  {% endif %}
+
+  <h2>프로세스와 파일 관계</h2>
+  {% if not process_graph.is_empty %}
+    {{ render_graph(process_graph, 'Process tree and written files from Sysmon records') }}
+    <p class="hint">Built from {{ relations.record_total }} Sysmon record(s). Only file names are shown: directories, command lines and Process GUIDs are omitted. Dashed processes were referenced as a parent or actor but their creation was not captured. "Same file as" means the image SHA-256 logged by Sysmon equals a sample Artifact of this Case (ART-…) or a registered Project sample (SMP-…); files that were written but never started cannot be compared.{% if relations.truncated %} Showing {{ relations.processes|length }} of {{ relations.process_total }} processes.{% endif %}</p>
+  {% else %}
+    <p class="empty">첨부된 Sysmon Artifact에서 프로세스 관계를 만들 수 없습니다.</p>
+  {% endif %}
+
+  <h2>VM 실행</h2>
+  {% if execution_runs %}
+    <table>
+      <thead><tr><th>런</th><th>프로필</th><th>대상</th><th>상태</th><th>시작</th><th>이벤트</th><th>Sysmon Artifact</th><th>단계</th></tr></thead>
+      <tbody>
+        {% for run in execution_runs %}
+          <tr>
+            <td>{{ run.display_id }}</td>
+            <td>{{ run.profile }}</td>
+            <td>{{ run.target }}</td>
+            <td><span class="badge run-{{ run.status }}">{{ run.status }}</span>{% if run.error_code %} {{ run.error_code }}{% endif %}</td>
+            <td>{{ run.started_at }}</td>
+            <td>{{ run.event_count }}</td>
+            <td>{{ run.sysmon_artifact_id }}</td>
+            <td>{{ run.steps }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="hint">단계 세부와 호스트 명령은 표시하지 않습니다. VM 실행은 명시적 승인 후 CLI로만 시작합니다.</p>
+  {% else %}
+    <p class="empty">이 Case의 VM 실행 기록이 없습니다.</p>
+  {% endif %}
+{% endblock %}

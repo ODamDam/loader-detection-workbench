@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+{% block title %}{{ case.case_id.display_id }} 작업 공간{% endblock %}
+{% set cid = case.case_id.display_id %}
+{% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endmacro %}
+{% macro state_pill(state) %}<span class="pill state-{{ state.value }}">{{ {'draft': '초안', 'confirmed': '확정', 'withdrawn': '취소'}[state.value] }}</span>{% endmacro %}
+{% block content %}
+  <div class="case-head">
+    <h1>{{ cid }}</h1>
+    <span class="pill {{ 'p-acc' if case.kind.value == 'malware' else 'p-ok' }}">{{ {'malware': '악성', 'benign': '정상'}.get(case.kind.value, case.kind.value) }}</span>
+    <span>{{ case.name }}</span>
+    <span class="status status-{{ case.status.value }}">{{ {'open': '열림', 'closed': '닫힘'}.get(case.status.value, case.status.value) }}</span>
+    <span class="sp"></span>
+    <span class="note">Artifact {{ artifacts|length }} · Sysmon 이벤트 {{ observation_count + record_count }} · AI {{ ai_count }} · 소견 확정 {{ confirmed_count }} / {{ live_count }}</span>
+  </div>
+  {% if not editable %}<p class="warning">닫힌 Case입니다. 소견은 읽기 전용입니다.</p>{% endif %}
+
+  <div class="ws">
+    <nav class="card sections" aria-label="작업 공간 섹션">
+      {% for name, label, count in (('overview', '개요', ''), ('evidence', '증거', artifacts|length), ('process', '프로세스 흐름', ''), ('ai', 'AI 의견', ai_count), ('findings', '소견 검토', live_count), ('report', '보고서', '')) %}
+        <a href="{{ url_for('web.workspace', case_display_id=cid, tab=name) }}"{% if name == tab %} class="on" aria-current="page"{% endif %}>{{ label }}{% if count != '' %}<span class="n">{{ count }}</span>{% endif %}</a>
+      {% endfor %}
+    </nav>
+
+    <div>
+    {% if tab == 'overview' %}
+      <section class="mb14 card">
+        <h2>진행 단계</h2>
+        <div class="row">
+          {% for label, done in stages %}<span class="pill {{ 'p-ok' if done else '' }}">{{ label }} {{ '✓' if done else '—' }}</span>{% endfor %}
+        </div>
+      </section>
+      <section class="mb14 card">
+        <h2>VM 실행</h2>
+        <table>
+          <thead><tr><th>실행</th><th>대상</th><th>상태</th><th>시작</th><th>이벤트</th><th>Sysmon</th></tr></thead>
+          <tbody>
+            {% for run in execution_runs %}
+              <tr>
+                <td class="mono">{{ run.display_id }}</td>
+                <td>{{ run.target|ids(cid) }}</td>
+                <td><span class="pill run-{{ run.status.value }}">{{ run.status.value }}</span>{% if run.error_code %} <span class="note">{{ run.error_code }}</span>{% endif %}</td>
+                <td class="note">{{ format_utc(run.started_at) }}</td>
+                <td>{{ run.event_count if run.event_count is not none else '—' }}</td>
+                <td>{{ (run.sysmon_artifact_id or '—')|ids(cid) }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6" class="empty">VM 실행 기록이 없습니다.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+      <section class="card">
+        <h2>자세히 보기</h2>
+        <p class="actions">
+          <a class="button secondary" href="{{ url_for('web.timeline', case_display_id=cid) }}">Sysmon 타임라인</a>
+          <a class="button secondary" href="{{ url_for('web.case_analysis', case_display_id=cid) }}">정적 결과·검증 관계</a>
+          <a class="button secondary" href="{{ url_for('web.case_detail', case_display_id=cid) }}">Case 정보·수동 증거</a>
+        </p>
+      </section>
+
+    {% elif tab == 'evidence' %}
+      <p class="note">도구가 기록한 자료입니다. 확정한 증거 소견으로 등록해야 보고서 본문에 들어갑니다. ID를 누르면 오른쪽에 상세가 열립니다.</p>
+      {% for label, items in evidence_groups %}
+        <section class="card evidence-group">
+          <h2>{{ label }} <span class="note">{{ items|length }}</span></h2>
+          <table>
+            <thead><tr><th>Artifact</th><th>크기</th><th>SHA-256</th><th>{% if label == 'VM 실행 (Sysmon)' %}실행{% endif %}</th>{% if editable %}<th>증거로 등록</th>{% endif %}</tr></thead>
+            <tbody>
+              {% for artifact, run_id in items %}
+                <tr>
+                  <td>{{ artifact.artifact_id.display_id|ids(cid) }}</td>
+                  <td>{{ '{:,}'.format(artifact.size_bytes) }} B</td>
+                  <td class="digest">{{ artifact.sha256[:16] }}…</td>
+                  <td class="mono">{{ run_id }}</td>
+                  {% if editable %}
+                    <td>
+                      <details>
+                        <summary>등록</summary>
+                        <form method="post" action="{{ url_for('web.finding_create', case_display_id=cid) }}">
+                          {{ csrf() }}
+                          <input type="hidden" name="kind" value="evidence">
+                          <label>근거 <input name="evidence" value="{{ artifact.artifact_id.display_id }}" required></label>
+                          <p class="hint">이벤트로 좁히려면 <code>ART-NNNNNN:EventRecordID</code>를 공백으로 구분해 적습니다.</p>
+                          <label>이 증거가 보여 주는 것 <textarea name="text" rows="3" required maxlength="8000"></textarea></label>
+                          <button type="submit">초안 만들기</button>
+                        </form>
+                      </details>
+                    </td>
+                  {% endif %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </section>
+      {% else %}
+        <p class="empty">첨부된 Artifact가 없습니다.</p>
+      {% endfor %}
+
+    {% elif tab == 'process' %}
+      <section class="card">
+        <h2>프로세스와 파일 흐름</h2>
+        {% if not process_graph.is_empty %}
+          {% from "_graph.html" import render_graph %}
+          {{ render_graph(process_graph, 'Sysmon 기록의 프로세스 트리와 작성 파일') }}
+          <p class="hint">Sysmon 기록 {{ relations.record_total }}건에서 만들었습니다. 파일 이름만 보이고 경로·명령줄·GUID는 생략합니다. 점선은 생성이 기록되지 않은 프로세스입니다. "same file as"는 이미지의 SHA-256이 이 Case의 샘플(ART-…)이나 등록된 샘플(SMP-…)과 같다는 뜻입니다.{% if relations.truncated %} 프로세스 {{ relations.process_total }}개 중 {{ relations.processes|length }}개만 표시합니다.{% endif %}</p>
+        {% else %}
+          <p class="empty">Sysmon 기록에서 프로세스 관계를 만들 수 없습니다.</p>
+        {% endif %}
+      </section>
+
+    {% elif tab == 'ai' %}
+      <section class="mb12 card">
+        <div class="row">
+          <h2 class="m0">AI 의견</h2><span class="pill p-warn">추론, 관측 사실 아님</span>
+          <span class="sp"></span>
+          {% for name, label in (('collection', '수집 단계'), ('synthesis', '종합 단계')) %}
+            <a class="button sm {{ '' if name == stage else 'secondary' }}" href="{{ url_for('web.workspace', case_display_id=cid, tab='ai', stage=name) }}">{{ label }}</a>
+          {% endfor %}
+        </div>
+        <p class="mb0 hint">Provider별 최신 분석을 의견 단위로 보여 줍니다. 채택하면 초안 소견이 되고, 확정 전에는 보고서 본문에 들어가지 않습니다. 의견 요청: <code>workbench ai analyze {{ cid }} --stage {{ stage }} --provider 이름[,이름…]</code></p>
+      </section>
+      {% if ai_groups %}
+        <div id="ai-list" data-show="{{ 'ko' if has_korean else 'en' }}">
+          {% if has_korean %}
+            <p class="lang-toggle row"><span class="note">표시 언어</span>
+              <button type="button" data-lang="ko" data-scope="ai-list" aria-pressed="true">한국어 (기계 번역)</button>
+              <button type="button" data-lang="en" data-scope="ai-list" aria-pressed="false">영어 원문</button></p>
+          {% endif %}
+          {% for label, items in ai_groups %}
+            <p class="queue-group"><b>{{ label }}</b> {{ items|length }}</p>
+            {% for it in items %}
+              {% set s = it.s %}
+              <article class="op">
+                <div class="who">
+                  {% for p in it.providers %}<span class="pill p-acc">{{ p }}</span>{% endfor %}
+                  <span class="pill">{{ s.kind.value }}</span>
+                  <span class="pill review-{{ s.state.value }}">{{ s.state.value }}</span>
+                  <span class="sp"></span>
+                  <span class="note mono">{{ it.analysis.display_id }} #{{ s.sequence }}</span>
+                  {% if editable and it.adoptable and s.state.value == 'pending' %}
+                    <form method="post" class="inline" action="{{ url_for('web.ai_adopt', case_display_id=cid, analysis_display_id=it.analysis.display_id, sequence=s.sequence) }}">
+                      {{ csrf() }}<button type="submit" class="sm secondary">초안으로 채택</button>
+                    </form>
+                  {% endif %}
+                </div>
+                {% if it.ko_text %}
+                  <div class="lang-ko" lang="ko">
+                    {% if it.ko_title %}<p><strong>{{ it.ko_title }}</strong></p>{% endif %}
+                    <p>{{ it.ko_text|ids(cid) }}</p>
+                  </div>
+                {% endif %}
+                <div class="{{ 'lang-en' if it.ko_text else '' }}" lang="en">
+                  {% if s.title %}<p><strong>{{ s.title }}</strong></p>{% endif %}
+                  <p>{{ s.text|ids(cid) }}</p>
+                </div>
+                <p class="note">인용: {% for ref in s.evidence_artifact_ids %}{{ ref|ids(cid) }} {% else %}없음{% endfor %}</p>
+              </article>
+            {% endfor %}
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty">이 단계의 AI 분석이 없습니다.</p>
+      {% endif %}
+
+    {% elif tab == 'findings' %}
+      <section class="mb12 card">
+        <div class="row"><h2 class="m0">소견 검토 대기열</h2><span class="sp"></span><span class="note">증거 → 가설 → 연결 → 작동 원리 순서로 확정합니다</span></div>
+        <div class="mt10 row">
+          {% for label, items in queue %}<span class="pill {{ 'p-draft' if items|selectattr('f.state.value', 'equalto', 'draft')|list else '' }}">{{ label }} {{ items|rejectattr('f.state.value', 'equalto', 'withdrawn')|list|length }}</span>{% endfor %}
+          <span class="sp"></span><span class="note">확정 {{ confirmed_count }} / {{ live_count }}</span>
+        </div>
+        <p class="mb0 hint">확정한 소견만 보고서 본문이 됩니다. 확정 소견을 고치면 다시 초안이 되고, 모든 변경은 기록됩니다. ID를 누르면 오른쪽에 원문이 열립니다.</p>
+      </section>
+      {% for label, items in queue %}
+        {% if items %}<p class="queue-group"><b>{{ label }}</b> {{ items|length }}</p>{% endif %}
+        {% for it in items %}
+          {% set finding = it.f %}
+          {% set c = finding.content %}
+          <article class="q{{ ' waiting' if it.waiting and finding.state.value == 'draft' }}">
+            <div class="hd">
+              {{ finding.display_id|ids(cid) }}
+              <span class="pill">{{ kind_labels[finding.kind.value] }}</span>
+              {{ state_pill(finding.state) }}
+              <span class="note">r{{ finding.revision }}</span>
+              {% if c.verdict %}<span class="pill hypothesis-{{ c.verdict.value }}">{{ c.verdict.value }}</span>{% endif %}
+              <span class="sp"></span>
+              {% if editable and finding.state.value == 'draft' %}
+                {% if it.waiting %}<span class="note">먼저 확정: {% for ref in it.waiting %}{{ ref|ids(cid) }} {% endfor %}</span>{% endif %}
+                {% if finding.kind.value == 'hypothesis' and not c.verdict %}<span class="note">판정을 정해야 확정할 수 있습니다 (수정 → 판정)</span>{% endif %}
+                <form method="post" class="inline" action="{{ url_for('web.finding_transition', case_display_id=cid, finding_display_id=finding.display_id, action='confirm') }}">
+                  {{ csrf() }}<button type="submit" class="sm">확정</button>
+                </form>
+              {% endif %}
+            </div>
+            {% if c.title %}<p><strong>{{ c.title }}</strong></p>{% endif %}
+            <p>{{ c.text|ids(cid) }}</p>
+            {% if c.evidence or c.finding_refs or c.hypothesis_display_id %}
+              <div class="ev">
+                {% if c.evidence %}근거: {% for ref in c.evidence %}{{ (ref|string)|ids(cid) }} {% endfor %}{% endif %}
+                {% if c.finding_refs %}참조 소견: {% for ref in c.finding_refs %}{{ ref|ids(cid) }} {% endfor %}{% endif %}
+                {% if c.hypothesis_display_id %}탐지 가설: {{ c.hypothesis_display_id|ids(cid) }}{% endif %}
+              </div>
+            {% endif %}
+            <p class="note">출처: {{ finding.source }}</p>
+            {% if editable and finding.state.value != 'withdrawn' %}
+              <details>
+                <summary>수정</summary>
+                <form method="post" action="{{ url_for('web.finding_edit', case_display_id=cid, finding_display_id=finding.display_id) }}">
+                  {{ csrf() }}
+                  {% if finding.kind.value in ('hypothesis', 'mechanism') %}<label>제목 <input name="title" value="{{ c.title or '' }}" maxlength="200"></label>{% endif %}
+                  <label>내용 <textarea name="text" rows="4" maxlength="8000">{{ c.text }}</textarea></label>
+                  {% if finding.kind.value == 'hypothesis' %}
+                    <label>판정 <select name="verdict"><option value="">(그대로)</option>{% for v in verdicts %}<option value="{{ v.value }}"{{ ' selected' if c.verdict == v }}>{{ v.value }}</option>{% endfor %}</select></label>
+                  {% elif finding.kind.value == 'evidence' %}
+                    <label>근거 <input name="evidence" value="{{ c.evidence|join(' ') }}"></label>
+                  {% else %}
+                    <label>참조 소견 <input name="findings" value="{{ c.finding_refs|join(' ') }}"></label>
+                  {% endif %}
+                  <label>메모 <input name="note" maxlength="1000"></label>
+                  <button type="submit">초안으로 저장</button>
+                </form>
+              </details>
+              <details>
+                <summary>취소</summary>
+                <form method="post" action="{{ url_for('web.finding_transition', case_display_id=cid, finding_display_id=finding.display_id, action='withdraw') }}">
+                  {{ csrf() }}
+                  <label>사유 <input name="note" required maxlength="1000"></label>
+                  <button type="submit" class="secondary">소견 취소</button>
+                </form>
+              </details>
+            {% endif %}
+            {% if finding.history %}
+              <details>
+                <summary>변경 기록 ({{ finding.history|length }})</summary>
+                <ol>
+                  {% for rev in finding.history %}
+                    <li class="note">{{ format_utc(rev.at) }} · {{ rev.action.value }} → {{ rev.state.value }}{% if rev.note %} · {{ rev.note }}{% endif %}</li>
+                  {% endfor %}
+                </ol>
+              </details>
+            {% endif %}
+          </article>
+        {% endfor %}
+      {% endfor %}
+      {% if not findings %}<p class="empty">아직 소견이 없습니다. 증거를 등록하거나, 가설을 만들거나, AI 의견을 채택하세요.</p>{% endif %}
+      {% if editable %}
+        <section class="mt16 card">
+          <h2>새 소견</h2>
+          <details>
+            <summary>가설</summary>
+            <form method="post" action="{{ url_for('web.finding_create', case_display_id=cid) }}">
+              {{ csrf() }}
+              <input type="hidden" name="kind" value="hypothesis">
+              <label>제목 <input name="title" required maxlength="200"></label>
+              <label>내용 <textarea name="text" rows="4" required maxlength="8000"></textarea></label>
+              <label>판정 <select name="verdict"><option value="">(미정)</option>{% for v in verdicts %}<option value="{{ v.value }}">{{ v.value }}</option>{% endfor %}</select></label>
+              <label>탐지 가설 (선택) <input name="hypothesis" placeholder="HYP-0001"></label>
+              <button type="submit">초안 만들기</button>
+            </form>
+          </details>
+          <details>
+            <summary>연결 또는 작동 원리</summary>
+            <form method="post" action="{{ url_for('web.finding_create', case_display_id=cid) }}">
+              {{ csrf() }}
+              <label>종류 <select name="kind"><option value="link">연결 (증거 ↔ 가설)</option><option value="mechanism">작동 원리</option></select></label>
+              <label>제목 (작동 원리) <input name="title" maxlength="200"></label>
+              <label>내용 <textarea name="text" rows="4" required maxlength="8000"></textarea></label>
+              <label>참조 소견 <input name="findings" required placeholder="FND-0001 FND-0002"></label>
+              <button type="submit">초안 만들기</button>
+            </form>
+          </details>
+          <p class="hint">증거 소견은 "증거" 섹션의 각 Artifact에서 등록합니다.</p>
+        </section>
+      {% endif %}
+
+    {% elif tab == 'report' %}
+      <section class="card">
+        <div class="row"><h2 class="m0">보고서 미리보기</h2><span class="sp"></span>
+          <a class="button sm" href="{{ url_for('web.workspace_report', case_display_id=cid, fmt='html') }}">HTML 열기</a>
+          <a class="button sm secondary" href="{{ url_for('web.workspace_report', case_display_id=cid, fmt='md') }}">Markdown 내려받기</a></div>
+        <p class="hint">본문은 확정 소견({{ confirmed_count }}개)으로만 만듭니다. 기록 자료와 AI 의견은 부록입니다.</p>
+        <iframe class="report-frame" title="보고서 미리보기" sandbox src="{{ url_for('web.workspace_report', case_display_id=cid, fmt='html') }}"></iframe>
+      </section>
+    {% endif %}
+    </div>
+
+    <aside class="card detail" id="detail-panel" aria-live="polite">
+      <h3>상세</h3>
+      <p class="empty-panel">ID(<span class="mono">ART-</span>, <span class="mono">FND-</span>, <span class="mono">RULE-</span> 등)를 누르면 여기에 원문이 열립니다.</p>
+    </aside>
+  </div>
+{% endblock %}

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Entirely synthetic benign fixture; no captured telemetry or host paths. -->
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+  <System>
+    <Provider Name="Microsoft-Windows-Sysmon" />
+    <EventID>1</EventID>
+    <EventRecordID>42</EventRecordID>
+  </System>
+  <EventData>
+    <Data Name="UtcTime">2026-10-06 01:02:03.456</Data>
+    <Data Name="ProcessGuid">{11111111-2222-4333-8444-555555555555}</Data>
+    <Data Name="ProcessId">1234</Data>
+    <Data Name="Image">benign-demo.exe</Data>
+    <Data Name="CommandLine">benign-demo.exe --message &quot;hello&quot;</Data>
+  </EventData>
+</Event>

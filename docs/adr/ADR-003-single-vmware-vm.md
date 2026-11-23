@@ -1,7 +1,8 @@
 # ADR-003-single-vmware-vm: VMware 기반 단일 분석 VM
 
 ## 상태
-승인
+과거 승인. 현재 hypervisor 선택은 ADR-018로 대체됨 (2026-10-06).
+아래 원래 결정은 이력으로 보존하며 VMware는 future/alternative target이다.
 
 ## 배경
 범용 샌드박스와 다중 Hypervisor 지원은 개인 학기 프로젝트 범위를 초과한다.

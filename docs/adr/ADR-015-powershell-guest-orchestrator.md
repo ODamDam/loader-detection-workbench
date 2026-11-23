@@ -1,7 +1,9 @@
 # ADR-015-powershell-guest-orchestrator: 일회성 PowerShell Guest Orchestrator
 
 ## 상태
-승인
+승인. VMware Tools-specific integration은 ADR-018로 대체됨 (2026-10-06).
+일회성 PowerShell 방향은 유지하며 현재 guest integration은 Guest Additions이다.
+아래 VMware Tools 문구는 과거 결정 기록이다.
 
 ## 배경
 상시 Guest Agent는 구현·보안 부담이 크다.

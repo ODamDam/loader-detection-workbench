@@ -3,14 +3,21 @@
 ## 1. MVP 환경
 
 - 호스트: Windows 11
-- Hypervisor: VMware
-- 게스트: 사용자가 준비한 Windows 10 또는 11 x64 VM 한 대
+- Hypervisor: Oracle VirtualBox (ADR-018, 현재 active target)
+- 게스트: Windows 11 x64 VM 한 대
 - 자동 실행 대상: Windows PE `.exe`
-- 게스트 제어: VMware Tools 기반 파일 복사·명령 실행
+- 게스트 통합: VirtualBox Guest Additions. 자동 실행 런은 `guestcontrol`로 반입·실행·회수한다
+  (ADR-024). 데모 시기의 수동 전달은 Shared Folder였으나 sample 실행 시에는 금지한다.
+- 자동 실행 clean snapshot: `SYSMON-V2-CLEAN`(사용자 생성 예정, docs/24). 데모: `SYSMON-DEMO-CLEAN`
+- 자동화 표면: `VBoxManage` 어댑터(`execution.vboxmanage`), 사용법은 `25-vm-execution-runbook.md`
 - 게스트 실행기: 일회성 PowerShell 오케스트레이터
 - 상시 서비스와 수신 포트는 사용하지 않는다.
 
 ## 2. 실행 흐름
+
+2026-11-12 W4(ADR-024)에서 아래 흐름을 `workbench vm run|scenario`로 구현했다. 복원 직후
+네트워크 격리를 다시 확인하고, 복원 실패·확인 실패는 안전 잠금으로 다음 실행을 막는다.
+검증은 모의 VBoxManage와 PowerShell mock까지이며 실제 VM 실행 검증은 아직 하지 않았다.
 
 ```text
 사용자 승인
@@ -79,10 +86,21 @@
 
 ```text
 HypervisorAdapter
-└─ VMwareAdapter
+├─ VirtualBoxAdapter (active future implementation target)
+└─ VMwareAdapter (future/alternative)
 
 GuestAgent
 └─ PowerShellGuestOrchestrator
 ```
 
-향후 Hyper-V, VirtualBox, 상시 Guest Agent 구현을 추가할 수 있으나 MVP 범위에는 포함하지 않는다.
+ADR-003의 과거 VMware 결정은 ADR-018로 대체했다. 교체 가능한 경계는 유지한다.
+Hyper-V와 상시 Guest Agent 등 추가 구현은 현재 범위 밖이다.
+VM disk/image/state와 OVA는 Git에 넣지 않는다. OVA는 선택적인 별도 기기 운반 수단이다.
+
+## 8. 현재 benign demo helper
+
+`scripts/vm/Invoke-SysmonDemoCollection.ps1`은 준비된 guest에서 수동 실행한다.
+고유 marker와 child PID로 Process Create를 선택하고, 같은 ProcessGuid/PID와
+정확한 TargetFilename을 가진 후속 File Create를 연결한다. 출력은 single Event
+XML 두 개와 최소 JSON metadata이다. runtime output은 Git 밖에 둔다.
+실행 명령, fail-closed 정책과 검증 상태는 `23-virtualbox-sysmon-export-helper-handoff.md`.

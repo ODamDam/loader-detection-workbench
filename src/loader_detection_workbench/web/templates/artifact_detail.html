@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}{{ artifact.display_id }} · 탐지 검증 워크벤치{% endblock %}
+{% block content %}
+  <nav><a href="{{ url_for('web.workspace', case_display_id=case.case_id.display_id) }}">← Case 작업 공간</a></nav>
+  <p class="relationship">{{ case.case_id.display_id }} → {{ artifact.display_id }} → Evidence / Observations</p>
+  <h1>{{ artifact.display_id }} · {{ artifact.classification }}</h1>
+  <dl class="summary">
+    <dt>종류</dt><dd>{{ artifact.kind }}</dd>
+    <dt>SHA-256</dt><dd class="digest">{{ artifact.sha256 }}</dd>
+    <dt>크기</dt><dd>{{ artifact.size_bytes }} bytes</dd>
+    <dt>등록</dt><dd>{{ artifact.created_at }}</dd>
+    {% if artifact.original_filename is not none %}
+      <dt>원래 파일 이름</dt><dd>{{ artifact.original_filename }}</dd>
+      <dt>수집·등록 출처</dt><dd>{{ artifact.source }}</dd>
+      <dt>증거 유형</dt><dd>{{ artifact.evidence_type }}</dd>
+      <dt>설명</dt><dd>{{ artifact.description or '—' }}</dd>
+    {% else %}
+      <dt>수집·등록 출처</dt><dd>Artifact 저장소</dd>
+    {% endif %}
+  </dl>
+
+  <h2>연결된 증거·관측</h2>
+  {% if static_result %}
+    <article class="relation-card">
+      <h3>정적 PE 결과</h3>
+      <dl>
+        <dt>원본 Artifact</dt><dd><a href="{{ url_for('web.artifact_detail', case_display_id=case.case_id.display_id, artifact_display_id=static_result.source_artifact_id) }}">{{ static_result.source_artifact_id }}</a></dd>
+        <dt>원본 SHA-256</dt><dd class="digest">{{ static_result.source_sha256 }}</dd>
+        <dt>원본 크기</dt><dd>{{ static_result.source_size_bytes }} bytes</dd>
+        <dt>상태</dt><dd>{{ static_result.status }}</dd>
+        <dt>PE</dt><dd>{{ 'yes' if static_result.is_pe else 'no' }}</dd>
+        <dt>아키텍처</dt><dd>{{ static_result.architecture or '—' }}</dd>
+        <dt>머신</dt><dd>{{ static_result.machine or '—' }}</dd>
+        <dt>선택 헤더</dt><dd>{{ static_result.optional_header or '—' }}</dd>
+        <dt>특성</dt><dd>{{ static_result.characteristics or '—' }}</dd>
+        <dt>분석기</dt><dd>{{ static_result.tool_name }} {{ static_result.tool_version }}</dd>
+        <dt>분석 시각</dt><dd>{{ static_result.analyzed_at }}</dd>
+        {% if static_result.error %}<dt>오류</dt><dd>{{ static_result.error }}</dd>{% endif %}
+      </dl>
+      {% if static_result.sections %}
+        <h4>섹션</h4>
+        <table>
+          <thead><tr><th>이름</th><th>가상 크기</th><th>가상 주소</th><th>원본 크기</th><th>특성</th><th>엔트로피</th></tr></thead>
+          <tbody>
+            {% for section in static_result.sections %}
+              <tr><td>{{ section.name }}</td><td>{{ section.virtual_size }}</td><td>{{ section.virtual_address }}</td><td>{{ section.raw_size }}</td><td>{{ section.characteristics }}{% if section.executable %} X{% endif %}{% if section.writable %} W{% endif %}</td><td>{{ section.entropy if section.entropy is not none else '—' }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+      {% if static_result.schema_version >= 2 %}
+        <h4>정적 특징</h4>
+        <dl class="metadata">
+          <dt>파일 엔트로피</dt><dd>{{ static_result.file_entropy }}</dd>
+          <dt>Imphash</dt><dd class="digest">{{ static_result.imphash or '—' }}</dd>
+          <dt>가져오기</dt><dd>{{ static_result.imports|length }} DLLs / {{ static_result.import_function_count }} functions{% if static_result.imports_truncated %} (truncated){% endif %}</dd>
+          <dt>내보내기</dt><dd>{{ static_result.export_count }}</dd>
+          <dt>서브시스템</dt><dd>{{ static_result.subsystem or '—' }}</dd>
+          <dt>컴파일 시각</dt><dd>{{ static_result.compile_timestamp or '—' }}</dd>
+          <dt>서명</dt><dd>{{ static_result.signature or '—' }}</dd>
+          <dt>오버레이</dt><dd>{{ static_result.overlay_size }} bytes</dd>
+          <dt>문자열</dt><dd>{{ static_result.strings|length }} kept / {{ static_result.strings_total }} found</dd>
+          {% if static_result.parser_warning %}<dt>파서 경고</dt><dd>{{ static_result.parser_warning }}</dd>{% endif %}
+        </dl>
+        {% if static_result.flags %}
+          <h4>분석 단서</h4>
+          <p class="empty">검토용 결정적 단서이며, 악성 여부 판정이 아닙니다.</p>
+          <ul>{% for flag in static_result.flags %}<li>{{ flag }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if static_result.imports %}
+          <h4>가져오기</h4>
+          <table>
+            <thead><tr><th>DLL</th><th>함수</th></tr></thead>
+            <tbody>
+              {% for entry in static_result.imports %}
+                <tr><td>{{ entry.dll }}</td><td>{{ entry.functions|join(', ') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+        {% if static_result.indicators %}
+          <h4>문자열 지표</h4>
+          <dl class="metadata">
+            {% for kind, values in static_result.indicators|dictsort %}
+              {% if kind == 'windows_path' %}
+                <dt>{{ kind }}</dt><dd>{{ values|length }} (values shown in CLI/JSON only)</dd>
+              {% else %}
+                <dt>{{ kind }}</dt><dd>{{ values|join(', ') }}</dd>
+              {% endif %}
+            {% endfor %}
+          </dl>
+        {% endif %}
+      {% endif %}
+    </article>
+  {% endif %}
+  {% if artifact.original_filename is not none %}
+    <article class="relation-card">
+      <h3>수동 증거 출처</h3>
+      <p>이 Artifact가 증거 기록입니다. 분석가가 입력한 출처는 위에 있습니다.</p>
+    </article>
+  {% elif migration_required and artifact.kind == 'evidence' %}
+    <p class="warning">Manual Evidence provenance is unavailable until this v1 Project is explicitly migrated to v2.</p>
+  {% endif %}
+
+  {% if events %}
+    <table>
+      <thead><tr><th>시각</th><th>이벤트</th><th>PID</th><th>원본 Artifact</th><th>원본 기록</th></tr></thead>
+      <tbody>
+        {% for event in events %}
+          <tr>
+            <td>{{ event.timestamp }}</td>
+            <td>{{ event.event_id }} · {{ event.event_name }}</td>
+            <td>{{ event.process_id }}</td>
+            <td>{{ event.artifact_id }}</td>
+            <td>{{ event.record_id }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% elif artifact.original_filename is none and not static_result %}
+    <p class="empty">이 Artifact에 연결된 관측이 없습니다.</p>
+  {% endif %}
+  <p class="hint">원본 내용, 저장 경로, 명령줄, 실행 경로, 대상 경로, Process GUID는 표시하지 않습니다.</p>
+{% endblock %}

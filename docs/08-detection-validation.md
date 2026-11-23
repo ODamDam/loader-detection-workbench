@@ -47,6 +47,16 @@
 - 정상 PowerShell 명령
 - 시뮬레이터 정상 모드
 
+### YARA 정상 파일 (2026-11-17)
+- 11월 계획대로 YARA 정상 비교는 Windows 시스템 바이너리로 한다.
+- `workbench case benign-files CASE-NNNN`이 고정 목록 `windows-system32-v1`(28개: 일반
+  바이너리와 cmd·mshta·rundll32·regsvr32·certutil 같은 LOLBin, 주요 DLL)을 benign Case의
+  `sample` Artifact로 등록한다. 목록을 바꿀 때는 이름의 버전을 올린다.
+- 평가 단위는 Case이다. 파일 28개 중 하나라도 매치하면 그 Case가 FP 1건이다. 파일별 FP가
+  필요하면 파일마다 Case를 나눈다.
+- 등록한 바이너리는 Project 런타임 저장소에만 있고 Git에 넣지 않는다. 이 PC의 Windows
+  빌드에 따라 SHA-256이 달라지므로 Benchmark를 동결해 같은 집합을 고정한다.
+
 ### 최종
 - 공통 정상 데이터셋
 - 각 악성 사례와 유사한 정상 설치·업데이트·다운로드 대응 데이터

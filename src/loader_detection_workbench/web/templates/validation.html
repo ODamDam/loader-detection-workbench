@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}검증 — 탐지 검증 워크벤치{% endblock %}
+{% block content %}
+  <h1>검증</h1>
+  <p class="lead">벤치마크(정답이 정해진 Case 묶음)에 룰을 돌린 결과입니다. 검증 런 {{ run_total }}개. 실행은 CLI(<code>workbench validate run</code>)로 합니다.</p>
+
+  <section class="mb14 grid g3">
+    {% for bmk in benchmarks %}
+      <a class="card link-card{% if chosen and bmk.display_id == chosen.display_id %} chosen{% endif %}" href="{{ url_for('web.validation', benchmark=bmk.display_id) }}">
+        <div class="row"><span class="id">{{ bmk.display_id }}</span><span class="pill {{ 'p-ok' if bmk.is_frozen else 'p-warn' }}">{{ '동결' if bmk.is_frozen else '미동결' }}</span></div>
+        <h3 class="card-title">{{ bmk.name }}</h3>
+        <p class="m0 note">구성 Case {{ bmk.members|length }} · 검증 런 {{ run_counts.get(bmk.display_id, 0) }}</p>
+      </a>
+    {% else %}
+      <p class="empty">벤치마크가 없습니다.</p>
+    {% endfor %}
+  </section>
+
+  {% if chosen %}
+    <section class="card">
+      <div class="row"><h2 class="m0">{{ chosen.display_id }} 결과 표</h2><span class="sp"></span>
+        <span class="c TP">TP</span><span class="c FN">FN</span><span class="c TN">TN</span><span class="c FP">FP</span><span class="c not_evaluable">—</span><span class="note">평가 불가</span></div>
+      <p class="note">룰마다 이 벤치마크에서 가장 최근 런의 결과입니다. 칸을 누르면 그 런으로 갑니다.</p>
+      <div class="scroll-x">
+        <table class="mx">
+          <thead>
+            <tr><th>룰</th>{% for m in chosen.members %}<th>{{ m.case_display_id[5:] }}<br><small class="note">{{ {'dev': 'dev', 'unseen': 'eval', 'benign_common': '정상', 'benign_matched': '정상(대응)'}[m.role.value] }}</small></th>{% endfor %}</tr>
+          </thead>
+          <tbody>
+            {% for rule_id, run_id, cells in matrix %}
+              <tr>
+                <td><a class="id" href="{{ url_for('web.rule_detail', rule_display_id=rule_id) }}">{{ rule_id }}</a></td>
+                {% for m in chosen.members %}
+                  {% set outcome = cells.get(m.case_display_id) %}
+                  <td>{% if outcome %}<a class="c {{ outcome }}" href="{{ url_for('web.validation_run', run_display_id=run_id) }}" title="{{ run_id }}">{{ '—' if outcome == 'not_evaluable' else outcome }}</a>{% else %}<span class="c not_evaluable">·</span>{% endif %}</td>
+                {% endfor %}
+              </tr>
+            {% else %}
+              <tr><td colspan="{{ chosen.members|length + 1 }}" class="empty">이 벤치마크의 검증 런이 없습니다.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% endif %}
+  <div class="mt14 lock">eval(Unseen) 평가는 동결된 룰과 동결된 벤치마크로만, 평가 런으로 실행하며 결과는 고칠 수 없습니다.</div>
+{% endblock %}

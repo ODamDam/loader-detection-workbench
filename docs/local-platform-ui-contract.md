@@ -1,0 +1,162 @@
+# Local Flask platform UI contract
+
+## Scope
+
+The UI opens one Project selected by the local CLI operator. It lists Cases,
+shows attached Artifacts and available Manual Evidence provenance, registers a
+manual file in an Open v2 Case, and shows the safe subset of Event ID 1/11
+Timeline fields. It is a presentation adapter over existing Application Services.
+
+Since W6 (ADR-025) it also shows, read-only, the recorded analysis of a Case
+(evidence, hypothesis, rule and validation relationships as a graph, the process
+and file relationships derived from Sysmon records, VM execution runs) and the
+Project's Rules, Benchmarks and Validation runs including a per-version
+comparison.
+
+It does not provide Project selection in the browser, evidence download or raw
+preview, Markdown report preview, Collection import, VM controls, creating or
+editing Hypotheses, Rules, Benchmarks or Validation runs, graph editing, AI
+features, authentication, or remote access.
+
+## Start command
+
+```text
+workbench ui serve [ROOT] [--port PORT]
+```
+
+`ROOT` defaults to the current directory and must already be a valid v1 or v2
+Project. `PORT` defaults to 8080 and must be 1 through 65535. The Project is
+validated before Waitress binds to `127.0.0.1`. There is no `--host` option.
+
+## HTTP surface
+
+| Method | Path | Contract |
+|---|---|---|
+| GET | `/` | Dashboard: progress counts, dev Case stages, next steps, recent activity (read-only) |
+| GET | `/samples` | Cases by dataset role with per-stage status; eval Cases are listed, never opened |
+| GET | `/rules` | Rules with frozen state, ATT&CK tags and detected/false-positive Case counts |
+| GET | `/validation` | Benchmarks and a rule × Case outcome table of the latest run per rule |
+| GET | `/outputs` | Report readiness and other outputs |
+| GET | `/outputs/frozen-rules.zip` | Frozen rule versions and a manifest only (no sample or evidence bytes) |
+| GET | `/environment` | VM names, safety lock, collection settings, provider key presence (never values) |
+| GET | `/go?q=ID` | Redirect to the page of one display ID, or 404 |
+| GET | `/cases/<case-id>/detail?ref=ID` | HTML fragment for the workspace side panel; Sysmon fields as file names only |
+| GET | `/health` | Return only `{"status":"ready"}` |
+| GET | `/cases` | List Cases or show an empty state |
+| GET | `/cases/<case-id>` | Case and path-safe Artifact/provenance detail |
+| GET | `/cases/<case-id>/artifacts/<artifact-id>` | Artifact relationship detail with provenance and safe normalized observations |
+| GET | `/cases/<case-id>/evidence/new` | Registration form or state notice |
+| POST | `/cases/<case-id>/evidence` | Register through `ManualEvidenceService`, then 303 redirect |
+| GET | `/cases/<case-id>/timeline` | Event ID 1/11 safe Timeline projection |
+| GET | `/cases/<case-id>/report` | Safe read-only Case report preview and local Markdown/HTML commands |
+| GET | `/cases/<case-id>/analysis` | Relationship graph, hypotheses, validation results, process/file graph and VM runs of one Case |
+| GET | `/detection` | Rules, Benchmarks with members, and Validation runs of the Project |
+| GET | `/rules/<rule-id>` | Rule versions, rule text, version comparison and runs |
+| GET | `/validation/<run-id>` | One Validation run with per-Case outcome and match evidence |
+
+The Artifact view includes display ID, kind, neutral classification, SHA-256,
+size, and creation time. Provenance, when present, adds original filename,
+analyst-supplied source, description, and evidence type. An Evidence Artifact
+without provenance remains valid. An Other Artifact is never inferred to be
+Collection metadata.
+
+The Timeline includes timestamp, Event ID and name, PID, source Artifact display
+ID, and EventRecordID. Image, command line, target filename, ProcessGuid, raw XML,
+and stored content paths are deliberately omitted.
+
+The Case detail summarizes Artifact, Manual Evidence, and normalized Observation
+counts. Each Artifact links to a relationship detail page. Manual Evidence remains
+distinguished from normalized Sysmon Observations; the UI does not create a new
+Evidence entity or persist a derived relationship.
+
+A `static` Artifact created by `workbench case static analyze` is rendered as a
+bounded result projection: source Artifact ID/hash/size, parse status, PE header
+summary, architecture, sections, analyzer version, and collection time. The UI
+does not expose or execute the source bytes.
+
+The report preview reuses the Case Timeline projection and deliberately omits the
+sensitive fields excluded from the rest of the browser UI. It does not write a
+file. The existing `workbench report build` command remains the way to generate
+the full Markdown report inside the selected Project.
+
+## Analysis and detection views (W6)
+
+All four views are GET-only projections of `CaseAnalysisQuery`,
+`CaseProcessRelationsQuery` and `DetectionService`. They never write, and the only
+state-changing route of the UI remains manual evidence registration.
+
+- **Relationship graph:** columns Evidence (Artifacts) → Hypotheses → Rules →
+  Validation runs. An edge means *supports*, *implements* or *validated by*. A run
+  node is colored by the outcome of this Case in that run (TP, TN, FP, FN, not
+  evaluable, or not a member). Nodes link to the Artifact, Rule and Run pages.
+- **Process and file graph:** built from every attached Sysmon Artifact. A process
+  is labeled with the file name of its image and its PID; a written file with its
+  file name and the source `Artifact#EventRecordID`. **Only the last path element
+  is shown.** Directories, command lines, ProcessGuids and raw XML stay omitted,
+  as in the Timeline. Other Event IDs appear as per-process counts (dns, network,
+  registry, image load). A process referenced only as a parent or actor is drawn
+  dashed. At most 60 processes and 8 files per process are drawn and the page
+  states when the graph is truncated.
+- **Validation numbers:** every count is shown with its denominator: Detected is
+  `TP / malicious members evaluated`, False positives is `FP / benign members
+  evaluated`. Members without a target Artifact are counted as not evaluable and
+  are excluded from both denominators. Ratios such as recall are not shown.
+- **Run kinds:** development, evaluation (Unseen, frozen rule version and frozen
+  Benchmark) and tuning (any Unseen run after the first evaluation of that rule)
+  are always listed in separate tables. A tuning run page states that it is not an
+  Unseen evaluation result.
+- **Version comparison:** per Benchmark, one row per rule version with the latest
+  run of each kind. The per-Case matrix uses the latest development run of each
+  version and marks Cases whose outcome changed between versions.
+- **Rule text** is analyst-authored and is shown escaped in a `<pre>` block.
+  **Match evidence** lists Artifact IDs, rule names, string identifiers with
+  offsets and Sysmon record IDs; matched content is not shown.
+- **VM runs:** status, target, event count and step names with results. Recorded
+  step detail and hypervisor commands are not shown, and the UI cannot start,
+  stop or unlock a run.
+- **AI-assisted analysis (ADR-026):** stored suggestions are listed read-only
+  under a notice that they are inference, not observed evidence. The UI cannot
+  run a provider or accept or reject a suggestion.
+- Graphs are inline SVG laid out on the server. No script, inline style or
+  third-party resource is used, so the existing Content-Security-Policy is
+  unchanged.
+- Any unreadable record (for example an invalid static result) fails the whole
+  page with 422 and a stable code; a partial analysis is never rendered.
+
+## Upload and compatibility
+
+- Only Open Cases can accept a file.
+- The UI uses a generated temporary directory and generated staging filename.
+  The untrusted browser filename is passed only as `original_filename` metadata.
+- The HTTP request cap is 5 MiB. The Service's exact Manual Evidence limit remains
+  4 MiB, with its existing allowlist and metadata limits.
+- Temporary data is removed after success and all handled or unhandled failures.
+- Repeated equal bytes create the same distinct rows and shared content as the
+  existing Service and CLI contract.
+- v1 Case, Artifact, and Timeline reads work. Registration reports
+  `PROJECT_MIGRATION_REQUIRED`; no automatic migration occurs.
+
+## Browser security
+
+The server accepts only the configured loopback Host and exact Origin for state
+changing requests. All POST requests require a CSRF token. Jinja autoescaping is
+kept enabled. Responses deny framing, MIME sniffing, cross-site referrer forwarding
+(`Referrer-Policy: same-origin`; `no-referrer` would make browsers send `Origin: null`
+on form POSTs, which the origin check rejects),
+cross-origin resources, objects, external form actions, and caching. Debug mode,
+the reloader, proxy headers and raw evidence rendering are not enabled. The only
+downloads are generated reports and the frozen ruleset; no route returns sample or
+evidence bytes. Pages load one same-origin script (`static/workbench.js`, the
+workspace side panel and search shortcut); inline script and inline style stay
+blocked by the Content-Security-Policy, and every link works without JavaScript.
+
+The UI has no authentication. Loopback binding is therefore a security boundary,
+not a convenience default. Operators must not expose it with port forwarding,
+reverse proxies, or alternate bind configuration.
+
+## Error behavior
+
+Missing Cases return 404, invalid input returns 400, Closed Case and migration
+requirements return 409, oversized HTTP requests return 413, and invalid stored
+Timeline data returns 422. Internal errors return a generic 500 response. Pages
+show stable safe codes and never return filesystem or SQLite exception detail.
