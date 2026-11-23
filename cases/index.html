@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src &#x27;none&#x27;; style-src &#x27;self&#x27;; img-src &#x27;self&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;">
+<meta name="referrer" content="no-referrer">
+<title>분석 사례 6건</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><p class="note">최종보고 전 면담용 초안입니다. 내용이 바뀔 수 있습니다.</p><nav aria-label="주 메뉴"><a href="../index.html">소개</a><a href="../cases/index.html" aria-current=page>분석 사례</a><a href="../rules.html">탐지 룰과 평가</a><a href="https://github.com/ODamDam/loader-detection-workbench">GitHub</a></nav></header>
+<main>
+<h1>분석 사례 6건</h1>
+<p>룰을 만드는 데 쓴 상세 분석용(dev) 사례입니다. 각 페이지는 분석가가 확정한 소견만 근거로 합니다.</p>
+<div class="scroll"><table><thead><tr><th scope="col">Case</th><th scope="col">패밀리 표기</th><th scope="col">확정한 판정(범위 한정)</th><th scope="col">매치한 동결 룰</th></tr></thead><tbody><tr><td><a href="CASE-0001.html">CASE-0001</a></td><td>Amadey</td><td>자기 복사 후 재실행</td><td>0001 · 0006 · 0011</td></tr><tr><td><a href="CASE-0002.html">CASE-0002</a></td><td>Amadey</td><td>내장 Amadey 파일을 떨어뜨리고 예약 작업 등록</td><td>0001 · 0003 · 0007 · 0011</td></tr><tr><td><a href="CASE-0003.html">CASE-0003</a></td><td>PureCrypter</td><td>인코딩 PowerShell로 예약 작업 등록</td><td>0002 · 0004 · 0007</td></tr><tr><td><a href="CASE-0004.html">CASE-0004</a></td><td>PureCrypter</td><td>후속 행위 없이 조기 종료(원인 미확인)</td><td>0002 · 0012</td></tr><tr><td><a href="CASE-0005.html">CASE-0005</a></td><td>HijackLoader</td><td>단독 실행 시 충돌(원인 미확인)</td><td>없음</td></tr><tr><td><a href="CASE-0006.html">CASE-0006</a></td><td>HijackLoader</td><td>프로그램과 DLL 배치, unrar.dll 로드</td><td>0005 · 0008 · 0009</td></tr></tbody></table></div>
+<p class="note">이 표의 매치는 대부분 같은 샘플로 만든 룰의 매치라 <strong>독립적인 탐지 근거가 아닙니다.</strong></p>
+</main>
+<footer>2026학년도 2학기 도전학기제 과제 · 2026-11-24 기준 · 실제 샘플, 원본 로그, 룰 본문은 포함하지 않습니다.</footer>
+</body>
+</html>

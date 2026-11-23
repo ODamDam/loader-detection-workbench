@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src &#x27;none&#x27;; style-src &#x27;self&#x27;; img-src &#x27;self&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;">
+<meta name="referrer" content="no-referrer">
+<title>탐지 룰과 평가</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><p class="note">최종보고 전 면담용 초안입니다. 내용이 바뀔 수 있습니다.</p><nav aria-label="주 메뉴"><a href="index.html">소개</a><a href="cases/index.html">분석 사례</a><a href="rules.html" aria-current=page>탐지 룰과 평가</a><a href="https://github.com/ODamDam/loader-detection-workbench">GitHub</a></nav></header>
+<main>
+<h1>탐지 룰과 평가</h1>
+<p>분모가 다른 것은 대상 자료가 없는 Case(<code>not_evaluable</code>)를 제외하기 때문입니다. dev는 상세 분석 6건, 추가 dev는 3건,
+unseen은 룰 개발에 쓰지 않은 6건입니다. 정상 오탐은 unseen 평가에 함께 넣은 정상 Case 기준입니다.</p>
+<h2>최종 unseen 평가 (동결 룰 10개)</h2>
+<div class="scroll"><table><thead><tr><th scope="col">룰(동결 버전)</th><th scope="col">형식</th><th scope="col">겨냥한 특징</th><th scope="col">dev</th><th scope="col">추가 dev</th><th scope="col">unseen</th><th scope="col">정상 오탐</th></tr></thead><tbody><tr><td>RULE-0001 v1</td><td>YARA</td><td>Amadey 문자열 조합</td><td>2/6</td><td>1/3</td><td>1/6</td><td>0/2</td></tr><tr><td>RULE-0002 v2</td><td>YARA</td><td>PureCrypter .NET AES 스텁</td><td>2/6</td><td>0/3</td><td>1/6</td><td>0/2</td></tr><tr><td>RULE-0003 v1</td><td>Sigma</td><td>사용자 폴더 프로그램의 .job 작성</td><td>1/6</td><td>0/3</td><td>0/5</td><td>0/5</td></tr><tr><td>RULE-0004 v1</td><td>Sigma</td><td>비시스템 부모의 인코딩·Bypass PowerShell</td><td>1/6</td><td>0/3</td><td>0/5</td><td>0/5</td></tr><tr><td>RULE-0005 v1</td><td>Sigma</td><td>Windows 폴더 밖 msvcp_win.dll 작성</td><td>1/6</td><td>2/3</td><td>1/5</td><td>0/5</td></tr><tr><td>RULE-0006 v2</td><td>Sigma</td><td>Temp 10자리 16진 폴더의 exe 실행</td><td>1/6</td><td>0/3</td><td>1/5</td><td>0/5</td></tr><tr><td>RULE-0007 v1</td><td>Sigma</td><td>AppData Roaming 바로 아래 exe 작성</td><td>2/6</td><td>0/3</td><td>0/5</td><td>0/5</td></tr><tr><td>RULE-0008 v1</td><td>Sigma</td><td>Inno Setup 단계가 추출한 exe 실행</td><td>1/6</td><td>1/3</td><td>1/5</td><td>0/5</td></tr><tr><td>RULE-0009 v1</td><td>YARA</td><td>HijackLoader IDAT 청크 파일</td><td>1/6</td><td>2/3</td><td>0/6</td><td>0/2</td></tr><tr><td>RULE-0010 v1</td><td>YARA</td><td>HijackLoader 2단계 헤더</td><td>0/6</td><td>2/3</td><td>0/6</td><td>0/2</td></tr></tbody></table></div>
+<p>룰별로 한 번씩만 실행했습니다. Case 기준으로 6건 중 3건이 룰 하나 이상에 탐지됐습니다.</p>
+<h2>사후 평가 (위 결과에 합치지 않음)</h2>
+<div class="scroll"><table><thead><tr><th scope="col">룰(동결 버전)</th><th scope="col">형식</th><th scope="col">겨냥한 특징</th><th scope="col">dev</th><th scope="col">추가 dev</th><th scope="col">unseen</th><th scope="col">정상 오탐</th></tr></thead><tbody><tr><td>RULE-0011 v2</td><td>YARA</td><td>Amadey 인코딩 문자열 표</td><td>2/6</td><td>1/3</td><td>1/6</td><td>0/2</td></tr><tr><td>RULE-0012 v1</td><td>YARA</td><td>PureCrypter .NET 리소스·리플렉션</td><td>1/6</td><td>0/3</td><td>0/6</td><td>0/2</td></tr></tbody></table></div>
+<p>unseen 평가가 끝난 뒤 dev 데이터로만 작성했습니다. RULE-0011이 탐지한 1건은 이미 다른 룰이 탐지한 Case입니다.</p>
+<h2>해석할 때 주의할 점</h2>
+<ul>
+<li>dev와 추가 dev 수치는 룰을 만들 때 본 자료가 포함되어 성능 지표가 아닙니다.</li>
+<li>RULE-0009와 RULE-0010은 추가 dev 사례에서 회수한 파일도 써서 작성했습니다.</li>
+<li>RULE-0001의 추가 dev 매치 1건은 dev 샘플에 들어 있던 파일과 같은 파일이라 일반화 근거로 쓰지 않습니다.</li>
+<li>정상 호스트 파일을 따로 읽기 전용으로 검사했습니다. RULE-0009·0010은 242,421개, RULE-0011 v2와 RULE-0012 v1 조건은
+242,204개에서 매치가 없었습니다.</li>
+<li>unseen 1건은 VM 실행이 두 번 실패해 Sigma로 평가하지 못했습니다.</li>
+</ul>
+</main>
+<footer>2026학년도 2학기 도전학기제 과제 · 2026-11-24 기준 · 실제 샘플, 원본 로그, 룰 본문은 포함하지 않습니다.</footer>
+</body>
+</html>

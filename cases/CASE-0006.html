@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src &#x27;none&#x27;; style-src &#x27;self&#x27;; img-src &#x27;self&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;">
+<meta name="referrer" content="no-referrer">
+<title>CASE-0006 분석 요약 — 프로그램과 DLL을 함께 배치하는 설치기 형식의 샘플</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><p class="note">최종보고 전 면담용 초안입니다. 내용이 바뀔 수 있습니다.</p><nav aria-label="주 메뉴"><a href="../index.html">소개</a><a href="../cases/index.html">분석 사례</a><a href="../rules.html">탐지 룰과 평가</a><a href="https://github.com/ODamDam/loader-detection-workbench">GitHub</a></nav></header>
+<main>
+<h1>CASE-0006 분석 요약 — 프로그램과 DLL을 함께 배치하는 설치기 형식의 샘플</h1>
+<blockquote><p>2026-11-24 작성. 본문의 분석 내용은 분석가가 확정한 소견(FND-0027~0034)에 근거한다. 실행 조건과 룰 검증 수치는 Workbench에 저장된 기록이다. 원본 보고서와 로그는 공개하지 않는다.</p></blockquote>
+<h2>1. 샘플과 실행 조건</h2>
+<div class="scroll"><table><thead><tr><th scope="col">항목</th><th scope="col">내용</th></tr></thead><tbody><tr><td>Case / 샘플</td><td>CASE-0006 / SMP-000014 (상세 분석용 dev)</td></tr><tr><td>SHA-256</td><td><code>c706cda57bdedcba57008dba259b9c4e12564b7b4cc70c4b27fecd07ccaa8f51</code></td></tr><tr><td>크기 · 형식</td><td>7,601,597 bytes · x86 Windows PE 실행 파일</td></tr><tr><td>패밀리 표기</td><td>HijackLoader — MalwareBazaar 표기를 따른다. 이 분석이 패밀리를 독립적으로 확인한 것은 아니다.</td></tr><tr><td>실행 환경</td><td>네트워크를 차단한 Windows 11 분석 VM, 실행 전후 클린 스냅샷 복원</td></tr><tr><td>실행 시간 · 기록</td><td>각 최대 60초. VMR-0011(Sysmon 4,012건), VMR-0026(Sysmon 2,997건, 드롭 파일 회수 포함)</td></tr></tbody></table></div>
+<p>VM 실행은 2회 모두 성공했고, 두 실행 모두 60초 제한으로 종료됐다. 두 번째 실행에서 샘플이 쓴 파일 9개를 봉인 상태로 회수했다.</p>
+<h2>2. 핵심 결과와 판정</h2>
+<p><strong>가설(FND-0031): 설치기가 프로그램과 DLL을 한 폴더에 두고, 그 프로그램이 DLL 하나를 로드한다 — 판정: 지지됨(supported)</strong></p>
+<ul><li>설치 단계가 프로그램과 DLL을 한 임시 폴더에 풀고, 거기서 <code>ClusteCompiler16.exe</code>를 실행했다. 이 프로그램은 같은 폴더의 <code>unrar.dll</code>을 로드했다(FND-0029, FND-0032).</li><li>이 배치는 DLL 사이드로딩과 <strong>일치하는 모습</strong>이다. 다른 DLL의 로드 여부는 알 수 없다. Sysmon 설정이 서명 없는 모듈의 로드만 기록하기 때문이다.</li><li><strong>판정 범위:</strong> 파일 배치와 <code>unrar.dll</code> 로드까지만 해당한다. <code>unrar.dll</code>이 악성인지는 확인하지 않았다.</li></ul>
+<h2>3. 근거</h2>
+<div class="scroll"><table><thead><tr><th scope="col">소견</th><th scope="col">확인한 사실</th><th scope="col">근거</th></tr></thead><tbody><tr><td>FND-0027</td><td>문자열상 Inno Setup 5.5.7 설치기. 설치 단계 <code>target-c706cda57bde.tmp</code>를 풀고 실행</td><td>Sysmon ART-000063: 1178939, 1178943, 1178970 · 정적 분석 ART-000012</td></tr><tr><td>FND-0028</td><td>설치 단계가 <code>%TEMP%\is-FHGBQ.tmp</code>에 <code>ClusteCompiler16.exe</code>, <code>linker-spec.sys</code>, <code>madHcNet32.dll</code>, <code>msvcp_win.dll</code>, <code>mvrSettings32.dll</code>, <code>texturedef96.bin</code>, <code>ucrtbase.dll</code>, <code>unrar.dll</code>, <code>vcomp140.dll</code>을 작성</td><td>ART-000063: 1178993, 1179016, 1179017, 1179022, 1179026, 1179030, 1179031, 1179046, 1179049</td></tr><tr><td>FND-0029</td><td>두 실행 모두 같은 SHA-256의 <code>ClusteCompiler16.exe</code>를 실행. 두 번째 실행에서 <code>unrar.dll</code>을 로드했고 해시가 회수한 ART-000102와 같음. 이후 본체는 삭제되어 회수하지 못함</td><td>ART-000063: 1179113 · ART-000093: 1178703, 1179558, 1181463</td></tr><tr><td>FND-0030</td><td>x86, 오버레이 7,480,253 bytes. 오버레이 내용은 풀지 않음</td><td>정적 분석 ART-000012</td></tr><tr><td>FND-0034</td><td><code>texturedef96.bin</code>(5,651,654 bytes)은 PNG 시그니처가 없고, 출력 가능한 문자 16,462 bytes 뒤에 IDAT 청크 687개와 파일 끝의 IEND 1개가 이어짐. 첫 청크는 <code>C6 A5 79 EA</code>로 시작</td><td>Sysmon ART-000093: 1178690 · ART-000100</td></tr></tbody></table></div>
+<p>FND-0034의 청크 개수와 체크섬은 봉인된 파일을 메모리에서만 읽어 다시 확인했다.</p>
+<h2>4. 작동 원리(관측한 단계, FND-0033)</h2>
+<ol><li>Inno Setup 스텁이 설치 프로그램을 <code>%TEMP%</code>에 푼다.</li><li>설치 프로그램이 다른 임시 폴더에 본체, DLL, IDAT 청크 파일을 쓴다.</li><li>본체를 실행한다. 두 번째 실행에서 본체가 그 폴더의 <code>unrar.dll</code>을 로드했다.</li></ol>
+<h2>5. 관련 탐지 룰과 dev 검증 결과</h2>
+<div class="scroll"><table><thead><tr><th scope="col">룰(동결 버전)</th><th scope="col">형식 · 겨냥한 특징</th><th scope="col">이 Case</th><th scope="col">dev 전체</th><th scope="col">정상 오탐(FP)</th></tr></thead><tbody><tr><td>RULE-0005 v1</td><td>Sigma · Windows 폴더 밖 <code>msvcp_win.dll</code> 작성</td><td>매치(RUN-0016)</td><td>악성 6건 중 1건</td><td>0/5</td></tr><tr><td>RULE-0008 v1</td><td>Sigma · Inno Setup 단계가 추출한 exe 실행</td><td>매치(RUN-0020)</td><td>악성 6건 중 1건</td><td>0/5</td></tr><tr><td>RULE-0009 v1</td><td>YARA · IDAT 청크 파일</td><td>매치(RUN-0030)</td><td>악성 6건 중 1건</td><td>판정 대상 없음(<code>not_evaluable</code> 5건)</td></tr></tbody></table></div>
+<ul><li><strong>이 매치는 독립적인 근거가 아니다.</strong> RULE-0005와 RULE-0008은 이 실행 기록으로, RULE-0009는 이 Case와 CASE-0015·0016에서 회수한 파일로 작성했다.</li><li>RULE-0009는 이 벤치마크에 YARA 정상 비교 파일이 없었다. 별도의 정상 호스트 파일 242,421개 검사에서는 오탐이 0건이었다.</li><li>RULE-0008은 정상 설치 프로그램과 구분하는 근거가 약해 심각도를 낮음(low)으로 두었다.</li><li>이 표는 dev 검증 결과다. unseen 평가 결과는 최종보고서에서 다룬다.</li></ul>
+<h2>6. 한계와 확인하지 못한 것</h2>
+<ul><li>실행은 2회, 각 최대 60초의 관측이다. 이후에 나타나는 행위는 알 수 없다.</li><li>본체 <code>ClusteCompiler16.exe</code>를 회수하지 못해 분석하지 못했다.</li><li><code>msvcp_win.dll</code>은 같은 이름의 Windows 파일과 비교하지 않았다. 회수한 <code>linker-spec.sys</code>는 PE 파일이 아니다.</li><li>IDAT 청크 파일의 내용이 무엇인지, 어떻게 쓰이는지는 확인하지 않았다.</li><li>CASE-0015·0016의 같은 형식은 접두부 길이와 마커가 같은 것까지만 확인했다.</li><li>정상 비교는 Sigma 5건의 Case로 적고 정상 설치 프로그램이 없다.</li></ul>
+<h2>7. AI 의견의 처리</h2>
+<p>DeepSeek·Gemini의 의견 20건은 보고서 부록에 추론으로만 남겼고, 확정 소견의 근거로 쓰지 않았다. 샘플 바이트와 원본 로그는 전송하지 않았고 구조 요약만 사용했다.</p>
+<p><a href="index.html">분석 사례 목록으로</a></p>
+</main>
+<footer>2026학년도 2학기 도전학기제 과제 · 2026-11-24 기준 · 실제 샘플, 원본 로그, 룰 본문은 포함하지 않습니다.</footer>
+</body>
+</html>

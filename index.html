@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src &#x27;none&#x27;; style-src &#x27;self&#x27;; img-src &#x27;self&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;">
+<meta name="referrer" content="no-referrer">
+<title>다중 증거 기반 Windows 악성코드 분석 지원 플랫폼</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><p class="note">최종보고 전 면담용 초안입니다. 내용이 바뀔 수 있습니다.</p><nav aria-label="주 메뉴"><a href="index.html" aria-current=page>소개</a><a href="cases/index.html">분석 사례</a><a href="rules.html">탐지 룰과 평가</a><a href="https://github.com/ODamDam/loader-detection-workbench">GitHub</a></nav></header>
+<main>
+<h1>다중 증거 기반 Windows 악성코드 분석 지원 플랫폼</h1>
+<p>Windows 악성코드의 정적·동적 증거를 Case 단위로 모으고, 분석가가 확정한 소견과 YARA·Sigma 룰을 악성·정상 데이터에서
+검증하는 로컬 분석 플랫폼입니다. 분석에서 끝나지 않고 <strong>그 특징이 탐지 근거가 되는지</strong>까지 확인하는 것이 목표입니다.</p>
+<ol class="flow"><li>샘플 봉인 등록</li><li>정적 분석 · 격리 VM 실행</li><li>증거 정규화</li><li>분석가 확정 소견</li><li>룰 작성 · 동결</li><li>검증 · 평가</li><li>보고서</li></ol>
+<h2>현재 상태</h2>
+<div class="scroll"><table><thead><tr><th scope="col">목표</th><th scope="col">기준</th><th scope="col">현재</th></tr></thead><tbody><tr><td>분석 사례</td><td>6건 이상</td><td>상세 분석 6건</td></tr><tr><td>YARA · Sigma 룰</td><td>각 6개 이상</td><td>동결 6 · 6</td></tr><tr><td>개별 분석 보고서</td><td>6편 이상</td><td>원본 6편 생성, 요약본 초안 6편</td></tr><tr><td>최종보고서 · 논문 초안</td><td>각 1편</td><td>작성 전</td></tr></tbody></table></div>
+<h2>설계에서 중점을 둔 것</h2>
+<ul>
+<li><strong>확정한 소견만 보고서 본문이 됩니다.</strong> 수집 기록과 AI 의견은 부록으로 분리합니다.</li>
+<li><strong>룰과 벤치마크를 동결한 뒤 평가합니다.</strong> 최초 평가와 이후의 조정(tuning)을 구분해 기록합니다.</li>
+<li><strong>샘플을 안전하게 다룹니다.</strong> 샘플은 봉인해 저장하고, 네트워크를 차단한 VM에서만 실행하며, 스냅샷 복원을 확인하지
+못하면 다음 실행을 막습니다.</li>
+<li><strong>AI는 보조 수단입니다.</strong> 의견은 추론으로 표시하고 사람이 확정하기 전에는 결과에 반영하지 않습니다.</li>
+</ul>
+<h2>평가 결과 요약</h2>
+<p>룰 개발에 쓰지 않은 샘플 6건에 동결 룰 10개를 룰마다 한 번씩 적용해 <strong>3건을 탐지</strong>했습니다(룰 1개 이상 매치 기준).
+정상 Case의 오탐은 없었습니다. 평가가 끝난 뒤 작성한 룰 2개는 사후 평가로 분리했고, 새로 탐지한 사례는 없었습니다.
+자세한 수치는 <a href="rules.html">탐지 룰과 평가</a>에 있습니다.</p>
+<h2>한계</h2>
+<ul>
+<li>표본이 작습니다. unseen은 6건이고 정상 비교는 YARA 2건, Sigma 5건의 Case이며 정상 설치 프로그램이 없습니다.</li>
+<li>패밀리는 로더·크립터 3종이고, 이름은 MalwareBazaar 표기를 따릅니다. 다른 유형으로 일반화하지 않습니다.</li>
+<li>상세 분석 6건 중 2건은 조기 종료와 충돌을 관측한 것으로, 악성 행위를 확인한 결과가 아닙니다.</li>
+<li>실행은 각 최대 60초이며 네트워크를 차단했습니다.</li>
+</ul>
+</main>
+<footer>2026학년도 2학기 도전학기제 과제 · 2026-11-24 기준 · 실제 샘플, 원본 로그, 룰 본문은 포함하지 않습니다.</footer>
+</body>
+</html>

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src &#x27;none&#x27;; style-src &#x27;self&#x27;; img-src &#x27;self&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;">
+<meta name="referrer" content="no-referrer">
+<title>CASE-0004 분석 요약 — 후속 행위 없이 조기 종료한 .NET 샘플</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><p class="note">최종보고 전 면담용 초안입니다. 내용이 바뀔 수 있습니다.</p><nav aria-label="주 메뉴"><a href="../index.html">소개</a><a href="../cases/index.html">분석 사례</a><a href="../rules.html">탐지 룰과 평가</a><a href="https://github.com/ODamDam/loader-detection-workbench">GitHub</a></nav></header>
+<main>
+<h1>CASE-0004 분석 요약 — 후속 행위 없이 조기 종료한 .NET 샘플</h1>
+<blockquote><p>2026-11-24 작성. 본문의 분석 내용은 분석가가 확정한 소견(FND-0019~0022)에 근거한다. 실행 조건과 룰 검증 수치는 Workbench에 저장된 기록이다. 원본 보고서와 로그는 공개하지 않는다.</p></blockquote>
+<h2>1. 샘플과 실행 조건</h2>
+<div class="scroll"><table><thead><tr><th scope="col">항목</th><th scope="col">내용</th></tr></thead><tbody><tr><td>Case / 샘플</td><td>CASE-0004 / SMP-000009 (상세 분석용 dev)</td></tr><tr><td>SHA-256</td><td><code>f6b2648f4506ddc4ae02ac21cfb8cc3ec2ac0b2ce2a5a6987e5e88b757725b2a</code></td></tr><tr><td>크기 · 형식</td><td>1,386,496 bytes · x86 .NET 실행 파일</td></tr><tr><td>패밀리 표기</td><td>PureCrypter — MalwareBazaar 표기를 따른다. 이 분석이 패밀리를 독립적으로 확인한 것은 아니다.</td></tr><tr><td>실행 환경</td><td>네트워크를 차단한 Windows 11 분석 VM, 실행 전후 클린 스냅샷 복원</td></tr><tr><td>실행 시간 · 기록</td><td>최대 60초(VMR-0009), Sysmon 이벤트 1,666건. 샘플은 제한 시간 전에 스스로 종료함</td></tr></tbody></table></div>
+<p>이 샘플의 VM 실행은 1회이며 성공했다.</p>
+<h2>2. 핵심 결과와 판정</h2>
+<p><strong>가설(FND-0021): 이 실행에서 샘플은 후속 행위 없이 조기 종료했다 — 판정: 지지됨(supported)</strong></p>
+<ul><li>샘플 프로세스는 시작 약 3.8초 뒤에 종료했고, 후속 행위는 기록되지 않았다(FND-0019).</li><li>정적 .NET 스텁 특징은 실행된 파일에 있지만, 이 실행에서는 그 행위가 나타나지 않았다(FND-0022).</li><li><strong>판정 범위:</strong> 이 실행의 관측에만 해당한다. <strong>종료 원인은 알 수 없다.</strong> 네트워크 부재, 환경 검사, 오류가 모두 가능하지만 구분할 기록이 없다. 이 실행은 샘플의 페이로드 행위를 확인하지도 부정하지도 않는다.</li></ul>
+<h2>3. 근거</h2>
+<div class="scroll"><table><thead><tr><th scope="col">소견</th><th scope="col">확인한 사실</th><th scope="col">근거</th></tr></thead><tbody><tr><td>FND-0019</td><td>07:17:43.507(UTC) 시작, 07:17:47.322 종료. 자식 프로세스와 샘플의 파일·레지스트리·네트워크·DNS 기록 없음. 남은 기록은 이미지 로드 4건(자기 자신과 .NET 라이브러리 3개)</td><td>Sysmon ART-000061: 1175809, 1175860, 1176275, 1176298, 1176299, 1176300</td></tr><tr><td>FND-0020</td><td>.NET 파일, import는 mscoree 1개, 파일 엔트로피 7.996, <code>.text</code> 섹션 7.998</td><td>정적 분석 ART-000010</td></tr></tbody></table></div>
+<h2>4. 작동 원리</h2>
+<p>후속 행위가 관측되지 않아 작동 원리 소견을 만들지 않았다.</p>
+<h2>5. 관련 탐지 룰과 dev 검증 결과</h2>
+<div class="scroll"><table><thead><tr><th scope="col">룰(동결 버전)</th><th scope="col">형식 · 겨냥한 특징</th><th scope="col">이 Case</th><th scope="col">dev 전체</th><th scope="col">정상 오탐(FP)</th></tr></thead><tbody><tr><td>RULE-0002 v2</td><td>YARA · .NET AES 스텁</td><td>매치(RUN-0003)</td><td>악성 6건 중 2건</td><td>0/2</td></tr><tr><td>RULE-0012 v1</td><td>YARA · .NET 리소스·리플렉션</td><td>매치(RUN-0046)</td><td>악성 6건 중 1건</td><td>0/2</td></tr></tbody></table></div>
+<ul><li><strong>이 매치는 독립적인 근거가 아니다.</strong> 두 룰 모두 이 샘플과 CASE-0003 샘플로 작성했다.</li><li>행위가 기록되지 않아 Sigma 룰은 매치하지 않았다.</li><li>RULE-0012는 unseen 평가가 끝난 뒤 dev 데이터로 작성했다. 그 unseen 결과는 사후 평가로 구분한다.</li><li>이 표는 dev 검증 결과다. unseen 평가 결과는 최종보고서에서 다룬다.</li></ul>
+<h2>6. 한계와 확인하지 못한 것</h2>
+<ul><li>실행 1회의 관측이다. 종료 코드가 기록되지 않아 종료 원인을 조사할 수 없다.</li><li>네트워크를 차단했으므로, 네트워크가 있을 때의 행위는 알 수 없다.</li><li>파일이 높은 엔트로피를 보이지만 난독화나 패킹 여부는 확인하지 않았다.</li><li>정상 비교는 YARA 2건의 Case로 적다.</li></ul>
+<h2>7. AI 의견의 처리</h2>
+<p>DeepSeek·Gemini의 의견 14건은 보고서 부록에 추론으로만 남겼고, 확정 소견의 근거로 쓰지 않았다. 샘플 바이트와 원본 로그는 전송하지 않았고 구조 요약만 사용했다.</p>
+<p><a href="index.html">분석 사례 목록으로</a></p>
+</main>
+<footer>2026학년도 2학기 도전학기제 과제 · 2026-11-24 기준 · 실제 샘플, 원본 로그, 룰 본문은 포함하지 않습니다.</footer>
+</body>
+</html>
