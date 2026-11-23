@@ -126,6 +126,39 @@ Status: `in_progress` — 1단계(확정 사항 + 확정 기반 보고서) 완�
        FN. 4) PureCrypter 행위 룰(0004·0007) eval 0건 → dev 행위에 맞춰져 일반화가 약했다. 5) 이 결과가
        최종 unseen 평가값이며 이후 룰 수정 후 재실행은 `tuning`이다. 6) `contaminated` 표시는
        `eval-open`에서 계산된 값이며 평가 무효가 아니다.
+  - 확정 사항 검토 1단계(사용자 승인, 수정만·확정 안 함): FND-0034 "Draft" → "Frozen YARA RULE-0009 v1",
+    FND-0028·0031 msvcp_win.dll을 "같은 이름의 파일, Windows 파일과 비교 안 함"으로, FND-0024에서 Exodus
+    출처 삭제(근거 기록 없음, Squirrel StubExecutable까지만). FND-0008은 부모 명령줄
+    `svchost.exe -k netsvcs -p -s Schedule`로 Task Scheduler가 확인돼 유지. 34개 모두 draft. 확정은
+    Case별로 다시 승인받는다(증거 항목 먼저, 가설·연결·메커니즘 16개는 나중).
+- 2026-11-21 YARA 2개 추가(사용자 승인, 진행 중 — 절전으로 중단, 이어서 재개):
+  - 사용자 결정 (A): dev 데이터로만 작성·검증·동결, BMK-0004에는 룰마다 1회 실행하되 보고서에는
+    "eval 이후 작성한 사후 평가"로 따로 적고 최종 unseen 수치(6건 중 3건, FP 0)에 합치지 않는다.
+    eval Case(CASE-0017~0022)와 그 드롭 파일은 작성에 쓰지 않는다.
+  - 등록: RULE-0011 v1 draft(Amadey 인코딩 문자열 표 + 32자리 16진 키 + GDI+ 화면 캡처·계정/SID
+    API), RULE-0012 v1 draft(PureCrypter .NET 리소스가 파일 대부분 + ResourceManager·리플렉션 실행).
+    내용은 `rule show --content`로 확인한다.
+  - dev 검증 RUN-0044~0047(kind `development`): RULE-0011은 CASE-0001·0014 TP, CASE-0002 FN.
+    RULE-0012는 CASE-0004 TP, CASE-0003 FN. 정상 CASE-0007·0008 FP 0.
+  - 원인 확인(메모리에서만 읽음): CASE-0002는 x64 빌드라 `pe.machine == I386` 조건에서 빠졌다(문자열은
+    모두 매치). CASE-0003은 .NET 리소스가 4개로 나뉘어 가장 큰 것이 238,315/586,240 bytes(41%)라
+    "파일의 절반 초과" 조건에서 빠졌다(문자열은 모두 매치).
+  - 2026-11-24 재개(사용자 승인, 쓰기 담당을 데스크톱 세션으로 옮김): RULE-0011 v2(machine I386 또는
+    AMD64), RULE-0012 v2(가장 큰 리소스 1/2 초과 → 1/3 초과)를 draft로 등록. RUN-0048~0051(kind
+    `development`): RULE-0011 v2는 CASE-0001·0002·0014 TP, RULE-0012 v2는 CASE-0003·0004 TP, 정상
+    CASE-0007·0008 FP 0. 이 Case들을 보고 고친 것이므로 일반화 근거가 아니다.
+  - 정상 호스트 파일 검사(System32·SysWOW64·Program Files 2곳, 읽기 전용, 샘플 Artifact는 열지 않음):
+    242,204개 검사. 제외는 8MB 이상 856(룰 조건상 매치 불가), 빈 파일 196, 읽기 오류 324. RULE-0011 v2
+    매치 0, RULE-0012 v2 매치 3(서명이 유효한 Microsoft Visual Studio DLL → 오탐), RULE-0012의 1/2
+    기준(v1 조건) 매치 0.
+  - 동결(사용자 승인, 2026-11-24): RULE-0011 v2, RULE-0012 v1(호스트 오탐 때문에 v2 대신 채택, dev
+    CASE-0003은 FN으로 남음). RULE-0011 v1과 RULE-0012 v2는 draft로 남으므로 실행 때 버전을 지정한다.
+    동결 룰 YARA 6 · Sigma 6.
+  - 사후 평가(eval 이후 작성, 최종 unseen 수치에 합치지 않음): BMK-0004 룰마다 1회, 재실행 없음.
+    RUN-0052 RULE-0011 v2 → CASE-0017 TP(Amadey 1/2), RUN-0053 RULE-0012 v1 → TP 0(PureCrypter 0/3).
+    둘 다 FP 0/2(CASE-0007·0008), `not_evaluable` CASE-0009~0013. CASE-0017은 기존 RULE-0001·0006이
+    이미 탐지한 Case라 새로 탐지된 Case는 없다. 도구에는 kind `evaluation`으로 기록됐고(룰의 첫
+    평가라서), 도구가 사후 평가를 따로 구분하지 않으므로 보고서에 직접 적는다.
 - 실제 샘플: dev 6건 Case 등록·정적 분석·YARA 초안 2개(Amadey, PureCrypter) 완료.
   - VM: 게스트 비밀번호 만료(11/17 19:04)로 로그인 거부 → 시계를 되돌려 부팅하고 사용자가
     "만료 없음"으로 고친 뒤 `SYSMON-V2-CLEAN` 재생성(이전은 `SYSMON-V2-CLEAN-pwexpired`).
