@@ -18,7 +18,7 @@
 | ADR-014 | 실행 전 승인과 케이스별 시간 제한 | 승인 |
 | ADR-015 | PowerShell 일회성 Guest Orchestrator | 승인; integration은 ADR-018로 갱신 |
 | ADR-016 | MVP 자동 실행 형식은 Windows PE `.exe` | 승인 |
-| ADR-017 | M0 Python 도구 체인 | 승인 |
+| ADR-017 | M0 Python 도구 체인 (2026-11-24 개정: 공개 저장소, 라이선스 없음) | 승인 |
 | ADR-018 | VirtualBox Windows 11 / Guest Additions를 현재 MVP/demo 기준으로 확정 | 승인 |
 | ADR-019 | SQLite v2와 수동 증거 provenance, 명시적 v1→v2 migration | 승인 |
 | ADR-020 | 기존 Open Case Sysmon Collection 등록과 멱등 재사용 | 승인 |
@@ -45,7 +45,6 @@
 - Unseen 평가의 탐지 판정 단위(룰 단위 vs 가설 단위)
 - 모의 DNS·HTTP 서비스 구성
 - 실제 샘플 확보·보관·폐기 절차
-- 공개 라이선스
 - 첫 외부 API Provider와 첫 로컬 LLM Provider
 - 외부 AI Provider에 보낼 데이터 범위(`structural` 요약 그대로, 축소 또는 확대)
 - UI 관계 그래프의 파일 이름 표시 유지 여부(ADR-025)
