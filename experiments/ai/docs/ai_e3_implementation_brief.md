@@ -14,9 +14,9 @@ The brief uses the same decision labels as the companion
 - **Professor Decision Required** — unresolved research decisions that block
   dependent implementation.
 
-The approved [Behavior Graph Ontology v0.1](https://www.notion.so/3d0c4ac09ebd81339243fa256bce6a6a)
+The approved Behavior Graph Ontology v0.1
 and the AI-E0 approved research draft
-[Minimum Event Schema v0.1](https://www.notion.so/3d0c4ac09ebd8180af64d66f71bff6ea)
+Minimum Event Schema v0.1
 remain source research contracts. The latter is not yet a Workbench M1 public
 Evidence/Event contract. This proposal neither promotes it nor changes product
 core interfaces.

@@ -17,9 +17,9 @@ are not confused with new implementation proposals.
 
 The source documents are:
 
-- [Behavior Graph Ontology v0.1](https://www.notion.so/3d0c4ac09ebd81339243fa256bce6a6a),
+- Behavior Graph Ontology v0.1,
   an approved AI-E0 closing artifact.
-- [Minimum Event Schema v0.1](https://www.notion.so/3d0c4ac09ebd8180af64d66f71bff6ea),
+- Minimum Event Schema v0.1,
   an AI-E0 approved research draft. It is not yet the official Workbench M1
   Evidence/Event contract.
 
