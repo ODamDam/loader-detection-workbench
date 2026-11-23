@@ -744,8 +744,8 @@ Private GitHub 작업 관리 기반을 마련한다.
 - lint and format: Ruff
 - type check: strict mode mypy
 - coverage threshold와 pytest-cov: M1 이후 검토
-- 라이선스: 공개 전 별도 결정
-- GitHub repository visibility: Private
+- 라이선스: 공개 전 별도 결정 → 2026-11-24 라이선스 없음으로 결정(ADR-017 개정)
+- GitHub repository visibility: Private → 2026-11-24 사용자 승인으로 Public 전환
 
 ## M0-local
 
@@ -897,7 +897,7 @@ Status: `completed`
 
 ### 완료 조건
 
-- GitHub repository가 Private으로 생성되어 있다.
+- GitHub repository가 Private으로 생성되어 있다(M0 당시 조건, 2026-11-24 Public 전환).
 - 승인된 로컬 기준선이 원격 저장소에 존재한다.
 - 초기 작업을 추적할 Issues와 Milestones가 생성되어 있다.
 - Project Board 또는 승인된 동등한 추적 구조가 초기 마일스톤과 작업 상태를 표시한다.
