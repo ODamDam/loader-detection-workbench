@@ -6,16 +6,40 @@
 
 본 저장소의 소프트웨어 산출물은 **Local Detection-as-Code Workbench**이다. 다양한 Windows 악성코드 패밀리의 정적·동적 증거를 Case 단위로 수집·구조화하고, 탐지 가설과 YARA·Sigma 룰을 작성해 악성·정상 데이터에서 반복 검증하며, 케이스별 보고서를 생성하는 로컬 분석 플랫폼이다.
 
-## 2. 정량 목표
+**상태: 진행 중(2026-11-24 기준).** 기능 동결 기한은 2026-11-24이며, 확정 사항 검토와 보고서 작성이 남아 있다.
+실제 작업 상태는 [`PLANS.md`](PLANS.md)를 기준으로 한다.
 
-| 지표 | 목표 |
-|---|---:|
-| 분석 케이스 | 6개 이상 |
-| YARA 룰 | 6개 이상 |
-| Sigma 룰 | 6개 이상 |
-| 개별 분석 보고서 | 6편 이상 |
-| 최종보고서 | 1편 |
-| 논문 초안 | 1편 |
+## 2. 정량 목표와 현재 상태
+
+| 지표 | 목표 | 현재(2026-11-24) |
+|---|---:|---|
+| 분석 케이스 | 6개 이상 | 상세 분석(dev) 6건 증거 수집 완료. 추가 dev 3건, unseen 6건, 정상 7건 별도 |
+| YARA 룰 | 6개 이상 | 동결 6개 |
+| Sigma 룰 | 6개 이상 | 동결 6개 |
+| 개별 분석 보고서 | 6편 이상 | 작성 전(확정 사항 34건 중 12건 확정) |
+| 최종보고서 | 1편 | 작성 전 |
+| 논문 초안 | 1편 | 작성 전 |
+
+### 평가 결과 요약
+
+샘플은 MalwareBazaar의 Amadey·PureCrypter·HijackLoader이며 dev/unseen은 상세 분석 전에 무작위로
+나눠 동결했다. unseen 평가는 동결 룰을 룰마다 한 번만 실행했다.
+
+| 구분 | 룰 | unseen 탐지 | 정상 오탐(FP) |
+|---|---|---|---|
+| 최종 unseen 평가 | 동결 룰 10개(YARA 4, Sigma 6) | Case 6건 중 3건(룰 1개 이상 매치) | 0 |
+| 사후 평가(위 수치에 합치지 않음) | eval 이후 dev 데이터로 작성한 YARA 2개 | 6건 중 1건(이미 탐지된 Case) | 0 |
+
+해석할 때 다음 한계를 함께 본다.
+
+- unseen은 6건이고, 정상 비교는 Case 단위로 YARA 2건·Sigma 5건뿐이다. 정상 설치 프로그램은 비교군에
+  없다. 비율이 아니라 분모를 함께 읽는다.
+- unseen 1건(CASE-0018)은 VM 실행이 두 번 실패해 Sigma로는 평가할 수 없었다(`not_evaluable`).
+- Amadey dev 3건은 서로 다른 Amadey 파일로는 2종이다. 한 샘플이 다른 샘플 전체를 품고 있다.
+- 분석한 패밀리는 로더·크립터 3종이다. 다른 유형의 악성코드로 일반화하지 않는다.
+
+동결 룰 본문, 벤치마크, 검증 기록과 확정 사항은 저장소 밖 분석 Project에 있는 런타임 데이터이며 이
+저장소에는 포함하지 않는다.
 
 Workbench의 자동 생성 범위는 **개별 분석 보고서의 Markdown·HTML 출력**까지이다. 최종보고서와 논문 초안은 케이스별 결과를 바탕으로 사용자가 직접 통합 작성한다.
 
@@ -50,10 +74,14 @@ Workbench의 자동 생성 범위는 **개별 분석 보고서의 Markdown·HTML
 - `docs/14-decision-register.md`: 결정 사항 요약
 - `docs/15-initial-backlog.md`: 초기 개발 백로그
 - `docs/16-risk-register.md`: 위험과 대응 방안
+- `docs/17-development-workflow.md`: 작업 접수·승인·구현·검증 절차
+- `docs/24-sysmon-v2-vm-snapshot-procedure.md`: Sysmon v2 설정과 클린 스냅샷 생성
+- `docs/26-sample-acquisition-guide.md`: 평가용 실제 샘플 확보·등록·분할 절차
+- `docs/local-platform-ui-contract.md`: 로컬 UI 경로·보안 계약
 - `docs/adr/`: Architecture Decision Record
 - `docs/templates/`: 이슈·주간일지·보고서·ADR 템플릿
 
-## 5. 권장 개발 순서
+## 5. 구현 순서
 
 핵심 전략은 **수직적 슬라이스를 먼저 완성한 뒤 자동화 범위를 확장하는 것**이다.
 
@@ -66,7 +94,7 @@ Workbench의 자동 생성 범위는 **개별 분석 보고서의 Markdown·HTML
 → 악성·정상 데이터 검증
 → Markdown·HTML 보고서 생성
 → 시뮬레이터 자동 실행
-→ VirtualBox 자동화 (향후)
+→ VirtualBox 자동화
 → AI Provider
 → 로컬 웹 UI
 ```
@@ -79,7 +107,7 @@ workbench bundle validate BUNDLE.zip
 workbench bundle import BUNDLE.zip
 ```
 
-## 6. 문서 상태
+## 6. Sysmon 처리와 Case 보고서
 
 ### Sysmon Event ID 1·11 최소 정규화
 
@@ -115,7 +143,8 @@ assert file_events[0].source_record_id == "43"
 결과는 메모리로 반환하며 DB나 산출물 파일에 저장하지 않는다. ArtifactId와
 XML EventRecordID로 원본 record를 추적한다. Case/Artifact 조회는 기존 API를
 사용한다. 지원 입력, 필드와 오류는 `docs/05-data-model.md`, 작업 인계와 검증은
-`docs/20-sysmon-event11-handoff.md`를 참조한다. 복수 이벤트 XML과 EVTX는
+`docs/20-sysmon-event11-handoff.md`를 참조한다. 이 정규화 API는 단일 이벤트만 다룬다. `<Events>`
+복수 이벤트 XML과 다른 Event ID는 Case Timeline과 Sigma 평가에서 공통 파서로 읽는다. EVTX는
 지원하지 않는다.
 
 ### Case Timeline 및 Case 보고서(Markdown·HTML)
@@ -149,8 +178,9 @@ UTF-8 encoding을 변경하지 않는다.
 
 ### VirtualBox guest Sysmon demo helper
 
-현재 VM 기준은 VirtualBox + Windows 11 x64 + Guest Additions이며 clean snapshot은
-`SYSMON-DEMO-CLEAN`이다 (ADR-018). 사용자가 실제 manual E2E 성공을 확인했다.
+이 절은 중간보고(2026-10) 때의 무해한 수집 데모 기록이다. 현재 VM 실행은 12절의 `workbench vm`과
+스냅샷 `SYSMON-V2-CLEAN`을 쓴다. 데모 기준은 VirtualBox + Windows 11 x64 + Guest Additions이며
+clean snapshot은 `SYSMON-DEMO-CLEAN`이다 (ADR-018). 사용자가 실제 manual E2E 성공을 확인했다.
 준비된 **guest 내부**에서 `scripts/vm/Invoke-SysmonDemoCollection.ps1`을 실행하면
 고유 marker의 benign child PowerShell/text file과 동일 ProcessGuid/PID의 Event
 1/11 쌍을 수집한다. 출력 디렉터리는 새 경로여야 하며 raw XML/metadata는 Git 밖에
@@ -158,7 +188,7 @@ UTF-8 encoding을 변경하지 않는다.
 
 2026-10-13 사용자 수동 검증으로 첫 helper 수집의 VM → Workbench E2E가 PASS했다.
 두 번째 독립 수집은 guest 출력 단계만 PASS했으며 두 번째 E2E는 미검증이다.
-단일 실행 E2E의 기존 차단은 해소됐고 VM lifecycle 자동화는 미구현이다.
+단일 실행 E2E의 기존 차단은 해소됐다. VM lifecycle 자동화는 이후 12절에서 구현했다.
 Host 모의 검증과 실제 guest 검증을 구분하며, 환경별 명령과 검증 결과는
 [`docs/23-virtualbox-sysmon-export-helper-handoff.md`](docs/23-virtualbox-sysmon-export-helper-handoff.md)를 참조한다.
 
@@ -196,11 +226,9 @@ powershell.exe -NoProfile -NonInteractive `
 Guest 수집이나 서로 다른 collection 2개에 대한 검증이 아니다. 상세 계약과 안전한 증빙
 절차는 `docs/23-virtualbox-sysmon-export-helper-handoff.md`를 참조한다.
 
-본 문서 세트는 현재까지의 요구사항 인터뷰에서 합의한 내용을 기준으로 작성한 초기 기준선이다. 실제 구현 과정에서 변경이 필요한 경우 ADR과 변경 이력을 함께 갱신한다.
-
 ## 7. 로컬 개발 환경
 
-M0-local 개발 기준은 CPython 3.12와 uv이다. 저장소 루트에서 다음 명령으로
+개발 기준은 CPython 3.12 이상과 uv이다. 저장소 루트에서 다음 명령으로
 개발 환경을 구성하고 최소 CLI를 실행한다.
 
 ```powershell
@@ -280,11 +308,13 @@ CLI의 `--log-level`은 설정 파일 값을 덮어쓴다. 전체 로컬 검증�
 
 ```powershell
 uv lock --check
-uv run pytest
+uv run python -m pytest -q
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy src
+uv run python -m mypy src
 ```
+
+`pytest.exe`·`mypy.exe` 실행이 애플리케이션 제어 정책에 막히는 PC가 있어 `python -m` 형식을 쓴다.
 
 저장소는 소스 코드용이며 분석 프로젝트 작업공간, 실제 샘플 및 원본 분석
 로그를 저장하는 위치로 사용하지 않는다.
@@ -322,7 +352,7 @@ workbench case collection import CASE-0001 '<collection-directory>'
 provenance를 만들지 않는다. 검증, 오류, 안전 및 rollback 계약은
 `docs/sysmon-collection-ingestion-contract.md`를 참고한다.
 
-## 10. 로컬 Flask 기본 플랫폼 UI
+## 10. 로컬 Flask 플랫폼 UI
 
 기존 v1 또는 v2 Project를 CLI에서 하나 선택해 loopback 전용 UI를 실행한다.
 
@@ -331,20 +361,21 @@ workbench ui serve .\workspace --port 8080
 ```
 
 브라우저에서 `http://127.0.0.1:8080/`(대시보드)를 연다. UI는 Case 목록·상세,
-Artifact와 Manual Evidence provenance, 수동 Evidence 등록, 안전한 Event ID 1/11
-Timeline을 제공한다. 수동 등록은 Open v2 Case에서만 가능하며 기존 4 MiB와 확장자
+Artifact와 Manual Evidence provenance, 수동 Evidence 등록, Event ID 1·11과 그 밖의 Sysmon
+이벤트 Timeline을 제공한다. 메뉴와 Case 작업 공간은 17절을 본다. 수동 등록은 Open v2 Case에서만 가능하며 기존 4 MiB와 확장자
 정책을 그대로 사용한다. v1 Project의 조회는 가능하지만 등록 전에 별도 백업 후
 명시적인 `project migrate --to 2`가 필요하다.
 
 Case 상세의 **Evidence and detection analysis**(`/cases/<CASE>/analysis`)는 증거 →
 가설 → 룰 → 검증 관계 그래프, 가설, 검증 결과, 프로세스·파일 관계 그래프와 VM 실행
-런을 읽기 전용으로 보여준다. 상단 **Detection**(`/detection`)에서 룰, 벤치마크, 검증
+런을 읽기 전용으로 보여준다. `/detection`에서 룰, 벤치마크, 검증
 실행 목록을 보고, 룰 페이지에서 버전별 결과를 비교한다. 검증 수치는 항상 분모와 함께
 표시하고 development·evaluation·tuning 실행을 나눠서 보여준다. 가설·룰·벤치마크·검증의
 생성과 수정은 CLI에서만 한다.
 
 서버는 `127.0.0.1`에만 바인딩하고 debug/reloader를 사용하지 않는다. UI에는 원본
-증거 다운로드·미리보기, Markdown 보고서 미리보기, VM·AI 실행 기능이 없다.
+증거 다운로드·미리보기와 VM·AI 실행 기능이 없다. 내려받을 수 있는 것은 생성한 보고서와 동결
+룰셋뿐이다.
 내부 ID와 저장 경로, Sysmon command line 및 실행·대상 경로도 표시하지 않는다.
 프로세스·파일 그래프는 경로의 마지막 요소(파일 이름)만 표시한다.
 원격 bind, port forwarding 또는 reverse proxy로 노출하지 않는다. 전체 route,
@@ -402,15 +433,15 @@ uv run workbench vm unlock --note "VM verified by hand"
   `sample` Artifact로 저장한다. 실패해도 이벤트 수집 결과는 등록된다.
 - 게스트 계정은 `WORKBENCH_GUEST_USER`·`WORKBENCH_GUEST_PASSWORD` 환경 변수로만 받는다.
 - sample 실행은 NIC 케이블 분리, 공유 폴더 없음, 클립보드·드래그 앤 드롭 비활성화를 요구한다.
-- 2026-11-12 기준 실제 VM 실행 검증은 하지 않았다(모의 VBoxManage·PowerShell mock만 통과).
+- 실제 VM 실행 기록(2026-11-24 기준, VMR-0001~0036): 36회 중 22회 성공(실제 샘플 17회, 정상
+  시나리오 5회). 실패 14회에는 초기 설정 문제와 샘플 실행 실패가 포함된다.
 
-## 13. AI 분석 보조 골격 (ADR-026, 오프라인 전용)
+## 13. AI 분석 보조 (ADR-026·027·031·033)
 
-AI 분석 보조는 선택 기능이다. 쓰지 않아도 나머지 기능은 그대로 동작한다. 현재는 이
-PC 안에서만 도는 `offline-template` Provider만 있다. 이 Provider는 언어 모델이 아니라
-고정 템플릿이며, API 키와 네트워크 없이 전체 흐름을 동작시키기 위한 것이다. 외부
-Provider(Claude·GPT·Gemini)는 구현되어 있지 않고, 외부로 증거를 보내는 Provider는
-호출 전에 거부된다.
+AI 분석 보조는 선택 기능이다. 쓰지 않아도 나머지 기능은 그대로 동작한다. 기본 Provider는 이 PC
+안에서만 도는 `offline-template`이며, 언어 모델이 아니라 고정 템플릿이다. API 키와 네트워크 없이
+전체 흐름을 동작시키기 위한 것이다. 외부 Provider는 OpenAI·DeepSeek·Gemini 3종이고 기본으로
+꺼져 있어, 아래 조건을 모두 갖추지 않으면 호출 전에 거부된다.
 
 ```text
 workbench ai providers
@@ -554,8 +585,8 @@ uv run workbench finding adopt AIA-0001 2      # AI 가설 제안으로 초안 �
 ### 화면 구성 (2026-11-19 개편, 한국어 UI)
 
 왼쪽 메뉴와 상단 ID 검색(`/` 키, `CASE-`·`ART-`·`ART-…#레코드`·`FND-`·`RULE-`·`RUN-`·`BMK-`·
-`VMR-`·`AIA-`·`SMP-`)으로 이동한다. 모든 화면은 읽기 전용 조회이며, 쓰기는 작업 공간의
-소견 양식뿐이다.
+`VMR-`·`AIA-`·`SMP-`)으로 이동한다. 쓰기는 수동 Evidence 등록(10절)과 작업 공간의 소견 양식·AI
+제안 채택뿐이고, 나머지 화면은 읽기 전용이다.
 
 | 메뉴 | 주소 | 내용 |
 |---|---|---|
